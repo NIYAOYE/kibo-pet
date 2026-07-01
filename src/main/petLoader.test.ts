@@ -14,6 +14,6 @@ describe('loadPet', () => {
   })
 
   it('throws on a directory without pet.json', async () => {
-    await expect(loadPet(resolve(__dirname))).rejects.toThrow()
+    await expect(loadPet(resolve(__dirname, '__no_such_pet_dir__'))).rejects.toThrow()
   })
 })

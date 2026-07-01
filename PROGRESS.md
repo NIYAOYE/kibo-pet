@@ -1,13 +1,13 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-01 · 状态:**MVP-01 已完成并合并到 `master`**
+> 更新时间:2026-07-01 · 状态:**MVP-02 已完成并合并到 `main`**
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
 
 ## 1. 一句话现状
 
-一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-01(工程骨架 + 可执行躯壳)已做完、真机验收通过、合并到 master**。下一步是 MVP-02(动画状态机 + 唤出对话框)。
+一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-02(动画状态机 + 自主游走/睡眠/拖拽 + 对话框双态 UI + 占位聊天)已做完、真机验收通过、合并到 main**。下一步是 MVP-03(LLM Provider 抽象 + Agent 循环)。
 
 ## 2. 怎么跑起来
 
@@ -17,7 +17,7 @@ pnpm dev          # 开发模式(HMR)。正常终端可用
 # 或:构建后预览(更接近打包版,启动更稳)
 pnpm build && pnpm preview
 
-pnpm test         # 单元测试(当前 11/11 通过)
+pnpm test         # 单元测试(当前 25/25 通过)
 pnpm typecheck    # 类型检查
 ```
 
@@ -38,13 +38,17 @@ pnpm typecheck    # 类型检查
 ```
 src/
   shared/     petPackage.ts(pet.json 类型 + frameRect + frameDurationMs + parsePetManifest;含测试)
-              ipc.ts(IPC 通道常量 + PetApi/LoadedPet/MoveDelta 类型 + window.petApi 全局声明)
+              ipc.ts(IPC 通道常量 + PetApi/LoadedPet/MoveDelta/ChatMessage/ChatSendPayload 类型 + window.petApi 全局声明)
+              petBrain.ts(纯状态机 reducer:idle/walk/drag/sleep 切换 + applyEvent;含测试)
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
-              index.ts(透明置顶窗口 + 托盘 + IPC:GET_PET/MOVE_WINDOW/SET_IGNORE_MOUSE/QUIT)
-  preload/    index.ts(contextBridge 暴露最小 petApi)
+              index.ts(透明置顶窗口 + 托盘 + IPC:GET_PET/MOVE_WINDOW/SET_IGNORE_MOUSE/QUIT/TOGGLE_DIALOG/GET_WINDOW_BOUNDS/CHAT_SEND/CHAT_UPDATE/PET_EVENT/DIALOG_SET_SIZE)
+              shell/  (窗口管理/托盘/热键注册抽取;registerHotkeys/createTray/createPetWindow)
+  preload/    index.ts(contextBridge 暴露最小 petApi,含 dialog/chat/petEvent API)
   renderer/   index.html(含 CSP)
               main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透)
               spritePlayer.ts(精灵动画播放器 + nextFrameIndex + isPetPixel 命中测试;含测试)
+              petController.ts(自主行为控制器:基于 petBrain 状态机驱动游走/睡眠/动画切换)
+              dialog.ts / dialog.html / dialog.css(对话框窗口:常态薄条 + 展开双态 + 占位聊天 UI)
 pets/luluka/  宠物包(pet.json + spritesheet.webp + persona.md + lines.json + voice/)  ← 注意:被 .gitignore 忽略,仅在磁盘
 tools/hatch-desktop-pet/   资产生成工具(Python,改编自 hatch-pet;生成 8×13 精灵图集 + pet.json)
 docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅在磁盘
@@ -60,7 +64,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 ## 6. 路线图(MVP 分阶段,每个都能独立跑/可测)
 
 - ✅ **MVP-01** 工程骨架 + 可执行躯壳(idle、拖拽、托盘、点击穿透)
-- ⬜ **MVP-02** 动画状态机(idle/walk/drag/sleep 切换)+ 全局热键/点击唤出对话框壳
+- ✅ **MVP-02** 动画状态机(idle/walk/drag/sleep 切换)+ 全局热键/点击唤出对话框壳
 - ⬜ **MVP-03** LLM Provider 抽象 + 密钥存储 + 首启向导 + Agent 循环(先 fake 后真)+ 流式回复 + §5.6 运行时边界
 - ⬜ **MVP-04** web_search 工具 + Skill 加载器 + `skills/web-summary/SKILL.md`
 - ⬜ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 组装
@@ -68,10 +72,10 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化。
 
-## 7. 已知遗留(Minor,记在账本,MVP-02 可顺带清理)
+## 7. 已知遗留(Minor,记在账本)
 
-- `src/main/petLoader.test.ts` 用 `resolve(__dirname)` 作"缺失 pet.json"目录,略脆 → 改为明确不存在的路径
-- `spritePlayer.ts` 每帧 `canvas.width/height` 重设(帧尺寸恒定时可提到 play() 里做一次)
+- ~~`src/main/petLoader.test.ts` 用 `resolve(__dirname)` 作"缺失 pet.json"目录,略脆 → 改为明确不存在的路径~~ ✅ MVP-02 已清
+- ~~`spritePlayer.ts` 每帧 `canvas.width/height` 重设(帧尺寸恒定时可提到 play() 里做一次)~~ ✅ MVP-02 已清
 - `parsePetManifest`/`frameDurationMs` 未防 `fps=0` 或 `durations` 含 0/NaN(luluka 数据干净,无实bug)
 - 窗口大小 256×288 > 画布 192×208,宠物偏左上(非居中);后续可让窗口贴合或居中
 

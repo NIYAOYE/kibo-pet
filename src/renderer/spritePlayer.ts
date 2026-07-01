@@ -22,6 +22,8 @@ export class SpritePlayer {
     if (!anim) return
     this.state = state
     this.frame = 0
+    this.canvas.width = this.manifest.sheet.cellWidth
+    this.canvas.height = this.manifest.sheet.cellHeight
     this.tick(anim)
   }
 
@@ -43,8 +45,6 @@ export class SpritePlayer {
   private draw(anim: PetAnimation, index: number): void {
     const r = frameRect(this.manifest.sheet, anim.row, index)
     const ctx = this.canvas.getContext('2d', { willReadFrequently: true })!
-    this.canvas.width = r.w
-    this.canvas.height = r.h
     ctx.clearRect(0, 0, r.w, r.h)
     ctx.drawImage(this.sheet, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h)
   }
