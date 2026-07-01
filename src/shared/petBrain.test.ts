@@ -98,17 +98,23 @@ describe('petBrain events', () => {
   it('pickup → drag, drop → idle', () => {
     let res = step(initBrain(), input({ event: 'pickup' }))
     expect(res.ctx.state).toBe('drag')
+    expect(res.ctx.idleAccumMs).toBe(0)
+    res = step(res.ctx, input({ dtMs: 1000 })) // drag persists without an event
+    expect(res.ctx.state).toBe('drag')
     res = step(res.ctx, input({ event: 'drop', rng: () => 0.5 }))
     expect(res.ctx.state).toBe('idle')
+    expect(res.ctx.idleAccumMs).toBe(0)
   })
 
   it('messageSent → thinking (persists), replyDone → talk → idle', () => {
     let res = step(initBrain(), input({ event: 'messageSent' }))
     expect(res.ctx.state).toBe('thinking')
+    expect(res.ctx.idleAccumMs).toBe(0)
     res = step(res.ctx, input({ dtMs: 5000 })) // persists without event
     expect(res.ctx.state).toBe('thinking')
     res = step(res.ctx, input({ event: 'replyDone' }))
     expect(res.ctx.state).toBe('talk')
+    expect(res.ctx.idleAccumMs).toBe(0)
     res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.talkMs + 10, rng: () => 0.5 }))
     expect(res.ctx.state).toBe('idle')
   })
@@ -116,6 +122,7 @@ describe('petBrain events', () => {
   it('dialogOpen → greet → idle after greetMs', () => {
     let res = step(initBrain(), input({ event: 'dialogOpen' }))
     expect(res.ctx.state).toBe('greet')
+    expect(res.ctx.idleAccumMs).toBe(0)
     res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.greetMs + 10, rng: () => 0.5 }))
     expect(res.ctx.state).toBe('idle')
   })
