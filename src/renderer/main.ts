@@ -14,6 +14,7 @@ async function boot(): Promise<void> {
   const player = new SpritePlayer(canvas, sheet, manifest)
   const controller = new PetController(player)
   await controller.start()
+  window.petApi.onPetEvent((event) => controller.send(event))
 
   let dragging = false
   let moved = false
@@ -59,6 +60,8 @@ async function boot(): Promise<void> {
     if (moved) {
       controller.send('drop')
       controller.syncBounds().catch((err) => console.warn('syncBounds failed', err))
+    } else {
+      window.petApi.toggleDialog() // 未越阈值 = 单击 → 开/关对话框
     }
   })
 }
