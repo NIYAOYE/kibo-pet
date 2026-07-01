@@ -17,6 +17,7 @@ export function createDialogController(opts: {
   url: string | undefined // dialog.html 的 dev URL(含 /dialog.html),打包为 undefined
   dialogHtml: string
   onOpened: () => void
+  onClosed: () => void
 }): DialogController {
   let win: BrowserWindow | null = null
   let collapsed = true
@@ -58,7 +59,7 @@ export function createDialogController(opts: {
       win?.webContents.send(IPC.CHAT_UPDATE, messages)
     },
     toggle(getPetBounds): void {
-      if (win && win.isVisible()) { win.hide(); return }
+      if (win && win.isVisible()) { win.hide(); opts.onClosed(); return }
       if (!win) win = build()
       const pet = getPetBounds()
       const s = collapsed ? COLLAPSED : EXPANDED

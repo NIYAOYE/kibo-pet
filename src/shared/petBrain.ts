@@ -1,5 +1,5 @@
 export type PetLogicalState = 'idle' | 'walk' | 'drag' | 'sleep' | 'greet' | 'thinking' | 'talk'
-export type PetEvent = 'pickup' | 'drop' | 'wake' | 'dialogOpen' | 'messageSent' | 'replyDone'
+export type PetEvent = 'pickup' | 'drop' | 'wake' | 'dialogOpen' | 'dialogClose' | 'messageSent' | 'replyDone'
 export type Direction = 'left' | 'right'
 
 export interface Bounds { x: number; y: number; width: number; height: number }
@@ -35,6 +35,7 @@ export interface PetBrainCtx {
   dwellMs: number
   idleAccumMs: number // 距上次"用户交互"的累计时长;自主游走不重置它(仅用户事件在 applyEvent 里重置),用于从 idle 漂移入睡
   walkRemainingPx: number
+  paused: boolean // 对话框打开时为 true:宠物停止自主游走/入睡,留在原地陪聊(仍响应拖拽/对话事件)
   config: PetBrainConfig
 }
 
@@ -63,6 +64,7 @@ export function initBrain(config: Partial<PetBrainConfig> = {}): PetBrainCtx {
     dwellMs: cfg.idleDwellMinMs,
     idleAccumMs: 0,
     walkRemainingPx: 0,
+    paused: false,
     config: cfg
   }
 }
@@ -93,7 +95,8 @@ function applyEvent(ctx: PetBrainCtx, event: PetEvent, rng: () => number): PetBr
     case 'pickup': return { ...enterState(ctx, 'drag'), idleAccumMs: 0 }
     case 'drop': return { ...enterIdle(ctx, rng), idleAccumMs: 0 }
     case 'wake': return { ...enterIdle(ctx, rng), idleAccumMs: 0 }
-    case 'dialogOpen': return { ...enterState(ctx, 'greet'), idleAccumMs: 0 }
+    case 'dialogOpen': return { ...enterState(ctx, 'greet'), idleAccumMs: 0, paused: true }
+    case 'dialogClose': return { ...enterIdle(ctx, rng), idleAccumMs: 0, paused: false }
     case 'messageSent': return { ...enterState(ctx, 'thinking'), idleAccumMs: 0 }
     case 'replyDone': return { ...enterState(ctx, 'talk'), idleAccumMs: 0 }
     default: return ctx
@@ -113,6 +116,8 @@ export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; ef
 
   switch (next.state) {
     case 'idle': {
+      // While paused (dialog open) the pet stays put — no autonomous walk, no sleep.
+      if (next.paused) break
       if (next.idleAccumMs >= cfg.sleepAfterIdleMs) { next = enterState(next, 'sleep'); break }
       if (next.stateElapsedMs >= next.dwellMs) {
         next = input.rng() < cfg.walkProbability ? enterWalk(next, input.rng) : enterIdle(next, input.rng)

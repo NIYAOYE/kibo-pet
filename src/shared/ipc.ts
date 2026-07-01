@@ -20,7 +20,9 @@ export interface LoadedPet {
   spritesheetDataUrl: string
 }
 
-export interface MoveDelta { dx: number; dy: number }
+/** clamp:true keeps the window inside the display work area (autonomous walk);
+ *  omitted/false lets it move freely (manual drag), matching MVP-01. */
+export interface MoveDelta { dx: number; dy: number; clamp?: boolean }
 
 export interface WindowBounds { workArea: Bounds; window: Bounds }
 

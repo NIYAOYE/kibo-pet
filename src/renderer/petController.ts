@@ -53,11 +53,16 @@ export class PetController {
     })
     this.ctx = ctx
     if (effects.animation !== this.currentAnim) {
+      // Re-sync the predicted windowX from the true OS position at each walk
+      // start, so drift accumulated over the session doesn't skew edge-clamping.
+      const startedWalking = effects.animation.startsWith('walk') && !this.currentAnim.startsWith('walk')
       this.player.play(effects.animation)
       this.currentAnim = effects.animation
+      if (startedWalking) void this.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     }
     if (effects.move !== 0) {
-      window.petApi.moveWindow({ dx: effects.move, dy: 0 })
+      // clamp:true — autonomous walk stays on-screen (main enforces the edge).
+      window.petApi.moveWindow({ dx: effects.move, dy: 0, clamp: true })
       this.windowX += effects.move
     }
   }

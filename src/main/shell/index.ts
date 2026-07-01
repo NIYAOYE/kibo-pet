@@ -36,7 +36,8 @@ export function startShell(): void {
     onOpened: () => {
       emitPetEvent('dialogOpen')
       dialog.pushUpdate(chat.messages())
-    }
+    },
+    onClosed: () => emitPetEvent('dialogClose')
   })
 
   const chat = createChatStore({
@@ -61,7 +62,22 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.MOVE_WINDOW, (_e, delta: MoveDelta) => {
     const [x, y] = petWin.getPosition()
-    petWin.setPosition(Math.round(x + delta.dx), Math.round(y + delta.dy))
+    const nx = Math.round(x + delta.dx)
+    const ny = Math.round(y + delta.dy)
+    if (delta.clamp) {
+      // Autonomous walk: hard-limit to the current display's work area against
+      // the REAL position (the renderer's predicted X can drift), so the pet
+      // never wanders off-screen. Manual drags are intentionally NOT clamped
+      // (free movement, matching MVP-01) — clamping them felt "magnetized".
+      const [width, height] = petWin.getSize()
+      const { workArea } = screen.getDisplayMatching({ x, y, width, height })
+      petWin.setPosition(
+        Math.max(workArea.x, Math.min(nx, workArea.x + workArea.width - width)),
+        Math.max(workArea.y, Math.min(ny, workArea.y + workArea.height - height))
+      )
+    } else {
+      petWin.setPosition(nx, ny)
+    }
   })
   ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, ignore: boolean) => {
     petWin.setIgnoreMouseEvents(ignore, { forward: true })

@@ -140,3 +140,28 @@ describe('petBrain events', () => {
     expect(res.ctx.idleAccumMs).toBe(0)
   })
 })
+
+describe('petBrain pause (dialog open)', () => {
+  it('dialogOpen pauses: no walk and no sleep while paused', () => {
+    let res = step(initBrain(), input({ event: 'dialogOpen' }))
+    expect(res.ctx.state).toBe('greet')
+    expect(res.ctx.paused).toBe(true)
+    res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.greetMs + 10, rng: () => 0.5 }))
+    expect(res.ctx.state).toBe('idle')
+    expect(res.ctx.paused).toBe(true)
+    // Past dwell (rng would pick walk) AND past sleep threshold — still idle.
+    res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.sleepAfterIdleMs + 10000, rng: () => 0 }))
+    expect(res.ctx.state).toBe('idle')
+  })
+
+  it('dialogClose unpauses and autonomous walk resumes', () => {
+    let res = step(initBrain(), input({ event: 'dialogOpen' }))
+    res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.greetMs + 10, rng: () => 0.5 }))
+    expect(res.ctx.paused).toBe(true)
+    res = step(res.ctx, input({ event: 'dialogClose', rng: () => 0 })) // enterIdle dwell = min (2000)
+    expect(res.ctx.paused).toBe(false)
+    expect(res.ctx.state).toBe('idle')
+    res = step(res.ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.5]) }))
+    expect(res.ctx.state).toBe('walk')
+  })
+})
