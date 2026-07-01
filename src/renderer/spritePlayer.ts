@@ -42,10 +42,27 @@ export class SpritePlayer {
 
   private draw(anim: PetAnimation, index: number): void {
     const r = frameRect(this.manifest.sheet, anim.row, index)
-    const ctx = this.canvas.getContext('2d')!
+    const ctx = this.canvas.getContext('2d', { willReadFrequently: true })!
     this.canvas.width = r.w
     this.canvas.height = r.h
     ctx.clearRect(0, 0, r.w, r.h)
     ctx.drawImage(this.sheet, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h)
+  }
+
+  /**
+   * True when a viewport point falls on a non-transparent pixel of the pet.
+   * Used to decide click-through: transparent areas should pass clicks below.
+   */
+  isPetPixel(clientX: number, clientY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return false
+    if (clientX < rect.left || clientX >= rect.right || clientY < rect.top || clientY >= rect.bottom) {
+      return false
+    }
+    const px = Math.floor((clientX - rect.left) * (this.canvas.width / rect.width))
+    const py = Math.floor((clientY - rect.top) * (this.canvas.height / rect.height))
+    const ctx = this.canvas.getContext('2d', { willReadFrequently: true })!
+    const alpha = ctx.getImageData(px, py, 1, 1).data[3]
+    return alpha > 10
   }
 }

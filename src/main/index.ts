@@ -55,6 +55,11 @@ function registerIpc(): void {
     const [x, y] = win.getPosition()
     win.setPosition(Math.round(x + delta.dx), Math.round(y + delta.dy))
   })
+  ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, ignore: boolean) => {
+    // forward:true keeps mousemove events flowing so the renderer can detect
+    // when the cursor re-enters the pet and turn interactivity back on.
+    win?.setIgnoreMouseEvents(ignore, { forward: true })
+  })
   ipcMain.on(IPC.QUIT, () => app.quit())
 }
 
