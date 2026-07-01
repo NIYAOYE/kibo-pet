@@ -1,0 +1,9 @@
+# hatch-desktop-pet 资产工具的 Python 依赖
+# 安装:python -m pip install -r requirements.txt
+Pillow>=10.0
+
+# 外部命令行依赖(不由 pip 管理,需自行安装):
+#   - ffmpeg   —— 预览视频渲染(render_animation_videos.py);不装可跳过视频步骤
+#   - curl     —— OpenAI 图像生成兜底(generate_pet_images.py)
+# 环境变量:
+#   - OPENAI_API_KEY —— 仅在使用 OpenAI 兜底(generate_pet_images.py)时需要

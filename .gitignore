@@ -1,0 +1,39 @@
+# === 依赖 / 构建产物 ===
+node_modules/
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+
+# === 机密 / 本地配置(绝不入库)===
+.env
+.env.*
+*.local
+settings.local.json
+**/secrets.json
+
+# === Python(资产工具)===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# === 资产工具的生成产物(run 目录,非源码)===
+output/
+tools/hatch-desktop-pet/output/
+tools/hatch-desktop-pet/**/decoded/
+tools/hatch-desktop-pet/**/frames/
+
+# === 运行时用户数据(应落在用户目录,不入库)===
+/userdata/
+
+# === 日志 / 系统 ===
+*.log
+.DS_Store
+Thumbs.db
+
+# 说明:docs/ pets/ skills/ tools/(源码与资产)必须入库跟踪,
+# 之前的 .gitignore 误将它们整体忽略,已修正。
+docs/*
+pets/luluka

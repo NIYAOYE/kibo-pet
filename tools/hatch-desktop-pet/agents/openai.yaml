@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hatch Desktop Pet"
+  short_description: "Generate the desktop-pet app's animated sprite pets (8x13 atlas)"
+  default_prompt: "Generate the desktop-pet app's animated sprite pet from a concept, reference images, or both. Infer missing names/descriptions, use an image-generation skill ($imagegen in Codex, or the OpenAI fallback) for the base and grounded row strips, generate walk-right and walk-left as two separate grounded rows (walk-left is drawn left-facing, never mirrored), then use this skill's deterministic scripts to ingest outputs, validate frames, assemble the 8x13 spritesheet, and package the pet with an extended pet.json (sheet + animations) into <cwd>/pets/<pet-id>/."
