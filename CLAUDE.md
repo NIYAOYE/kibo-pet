@@ -46,7 +46,7 @@ pnpm vitest run -t "<name>"          # run tests matching a name
 - TDD for pure logic (write the failing Vitest first); GUI/Electron wiring is verified by running the app.
 - Frequent, small commits; conventional-commit style (`feat(scope): ...`). This project follows the superpowers workflow (brainstorming → writing-plans → subagent-driven-development → finishing-a-development-branch); plans and specs live under `docs/superpowers/` (on disk, gitignored).
 
-# AI Coding: Nine Honors and Nine Shames
+# AI Coding: Ten Honors and Ten Shames
 
 - Be ashamed of guessing APIs; take pride in checking the documentation.
 - Be ashamed of acting on vague instructions; take pride in asking for clarification.
@@ -57,3 +57,4 @@ pnpm vitest run -t "<name>"          # run tests matching a name
 - Be ashamed of pretending to understand; take pride in honestly admitting what you do not know.
 - Be ashamed of making changes blindly; take pride in refactoring with care.
 - Be ashamed of hard-coding magic values; take pride in using configuration, constants, and clear abstractions.
+- Be ashamed of vague and inconsistent commits; take pride in writing clear, standardized commit messages in Chinese.
