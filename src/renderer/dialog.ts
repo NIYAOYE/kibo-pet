@@ -1,29 +1,55 @@
 import type { ChatMessage } from '@shared/ipc'
 
+const BUBBLE_MS = 4000
+
 const panel = document.getElementById('panel') as HTMLElement
+const bubble = document.getElementById('bubble') as HTMLElement
+const history = document.getElementById('history') as HTMLElement
+const input = document.getElementById('input') as HTMLInputElement
+const toggleBtn = document.getElementById('toggle') as HTMLButtonElement
+const sendBtn = document.getElementById('send') as HTMLButtonElement
 
-function render(messages: ChatMessage[]): void {
-  panel.innerHTML = ''
-  const list = document.createElement('div')
-  for (const m of messages) {
-    const el = document.createElement('div')
-    el.textContent = `${m.role === 'user' ? '你' : '露露卡'}: ${m.text}`
-    list.appendChild(el)
-  }
-  panel.appendChild(list)
+let collapsed = true
+let bubbleTimer: number | null = null
 
-  const input = document.createElement('input')
-  input.type = 'text'
-  input.placeholder = '说点什么…'
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const text = input.value.trim()
-      if (text) { window.chatApi.send({ text }); input.value = '' }
-    }
-  })
-  panel.appendChild(input)
-  input.focus()
+function showBubble(text: string): void {
+  bubble.textContent = text
+  bubble.classList.add('show')
+  if (bubbleTimer !== null) clearTimeout(bubbleTimer)
+  bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), BUBBLE_MS)
 }
 
+function render(messages: ChatMessage[]): void {
+  history.innerHTML = ''
+  for (const m of messages) {
+    const el = document.createElement('div')
+    el.className = `msg ${m.role}`
+    el.textContent = m.text
+    history.appendChild(el)
+  }
+  history.scrollTop = history.scrollHeight
+  const lastPet = [...messages].reverse().find((m) => m.role === 'pet')
+  if (lastPet) showBubble(lastPet.text)
+}
+
+function setCollapsed(c: boolean): void {
+  collapsed = c
+  panel.classList.toggle('collapsed', c)
+  panel.classList.toggle('expanded', !c)
+  toggleBtn.textContent = c ? '⤢' : '⤡'
+  toggleBtn.title = c ? '展开' : '收起'
+  window.chatApi.setSize(c)
+}
+
+function submit(): void {
+  const text = input.value.trim()
+  if (!text) return
+  window.chatApi.send({ text })
+  input.value = ''
+}
+
+toggleBtn.addEventListener('click', () => setCollapsed(!collapsed))
+sendBtn.addEventListener('click', submit)
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
 window.chatApi.onUpdate(render)
-render([]) // 初始空
+setCollapsed(true)
