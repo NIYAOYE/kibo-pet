@@ -58,7 +58,7 @@ async function boot(): Promise<void> {
     canvas.style.cursor = 'grab'
     if (moved) {
       controller.send('drop')
-      void controller.syncBounds() // 手动拖动后重新同步窗口 X
+      controller.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     }
   })
 }

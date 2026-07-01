@@ -16,7 +16,11 @@ export class PetController {
   constructor(private player: SpritePlayer) {}
 
   async start(): Promise<void> {
-    await this.syncBounds()
+    try {
+      await this.syncBounds()
+    } catch (err) {
+      console.warn('initial syncBounds failed; using default bounds', err)
+    }
     this.lastTs = performance.now()
     this.timer = window.setInterval(() => this.tick(), TICK_MS)
   }
