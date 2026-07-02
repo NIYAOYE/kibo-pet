@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import type { LlmProvider, StreamChatRequest } from './llmProvider'
 import type { StreamChunk } from '@shared/llm'
+import { toOpenAiMessages } from './messageMapping'
 
 export function createOpenAiCompatProvider(opts: { apiKey: string; baseURL?: string; model: string }): LlmProvider {
   const client = new OpenAI({ apiKey: opts.apiKey, baseURL: opts.baseURL })
@@ -12,10 +13,7 @@ export function createOpenAiCompatProvider(opts: { apiKey: string; baseURL?: str
             model: opts.model,
             max_tokens: req.maxOutputTokens,
             stream: true,
-            messages: [
-              { role: 'system', content: req.system },
-              ...req.messages.map((m) => ({ role: m.role, content: m.content }))
-            ]
+            messages: toOpenAiMessages(req.system, req.messages) as never
           },
           { signal: req.signal }
         )

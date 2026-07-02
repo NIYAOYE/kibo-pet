@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LlmProvider, StreamChatRequest } from './llmProvider'
 import type { StreamChunk } from '@shared/llm'
+import { toAnthropicMessages } from './messageMapping'
 
 export function createAnthropicProvider(opts: { apiKey: string; baseURL?: string; model: string }): LlmProvider {
   const client = new Anthropic({ apiKey: opts.apiKey, baseURL: opts.baseURL })
@@ -12,7 +13,7 @@ export function createAnthropicProvider(opts: { apiKey: string; baseURL?: string
             model: opts.model,
             max_tokens: req.maxOutputTokens,
             system: req.system,
-            messages: req.messages.map((m) => ({ role: m.role, content: m.content }))
+            messages: toAnthropicMessages(req.messages) as never
           },
           { signal: req.signal }
         )
