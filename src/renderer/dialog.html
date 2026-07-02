@@ -21,15 +21,18 @@
       #panel.expanded #bubble { display: none; }
 
       /* 历史列表:仅展开态显示 */
-      #history { flex: 1; overflow-y: auto; display: none; flex-direction: column; gap: 4px;
+      /* min-height:0 关键:flex 子项默认 min-height:auto 不会收缩到内容高度以下,
+         回复较长时会把下方输入条挤出固定高度的窗口(body overflow:hidden 裁掉)。
+         设 0 后 #history 才能收缩并内部滚动,输入条始终可见。 */
+      #history { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column; gap: 4px;
                  background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 8px; }
       #panel.expanded #history { display: flex; }
       .msg { max-width: 85%; padding: 5px 9px; border-radius: 10px; word-break: break-word; }
       .msg.user { align-self: flex-end; background: rgba(90, 110, 200, 0.95); }
       .msg.pet { align-self: flex-start; background: rgba(60, 60, 80, 0.95); }
 
-      /* 输入条 */
-      #bar { display: flex; gap: 6px; align-items: center;
+      /* 输入条:永不被压缩,始终留在窗口底部可见 */
+      #bar { display: flex; flex-shrink: 0; gap: 6px; align-items: center;
              background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 6px; }
       #input { flex: 1; border: none; outline: none; border-radius: 8px; padding: 6px 8px;
                background: rgba(255, 255, 255, 0.12); color: #f0f0f4; }
