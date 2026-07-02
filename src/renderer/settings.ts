@@ -1,4 +1,4 @@
-import { PRESETS, type ProviderSettings, type ProviderKind } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, type ProviderSettings, type ProviderKind } from '@shared/llm'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -37,18 +37,26 @@ preset.addEventListener('change', () => applyPreset(preset.value))
 
 $<HTMLButtonElement>('test').addEventListener('click', async () => {
   status.textContent = '测试中…'
-  const res = await window.settingsApi.testConnection(currentProvider(), key.value)
-  status.textContent = res.ok ? '✓ 连接成功' : `✗ ${res.error ?? '连接失败'}`
+  try {
+    const res = await window.settingsApi.testConnection(currentProvider(), key.value)
+    status.textContent = res.ok ? '✓ 连接成功' : `✗ ${res.error ?? '连接失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
 })
 
 $<HTMLButtonElement>('save').addEventListener('click', async () => {
   const provider = currentProvider()
-  if (key.value) {
-    const ok = await window.settingsApi.setApiKey(key.value)
-    if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Key'; return }
+  try {
+    if (key.value) {
+      const ok = await window.settingsApi.setApiKey(key.value)
+      if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Key'; return }
+    }
+    await window.settingsApi.setSettings({ schemaVersion: SETTINGS_SCHEMA_VERSION, provider })
+    status.textContent = '✓ 已保存'
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
   }
-  await window.settingsApi.setSettings({ schemaVersion: 1, provider })
-  status.textContent = '✓ 已保存'
 })
 
 // 初始化:回填已存设置

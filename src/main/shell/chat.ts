@@ -74,6 +74,7 @@ export function createChatStore(opts: {
         if (inFlight === ctrl) inFlight = null
         if (res.canceled) return // 静默丢弃
         if (res.error) {
+          opts.pushUpdate(transcript)
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
           return
