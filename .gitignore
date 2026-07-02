@@ -37,3 +37,4 @@ Thumbs.db
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 docs/*
 pets/luluka
+pets/youka
