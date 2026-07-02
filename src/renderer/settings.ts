@@ -1,4 +1,6 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchSettings } from '@shared/llm'
+
+let currentSearch: SearchSettings = { backend: 'duckduckgo' }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -52,7 +54,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       const ok = await window.settingsApi.setApiKey(key.value)
       if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Key'; return }
     }
-    await window.settingsApi.setSettings({ schemaVersion: SETTINGS_SCHEMA_VERSION, provider })
+    await window.settingsApi.setSettings({ schemaVersion: SETTINGS_SCHEMA_VERSION, provider, search: currentSearch })
     status.textContent = '✓ 已保存'
   } catch (err) {
     status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
@@ -66,5 +68,6 @@ void (async () => {
   applyPreset(preset.value)
   if (snap.settings.provider.baseURL) baseURL.value = snap.settings.provider.baseURL
   if (snap.settings.provider.model) model.value = snap.settings.provider.model
+  currentSearch = snap.settings.search
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
 })()
