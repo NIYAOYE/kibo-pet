@@ -1,13 +1,13 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-01 · 状态:**MVP-02 已完成并合并到 `main`**
+> 更新时间:2026-07-01 · 状态:**MVP-03 已完成、真机验收通过**
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
 
 ## 1. 一句话现状
 
-一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-02(动画状态机 + 自主游走/睡眠/拖拽 + 对话框双态 UI + 占位聊天)已做完、真机验收通过、合并到 main**。下一步是 MVP-03(LLM Provider 抽象 + Agent 循环)。
+一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-03(对话式 Agent 内核:可插拔 LLM Provider〔Fake/Anthropic/OpenAI 兼容〕+ 密钥 safeStorage 加密 + 首启设置窗 + persona 组装 + Agent 循环护栏 + 逐字流式回复)已做完、真机验收通过**。下一步是 MVP-04(web_search 工具 + Skill 加载器)。
 
 ## 2. 怎么跑起来
 
@@ -17,7 +17,7 @@ pnpm dev          # 开发模式(HMR)。正常终端可用
 # 或:构建后预览(更接近打包版,启动更稳)
 pnpm build && pnpm preview
 
-pnpm test         # 单元测试(当前 25/25 通过)
+pnpm test         # 单元测试(当前 47/47 通过)
 pnpm typecheck    # 类型检查
 ```
 
@@ -38,21 +38,29 @@ pnpm typecheck    # 类型检查
 ```
 src/
   shared/     petPackage.ts(pet.json 类型 + frameRect + frameDurationMs + parsePetManifest;含测试)
-              ipc.ts(IPC 通道常量 + PetApi/LoadedPet/MoveDelta/ChatMessage/ChatSendPayload 类型 + window.petApi 全局声明)
-              petBrain.ts(纯状态机 reducer:idle/walk/drag/sleep 切换 + applyEvent;含测试)
+              ipc.ts(IPC 通道常量 + PetApi/ChatApi/SettingsApi 等类型 + 三 window.* 全局声明)
+              petBrain.ts(纯状态机 reducer:idle/walk/drag/sleep/greet/thinking/talk + applyEvent;含测试)
+              llm.ts(MVP-03:跨进程 LLM 纯类型 + 预设 PRESETS + DEFAULT_SETTINGS〔默认 claude-haiku-4-5〕)
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
-              index.ts(透明置顶窗口 + 托盘 + IPC:GET_PET/MOVE_WINDOW/SET_IGNORE_MOUSE/QUIT/TOGGLE_DIALOG/GET_WINDOW_BOUNDS/CHAT_SEND/CHAT_UPDATE/PET_EVENT/DIALOG_SET_SIZE)
-              shell/  (窗口管理/托盘/热键注册抽取;registerHotkeys/createTray/createPetWindow)
-  preload/    index.ts(contextBridge 暴露最小 petApi,含 dialog/chat/petEvent API)
+              index.ts(应用入口 → startShell)
+              providers/   (MVP-03:llmProvider 接口 + fakeProvider〔含测试〕+ anthropicProvider + openaiCompatProvider + createProvider 工厂)
+              agent/       (MVP-03:promptAssembler〔persona+对话窗口→system/messages,含测试〕+ agentLoop〔流式/取消/超时护栏,含测试〕+ testConnection)
+              persona/     (MVP-03:personaLoader — persona.md 分块解析 + 缓存,含测试)
+              config/      (MVP-03:settings〔原子写+schemaVersion,含测试〕+ secrets〔safeStorage 加密,可注入,含测试〕)
+              shell/       (窗口/托盘/热键 + chat〔接 agent 循环:流式/取消/未配置降级到设置〕+ dialogWindow + settingsWindow〔首启设置窗〕+ 全部 IPC 注册)
+  preload/    index.ts(contextBridge 暴露 petApi / chatApi〔含流式 onStream/onDone/onError+cancel〕/ settingsApi)
   renderer/   index.html(含 CSP)
               main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透)
               spritePlayer.ts(精灵动画播放器 + nextFrameIndex + isPetPixel 命中测试;含测试)
               petController.ts(自主行为控制器:基于 petBrain 状态机驱动游走/睡眠/动画切换)
-              dialog.ts / dialog.html / dialog.css(对话框窗口:常态薄条 + 展开双态 + 占位聊天 UI)
+              dialog.ts / dialog.html(对话框:常态薄条〔气泡〕+ 展开双态 + 逐字流式渲染;样式内联于 html)
+              settings.ts / settings.html(MVP-03:首启/设置窗 — 预设/baseURL/model/key + 测试连接)
 pets/luluka/  宠物包(pet.json + spritesheet.webp + persona.md + lines.json + voice/)  ← 注意:被 .gitignore 忽略,仅在磁盘
 tools/hatch-desktop-pet/   资产生成工具(Python,改编自 hatch-pet;生成 8×13 精灵图集 + pet.json)
 docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅在磁盘
 ```
+
+> MVP-03 依赖:`@anthropic-ai/sdk` + `openai`(官方 SDK,主进程/preload 经 electron-vite `externalizeDepsPlugin` 外置,不打进 bundle)。API key 只经 `safeStorage` 加密落盘,绝不进日志/settings.json;Provider 与 key 只在主进程,渲染层零接触。
 
 ## 5. 关键文档(部分被 gitignore,仅在磁盘,新会话直接读路径即可)
 
@@ -65,7 +73,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 
 - ✅ **MVP-01** 工程骨架 + 可执行躯壳(idle、拖拽、托盘、点击穿透)
 - ✅ **MVP-02** 动画状态机(idle/walk/drag/sleep 切换)+ 全局热键/点击唤出对话框壳
-- ⬜ **MVP-03** LLM Provider 抽象 + 密钥存储 + 首启向导 + Agent 循环(先 fake 后真)+ 流式回复 + §5.6 运行时边界
+- ✅ **MVP-03** LLM Provider 抽象(Fake/Anthropic/OpenAI 兼容)+ 密钥 safeStorage 存储 + 首启设置窗 + Agent 循环护栏 + 逐字流式回复 + §5.6 运行时边界
 - ⬜ **MVP-04** web_search 工具 + Skill 加载器 + `skills/web-summary/SKILL.md`
 - ⬜ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 组装
 - ⬜ **MVP-06** electron-builder 打包安装 + §11 安全加固
@@ -78,6 +86,8 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ~~`spritePlayer.ts` 每帧 `canvas.width/height` 重设(帧尺寸恒定时可提到 play() 里做一次)~~ ✅ MVP-02 已清
 - `parsePetManifest`/`frameDurationMs` 未防 `fps=0` 或 `durations` 含 0/NaN(luluka 数据干净,无实bug)
 - 窗口大小 256×288 > 画布 192×208,宠物偏左上(非居中);后续可让窗口贴合或居中
+- MVP-03 遗留 Minor(详见账本 `.superpowers/sdd/progress.md`):agentLoop 超时测试用不可中断 sleep 致 ~1s 墙钟(逻辑正确,仅慢);openaiCompat 用 `max_tokens`(为兼容非 OpenAI 端点,刻意);`IPC.HAS_KEY` 常量无消费者(hasKey 走 SettingsSnapshot);settingsWindow 无 `show:false`/`ready-to-show`(首开可能闪白)。
+- 真机验收期修的 UI 问题(已修复):长回复挤掉输入条(#history/#bubble 的 flex `min-height:0` + 输入条钉底)、常态气泡不可滚动(no-drag + 显示时 pointer-events)、`resizable:false` 致 `setSize` 无法缩小(临时 setResizable 绕过)、设置下拉对比度。
 
 ## 8. 给新会话的提醒
 

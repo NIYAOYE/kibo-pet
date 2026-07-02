@@ -9,27 +9,34 @@
       /* 按住对话框本体任意空白处即可拖动整窗(OS 级拖拽);交互控件单独设为 no-drag */
       #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px;
                padding: 8px; color: #f0f0f4; cursor: move; -webkit-app-region: drag; }
-      #input, button, #history { -webkit-app-region: no-drag; }
+      #input, button, #history, #bubble { -webkit-app-region: no-drag; }
       #input { cursor: text; }
       #history, .msg { cursor: default; }
 
-      /* 气泡:仅常态显示最新回复,可淡出 */
-      #bubble { align-self: flex-start; max-width: 90%; padding: 6px 10px; border-radius: 12px;
+      /* 气泡:仅常态显示最新回复,可淡出。
+         flex:0 1 auto + min-height:0 + overflow:auto:短回复按内容高度显示,长回复
+         收缩到可用空间内(超出部分裁剪),绝不把下方输入条挤出固定高度窗口。 */
+      #bubble { align-self: flex-start; max-width: 90%; flex: 0 1 auto; min-height: 0; overflow-y: auto;
+                overscroll-behavior: contain; box-sizing: border-box; padding: 6px 10px; border-radius: 12px;
                 background: rgba(60, 60, 80, 0.95); opacity: 0; transition: opacity 0.6s ease;
                 pointer-events: none; }
-      #bubble.show { opacity: 1; }
+      /* 显示时才接收指针事件,长回复可用滚轮/拖拽滚动查看;淡出后恢复穿透以便拖动整窗 */
+      #bubble.show { opacity: 1; pointer-events: auto; }
       #panel.expanded #bubble { display: none; }
 
       /* 历史列表:仅展开态显示 */
-      #history { flex: 1; overflow-y: auto; display: none; flex-direction: column; gap: 4px;
+      /* min-height:0 关键:flex 子项默认 min-height:auto 不会收缩到内容高度以下,
+         回复较长时会把下方输入条挤出固定高度的窗口(body overflow:hidden 裁掉)。
+         设 0 后 #history 才能收缩并内部滚动,输入条始终可见。 */
+      #history { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column; gap: 4px;
                  background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 8px; }
       #panel.expanded #history { display: flex; }
       .msg { max-width: 85%; padding: 5px 9px; border-radius: 10px; word-break: break-word; }
       .msg.user { align-self: flex-end; background: rgba(90, 110, 200, 0.95); }
       .msg.pet { align-self: flex-start; background: rgba(60, 60, 80, 0.95); }
 
-      /* 输入条 */
-      #bar { display: flex; gap: 6px; align-items: center;
+      /* 输入条:永不被压缩,margin-top:auto 把它钉在窗口底部,始终可见 */
+      #bar { display: flex; flex-shrink: 0; margin-top: auto; gap: 6px; align-items: center;
              background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 6px; }
       #input { flex: 1; border: none; outline: none; border-radius: 8px; padding: 6px 8px;
                background: rgba(255, 255, 255, 0.12); color: #f0f0f4; }

@@ -11,6 +11,7 @@ const sendBtn = document.getElementById('send') as HTMLButtonElement
 
 let collapsed = true
 let bubbleTimer: number | null = null
+let streaming = '' // 进行中的 pet 回复(逐字累积)
 
 function showBubble(text: string): void {
   bubble.textContent = text
@@ -19,7 +20,21 @@ function showBubble(text: string): void {
   bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), BUBBLE_MS)
 }
 
+function renderStreaming(): void {
+  let temp = document.getElementById('streaming-msg')
+  if (!temp) {
+    temp = document.createElement('div')
+    temp.id = 'streaming-msg'
+    temp.className = 'msg pet'
+    history.appendChild(temp)
+  }
+  temp.textContent = streaming
+  history.scrollTop = history.scrollHeight
+}
+
 function render(messages: ChatMessage[]): void {
+  const temp = document.getElementById('streaming-msg')
+  if (temp) temp.remove()
   history.innerHTML = ''
   for (const m of messages) {
     const el = document.createElement('div')
@@ -55,4 +70,26 @@ toggleBtn.addEventListener('click', () => setCollapsed(!collapsed))
 sendBtn.addEventListener('click', submit)
 input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
 window.chatApi.onUpdate(render)
+window.chatApi.onStream((text) => {
+  streaming += text
+  showBubble(streaming)
+  renderStreaming()
+})
+window.chatApi.onDone(() => { streaming = '' })
+window.chatApi.onError((message) => {
+  streaming = ''
+  showBubble(`⚠ ${message}`)
+  const el = document.createElement('div')
+  el.className = 'msg pet'
+  el.textContent = `⚠ ${message}`
+  history.appendChild(el)
+  history.scrollTop = history.scrollHeight
+})
+
+// 渲染层是折叠态的唯一真源:窗口每次重新显示时,把当前折叠态重新告知主进程,
+// 纠正主进程窗口尺寸与面板态可能出现的不同步(否则展开后关闭再开会卡在错误尺寸,无法恢复)。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') window.chatApi.setSize(collapsed)
+})
+
 setCollapsed(true)

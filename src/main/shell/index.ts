@@ -1,14 +1,26 @@
-import { app, ipcMain, screen, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, type Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IPC, type MoveDelta, type WindowBounds, type ChatSendPayload } from '@shared/ipc'
+import {
+  IPC,
+  type MoveDelta,
+  type WindowBounds,
+  type ChatSendPayload,
+  type SettingsSnapshot,
+  type TestResult
+} from '@shared/ipc'
+import type { AppSettings, ProviderSettings } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
+import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
+import { loadSettings, saveSettings } from '../config/settings'
+import { createSecretStore } from '../config/secrets'
+import { testConnection } from '../agent/testConnection'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -40,11 +52,28 @@ export function startShell(): void {
     onClosed: () => emitPetEvent('dialogClose')
   })
 
+  const settingsFile = join(app.getPath('userData'), 'settings.json')
+  const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
+
+  const settings = createSettingsWindow({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/settings.html` : undefined,
+    settingsHtml: join(dirname, '../renderer/settings.html')
+  })
+
   const chat = createChatStore({
     petDir,
+    loadSettings: () => loadSettings(settingsFile),
+    getKey: () => secrets.getKey(),
     emitPetEvent,
-    pushUpdate: (msgs) => dialog.pushUpdate(msgs)
+    pushUpdate: (msgs) => dialog.pushUpdate(msgs),
+    pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
+    pushDone: () => dialog.window()?.webContents.send(IPC.CHAT_DONE),
+    pushError: (m) => dialog.window()?.webContents.send(IPC.CHAT_ERROR, m),
+    openSettings: () => openSettings()
   })
+
+  function openSettings(): void { settings.open() }
 
   function petBounds(): { x: number; y: number; width: number } {
     const [x, y] = petWin.getPosition()
@@ -84,11 +113,24 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.TOGGLE_DIALOG, () => toggleDialog())
   ipcMain.on(IPC.CHAT_SEND, (_e, payload: ChatSendPayload) => chat.handleSend(payload))
+  ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
+  ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
+  ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
+    settings: loadSettings(settingsFile),
+    hasKey: secrets.hasKey()
+  }))
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, s: AppSettings) => { saveSettings(settingsFile, s) })
+  ipcMain.handle(IPC.SET_API_KEY, async (_e, key: string): Promise<boolean> => secrets.setKey(String(key ?? '')))
+  ipcMain.handle(IPC.TEST_CONNECTION, async (_e, arg: { provider: ProviderSettings; key: string }): Promise<TestResult> =>
+    testConnection(arg.provider, arg.key)
+  )
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, collapsed: boolean) => dialog.setSize(!!collapsed))
   ipcMain.on(IPC.QUIT, () => app.quit())
 
   registerHotkeys(toggleDialog)
-  tray = createTray(join(appRoot, 'resources/tray.png'))
+  tray = createTray(join(appRoot, 'resources/tray.png'), openSettings)
+
+  if (!secrets.hasKey()) openSettings()
 
   app.on('will-quit', () => unregisterHotkeys())
 }

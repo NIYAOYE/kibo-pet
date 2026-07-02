@@ -1,56 +1,89 @@
-// TODO(MVP-03): 将 placeholderReply 替换为真实 agent 调用。
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import type { ChatMessage, ChatSendPayload } from '@shared/ipc'
+import type { AppSettings } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
+import { loadPersona } from '../persona/personaLoader'
+import { assemblePrompt } from '../agent/promptAssembler'
+import { runAgent } from '../agent/agentLoop'
+import { createProvider } from '../providers/createProvider'
 
-const REPLY_DELAY_MS = 800
-const FALLBACK_REPLY = '(还没接上大脑,等我 MVP-03 再好好聊~)'
+const TIMEOUT_MS = 60000
+const MAX_OUTPUT_TOKENS = 1024
+const UNCONFIGURED_REPLY = '(还没接上大脑)先在托盘「设置」里选好 Provider 并填 API Key 吧~我已帮你打开设置。'
 
 export interface ChatStore {
   messages(): ChatMessage[]
   handleSend(payload: ChatSendPayload): void
+  cancel(): void
 }
 
 export function createChatStore(opts: {
   petDir: string
+  loadSettings: () => AppSettings
+  getKey: () => string | null
   emitPetEvent: (event: PetEvent) => void
   pushUpdate: (messages: ChatMessage[]) => void
+  pushStream: (text: string) => void
+  pushDone: () => void
+  pushError: (message: string) => void
+  openSettings: () => void
 }): ChatStore {
   const transcript: ChatMessage[] = []
-  let timer: NodeJS.Timeout | null = null
+  let inFlight: AbortController | null = null
 
-  // TODO(MVP-03): 占位回复 — 从 lines.json 的 task_done/greet 池随机挑选;
-  // lines.json 不存在或损坏时静默降级到 FALLBACK_REPLY。
-  function placeholderReply(): string {
-    try {
-      const raw = JSON.parse(
-        readFileSync(join(opts.petDir, 'lines.json'), 'utf-8')
-      ) as Record<string, Array<{ text?: string }>>
-      const pool = [...(raw.task_done ?? []), ...(raw.greet ?? [])]
-      const picked = pool[Math.floor(Math.random() * pool.length)]
-      if (picked && typeof picked.text === 'string' && picked.text.length > 0) return picked.text
-    } catch {
-      /* lines.json 可选,缺失/损坏则用兜底串 */
-    }
-    return FALLBACK_REPLY
+  function cancel(): void {
+    if (inFlight) { inFlight.abort(); inFlight = null }
   }
 
   return {
     messages: () => transcript,
+    cancel,
     handleSend(payload: ChatSendPayload): void {
       const text = (payload?.text ?? '').trim()
       if (!text) return
+      cancel() // 新消息取消在途
       transcript.push({ role: 'user', text })
       opts.pushUpdate(transcript)
       opts.emitPetEvent('messageSent')
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        transcript.push({ role: 'pet', text: placeholderReply() })
+
+      const key = opts.getKey()
+      if (!key) {
+        transcript.push({ role: 'pet', text: UNCONFIGURED_REPLY })
         opts.pushUpdate(transcript)
         opts.emitPetEvent('replyDone')
-        timer = null
-      }, REPLY_DELAY_MS)
+        opts.openSettings()
+        return
+      }
+
+      const settings = opts.loadSettings()
+      const persona = loadPersona(opts.petDir)
+      const { system, messages } = assemblePrompt(persona, transcript)
+      const provider = createProvider(settings.provider, key)
+
+      const ctrl = new AbortController()
+      inFlight = ctrl
+      let acc = ''
+      void runAgent({
+        provider,
+        system,
+        messages,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        timeoutMs: TIMEOUT_MS,
+        signal: ctrl.signal,
+        onText: (t) => { acc += t; opts.pushStream(t) }
+      }).then((res) => {
+        if (inFlight === ctrl) inFlight = null
+        if (res.canceled) return // 静默丢弃
+        if (res.error) {
+          opts.pushUpdate(transcript)
+          opts.pushError(res.error)
+          opts.emitPetEvent('replyDone')
+          return
+        }
+        transcript.push({ role: 'pet', text: acc })
+        opts.pushUpdate(transcript)
+        opts.pushDone()
+        opts.emitPetEvent('replyDone')
+      })
     }
   }
 }

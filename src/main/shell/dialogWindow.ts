@@ -53,7 +53,12 @@ export function createDialogController(opts: {
       collapsed = c
       if (!win) return
       const s = c ? COLLAPSED : EXPANDED
+      // resizable:false 会让 Windows 下 setSize 被忽略/夹住(尤其是缩小),
+      // 临时开启 resizable 再调整,是官方推荐的绕过方式。
+      const wasResizable = win.isResizable()
+      if (!wasResizable) win.setResizable(true)
       win.setSize(s.width, s.height)
+      if (!wasResizable) win.setResizable(false)
     },
     pushUpdate(messages: ChatMessage[]): void {
       win?.webContents.send(IPC.CHAT_UPDATE, messages)
@@ -69,7 +74,10 @@ export function createDialogController(opts: {
       if (x + s.width > area.x + area.width) x = pet.x - s.width
       x = Math.max(area.x, Math.min(x, area.x + area.width - s.width))
       const y = Math.max(area.y, Math.min(pet.y, area.y + area.height - s.height))
+      const wasResizable = win.isResizable()
+      if (!wasResizable) win.setResizable(true)
       win.setBounds({ x, y, width: s.width, height: s.height })
+      if (!wasResizable) win.setResizable(false)
       win.show()
       win.focus()
       opts.onOpened()
