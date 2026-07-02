@@ -12,6 +12,12 @@ const sendBtn = document.getElementById('send') as HTMLButtonElement
 let collapsed = true
 let bubbleTimer: number | null = null
 let streaming = '' // 进行中的 pet 回复(逐字累积)
+let statusEl: HTMLElement | null = null
+
+function clearStatus(): void {
+  document.getElementById('status-msg')?.remove()
+  statusEl = null
+}
 
 function showBubble(text: string): void {
   bubble.textContent = text
@@ -33,6 +39,7 @@ function renderStreaming(): void {
 }
 
 function render(messages: ChatMessage[]): void {
+  clearStatus()
   const temp = document.getElementById('streaming-msg')
   if (temp) temp.remove()
   history.innerHTML = ''
@@ -67,6 +74,7 @@ function submit(): void {
   // 且被取消回复的残留前缀会串进新回复(取消结果被静默丢弃,不发 onDone/onError)。
   streaming = ''
   document.getElementById('streaming-msg')?.remove()
+  clearStatus()
   if (bubbleTimer !== null) { clearTimeout(bubbleTimer); bubbleTimer = null }
   bubble.classList.remove('show')
   bubble.textContent = ''
@@ -79,18 +87,31 @@ sendBtn.addEventListener('click', submit)
 input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
 window.chatApi.onUpdate(render)
 window.chatApi.onStream((text) => {
+  clearStatus()
   streaming += text
   showBubble(streaming)
   renderStreaming()
 })
 window.chatApi.onDone(() => { streaming = '' })
 window.chatApi.onError((message) => {
+  clearStatus()
   streaming = ''
   showBubble(`⚠ ${message}`)
   const el = document.createElement('div')
   el.className = 'msg pet'
   el.textContent = `⚠ ${message}`
   history.appendChild(el)
+  history.scrollTop = history.scrollHeight
+})
+window.chatApi.onStatus((text) => {
+  showBubble(`🔍 ${text}`)
+  if (!statusEl) {
+    statusEl = document.createElement('div')
+    statusEl.id = 'status-msg'
+    statusEl.className = 'msg pet status'
+    history.appendChild(statusEl)
+  }
+  statusEl.textContent = `🔍 ${text}`
   history.scrollTop = history.scrollHeight
 })
 

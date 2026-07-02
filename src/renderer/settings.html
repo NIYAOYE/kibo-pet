@@ -33,6 +33,15 @@
       <label>API Key
         <input id="key" type="password" placeholder="仅本机加密存储,不外传" />
       </label>
+      <label>搜索后端
+        <select id="searchBackend">
+          <option value="duckduckgo">免费·内置(默认)</option>
+          <option value="tavily">Tavily(需 API key)</option>
+        </select>
+      </label>
+      <label id="searchKeyRow" style="display:none">Tavily API Key
+        <input id="searchKey" type="password" placeholder="仅本机加密存储,不外传" />
+      </label>
       <div class="row">
         <button id="test" class="secondary">测试连接</button>
         <button id="save">保存</button>
