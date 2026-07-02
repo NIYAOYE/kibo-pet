@@ -22,7 +22,9 @@ export const IPC = {
   CHAT_STREAM: 'chat:stream',
   CHAT_DONE: 'chat:done',
   CHAT_ERROR: 'chat:error',
-  CANCEL_CHAT: 'chat:cancel'
+  CANCEL_CHAT: 'chat:cancel',
+  CHAT_STATUS: 'chat:status',
+  SET_SEARCH_KEY: 'settings:set-search-key'
 } as const
 
 export interface LoadedPet {
@@ -58,19 +60,21 @@ export interface ChatApi {
   onStream(cb: (text: string) => void): void
   onDone(cb: () => void): void
   onError(cb: (message: string) => void): void
+  onStatus(cb: (text: string) => void): void
   cancel(): void
   setSize(collapsed: boolean): void
   close(): void
   openSettings(): void
 }
 
-export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean }
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean }
 export interface TestResult { ok: boolean; error?: string }
 
 export interface SettingsApi {
   getSettings(): Promise<SettingsSnapshot>
   setSettings(settings: AppSettings): Promise<void>
   setApiKey(key: string): Promise<boolean>
+  setSearchKey(key: string): Promise<boolean>
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
 }
 

@@ -2,20 +2,37 @@ export type ProviderKind = 'fake' | 'anthropic' | 'openai-compat'
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 
+export interface ToolDef { name: string; description: string; inputSchema: Record<string, unknown> }
+export interface ToolUse { id: string; name: string; input: unknown }
+
 export type StreamChunk =
   | { type: 'text'; text: string }
+  | { type: 'tool_use'; toolUse: ToolUse }
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+/**
+ * 主进程内核的对话消息:UI 层 ChatTurn 之外,增加工具调用往返两种角色。
+ * 工具消息只在主进程流转,渲染层与 transcript 不感知。
+ */
+export type AgentMessage =
+  | ChatTurn
+  | { role: 'assistant_tool_use'; text?: string; toolUse: ToolUse }
+  | { role: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+
 export interface ProviderSettings { kind: ProviderKind; baseURL?: string; model: string }
 
-export const SETTINGS_SCHEMA_VERSION = 1
+export type SearchBackendKind = 'duckduckgo' | 'tavily'
+export interface SearchSettings { backend: SearchBackendKind }
 
-export interface AppSettings { schemaVersion: number; provider: ProviderSettings }
+export const SETTINGS_SCHEMA_VERSION = 2
+
+export interface AppSettings { schemaVersion: number; provider: ProviderSettings; search: SearchSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
-  provider: { kind: 'anthropic', model: 'claude-haiku-4-5' }
+  provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+  search: { backend: 'duckduckgo' }
 }
 
 export interface Preset {

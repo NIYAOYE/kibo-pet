@@ -37,6 +37,10 @@ const chatApi: ChatApi = {
     ipcRenderer.removeAllListeners(IPC.CHAT_ERROR)
     ipcRenderer.on(IPC.CHAT_ERROR, (_e, message: string) => cb(message))
   },
+  onStatus: (cb: (text: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CHAT_STATUS)
+    ipcRenderer.on(IPC.CHAT_STATUS, (_e, text: string) => cb(text))
+  },
   cancel: (): void => ipcRenderer.send(IPC.CANCEL_CHAT),
   setSize: (collapsed: boolean): void => ipcRenderer.send(IPC.DIALOG_SET_SIZE, collapsed),
   close: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),
@@ -47,6 +51,7 @@ const settingsApi: SettingsApi = {
   getSettings: () => ipcRenderer.invoke(IPC.GET_SETTINGS),
   setSettings: (s: AppSettings) => ipcRenderer.invoke(IPC.SET_SETTINGS, s),
   setApiKey: (key: string) => ipcRenderer.invoke(IPC.SET_API_KEY, key),
+  setSearchKey: (key: string) => ipcRenderer.invoke(IPC.SET_SEARCH_KEY, key),
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key })
 }
 

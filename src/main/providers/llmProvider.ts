@@ -1,8 +1,9 @@
-import type { ChatTurn, StreamChunk } from '@shared/llm'
+import type { AgentMessage, StreamChunk, ToolDef } from '@shared/llm'
 
 export interface StreamChatRequest {
   system: string
-  messages: ChatTurn[]
+  messages: AgentMessage[]
+  tools?: ToolDef[]
   maxOutputTokens: number
   signal: AbortSignal
 }

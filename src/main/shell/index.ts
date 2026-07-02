@@ -21,6 +21,7 @@ import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { loadSettings, saveSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
 import { testConnection } from '../agent/testConnection'
+import { loadSkills } from '../skills/skillLoader'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -54,6 +55,9 @@ export function startShell(): void {
 
   const settingsFile = join(app.getPath('userData'), 'settings.json')
   const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
+  const searchSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-tavily.bin'), safeStorage)
+  // 产品运行时技能:仓库根 skills/(打包后随 resources 分发,MVP-06 处理拷贝)
+  const skills = loadSkills(join(appRoot, 'skills'))
 
   const settings = createSettingsWindow({
     preload,
@@ -63,11 +67,14 @@ export function startShell(): void {
 
   const chat = createChatStore({
     petDir,
+    skills,
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
+    getSearchKey: () => searchSecrets.getKey(),
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
     pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
+    pushStatus: (t) => dialog.window()?.webContents.send(IPC.CHAT_STATUS, t),
     pushDone: () => dialog.window()?.webContents.send(IPC.CHAT_DONE),
     pushError: (m) => dialog.window()?.webContents.send(IPC.CHAT_ERROR, m),
     openSettings: () => openSettings()
@@ -117,10 +124,12 @@ export function startShell(): void {
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
     settings: loadSettings(settingsFile),
-    hasKey: secrets.hasKey()
+    hasKey: secrets.hasKey(),
+    hasSearchKey: searchSecrets.hasKey()
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, s: AppSettings) => { saveSettings(settingsFile, s) })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, key: string): Promise<boolean> => secrets.setKey(String(key ?? '')))
+  ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, key: string): Promise<boolean> => searchSecrets.setKey(String(key ?? '')))
   ipcMain.handle(IPC.TEST_CONNECTION, async (_e, arg: { provider: ProviderSettings; key: string }): Promise<TestResult> =>
     testConnection(arg.provider, arg.key)
   )

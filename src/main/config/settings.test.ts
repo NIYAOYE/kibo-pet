@@ -16,7 +16,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' } }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const } }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })

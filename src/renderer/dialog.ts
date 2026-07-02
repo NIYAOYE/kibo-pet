@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@shared/ipc'
+import { renderMarkdownSafe } from './markdown'
 
 const BUBBLE_MS = 4000
 
@@ -12,6 +13,12 @@ const sendBtn = document.getElementById('send') as HTMLButtonElement
 let collapsed = true
 let bubbleTimer: number | null = null
 let streaming = '' // 进行中的 pet 回复(逐字累积)
+let statusEl: HTMLElement | null = null
+
+function clearStatus(): void {
+  document.getElementById('status-msg')?.remove()
+  statusEl = null
+}
 
 function showBubble(text: string): void {
   bubble.textContent = text
@@ -33,13 +40,18 @@ function renderStreaming(): void {
 }
 
 function render(messages: ChatMessage[]): void {
+  clearStatus()
   const temp = document.getElementById('streaming-msg')
   if (temp) temp.remove()
   history.innerHTML = ''
   for (const m of messages) {
     const el = document.createElement('div')
     el.className = `msg ${m.role}`
-    el.textContent = m.text
+    // pet 回复渲染安全 Markdown 子集(转义后再套有限规则,防注入);用户消息保持纯文本。
+    // 流式过程中仍是纯文本(renderStreaming),完成时主进程回推 CHAT_UPDATE 触发本函数,
+    // 消息由纯文本"定格"为格式化 Markdown,避免半截标签的闪烁。
+    if (m.role === 'pet') el.innerHTML = renderMarkdownSafe(m.text)
+    else el.textContent = m.text
     history.appendChild(el)
   }
   history.scrollTop = history.scrollHeight
@@ -67,6 +79,7 @@ function submit(): void {
   // 且被取消回复的残留前缀会串进新回复(取消结果被静默丢弃,不发 onDone/onError)。
   streaming = ''
   document.getElementById('streaming-msg')?.remove()
+  clearStatus()
   if (bubbleTimer !== null) { clearTimeout(bubbleTimer); bubbleTimer = null }
   bubble.classList.remove('show')
   bubble.textContent = ''
@@ -79,18 +92,31 @@ sendBtn.addEventListener('click', submit)
 input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
 window.chatApi.onUpdate(render)
 window.chatApi.onStream((text) => {
+  clearStatus()
   streaming += text
   showBubble(streaming)
   renderStreaming()
 })
 window.chatApi.onDone(() => { streaming = '' })
 window.chatApi.onError((message) => {
+  clearStatus()
   streaming = ''
   showBubble(`⚠ ${message}`)
   const el = document.createElement('div')
   el.className = 'msg pet'
   el.textContent = `⚠ ${message}`
   history.appendChild(el)
+  history.scrollTop = history.scrollHeight
+})
+window.chatApi.onStatus((text) => {
+  showBubble(`🔍 ${text}`)
+  if (!statusEl) {
+    statusEl = document.createElement('div')
+    statusEl.id = 'status-msg'
+    statusEl.className = 'msg pet status'
+    history.appendChild(statusEl)
+  }
+  statusEl.textContent = `🔍 ${text}`
   history.scrollTop = history.scrollHeight
 })
 

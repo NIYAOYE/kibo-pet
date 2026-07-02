@@ -34,6 +34,13 @@
       .msg { max-width: 85%; padding: 5px 9px; border-radius: 10px; word-break: break-word; }
       .msg.user { align-self: flex-end; background: rgba(90, 110, 200, 0.95); }
       .msg.pet { align-self: flex-start; background: rgba(60, 60, 80, 0.95); }
+      .msg.status { opacity: 0.7; font-style: italic; }
+      /* pet 回复内渲染的 Markdown 子集样式(小气泡里克制:标题降级为加粗、列表紧凑) */
+      .msg.pet ul { margin: 4px 0; padding-left: 18px; }
+      .msg.pet li { margin: 1px 0; }
+      .msg.pet strong { font-weight: 600; }
+      .msg.pet code { background: rgba(255,255,255,0.14); border-radius: 4px; padding: 0 3px; font-size: 12px; }
+      .msg.pet a.md-link { color: #9db4ff; text-decoration: underline; word-break: break-all; }
 
       /* 输入条:永不被压缩,margin-top:auto 把它钉在窗口底部,始终可见 */
       #bar { display: flex; flex-shrink: 0; margin-top: auto; gap: 6px; align-items: center;
