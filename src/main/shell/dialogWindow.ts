@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, screen, shell } from 'electron'
 import { IPC, type ChatMessage } from '@shared/ipc'
 
 const COLLAPSED = { width: 320, height: 130 }
@@ -40,6 +40,16 @@ export function createDialogController(opts: {
       }
     })
     w.setAlwaysOnTop(true, 'screen-saver')
+    // 回复里渲染的来源链接:在系统默认浏览器打开,绝不让它导航/替换掉对话框本身。
+    // will-navigate 拦截普通 <a> 左键点击(无 target),setWindowOpenHandler 兜住 target=_blank。
+    w.webContents.on('will-navigate', (e, url) => {
+      e.preventDefault()
+      if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    })
+    w.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+      return { action: 'deny' }
+    })
     if (opts.url) w.loadURL(opts.url)
     else w.loadFile(opts.dialogHtml)
     w.on('closed', () => { win = null })

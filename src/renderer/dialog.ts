@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@shared/ipc'
+import { renderMarkdownSafe } from './markdown'
 
 const BUBBLE_MS = 4000
 
@@ -46,7 +47,11 @@ function render(messages: ChatMessage[]): void {
   for (const m of messages) {
     const el = document.createElement('div')
     el.className = `msg ${m.role}`
-    el.textContent = m.text
+    // pet 回复渲染安全 Markdown 子集(转义后再套有限规则,防注入);用户消息保持纯文本。
+    // 流式过程中仍是纯文本(renderStreaming),完成时主进程回推 CHAT_UPDATE 触发本函数,
+    // 消息由纯文本"定格"为格式化 Markdown,避免半截标签的闪烁。
+    if (m.role === 'pet') el.innerHTML = renderMarkdownSafe(m.text)
+    else el.textContent = m.text
     history.appendChild(el)
   }
   history.scrollTop = history.scrollHeight
