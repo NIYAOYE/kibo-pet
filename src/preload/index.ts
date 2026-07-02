@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC, type PetApi, type ChatApi, type LoadedPet, type MoveDelta,
-  type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent
+  type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
+  type SettingsApi
 } from '@shared/ipc'
+import type { AppSettings, ProviderSettings } from '@shared/llm'
 
 const petApi: PetApi = {
   getPet: (): Promise<LoadedPet> => ipcRenderer.invoke(IPC.GET_PET),
@@ -23,9 +25,31 @@ const chatApi: ChatApi = {
     ipcRenderer.removeAllListeners(IPC.CHAT_UPDATE)
     ipcRenderer.on(IPC.CHAT_UPDATE, (_e, messages: ChatMessage[]) => cb(messages))
   },
+  onStream: (cb: (text: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CHAT_STREAM)
+    ipcRenderer.on(IPC.CHAT_STREAM, (_e, text: string) => cb(text))
+  },
+  onDone: (cb: () => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CHAT_DONE)
+    ipcRenderer.on(IPC.CHAT_DONE, () => cb())
+  },
+  onError: (cb: (message: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CHAT_ERROR)
+    ipcRenderer.on(IPC.CHAT_ERROR, (_e, message: string) => cb(message))
+  },
+  cancel: (): void => ipcRenderer.send(IPC.CANCEL_CHAT),
   setSize: (collapsed: boolean): void => ipcRenderer.send(IPC.DIALOG_SET_SIZE, collapsed),
-  close: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG)
+  close: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),
+  openSettings: (): void => ipcRenderer.send(IPC.OPEN_SETTINGS)
+}
+
+const settingsApi: SettingsApi = {
+  getSettings: () => ipcRenderer.invoke(IPC.GET_SETTINGS),
+  setSettings: (s: AppSettings) => ipcRenderer.invoke(IPC.SET_SETTINGS, s),
+  setApiKey: (key: string) => ipcRenderer.invoke(IPC.SET_API_KEY, key),
+  testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key })
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
+contextBridge.exposeInMainWorld('settingsApi', settingsApi)

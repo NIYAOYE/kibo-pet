@@ -1,5 +1,6 @@
 import type { PetManifest } from './petPackage'
 import type { PetEvent, Bounds } from './petBrain'
+import type { AppSettings, ProviderSettings } from './llm'
 
 export const IPC = {
   GET_PET: 'pet:get',
@@ -11,7 +12,17 @@ export const IPC = {
   CHAT_SEND: 'chat:send',
   CHAT_UPDATE: 'chat:update',
   PET_EVENT: 'pet:event',
-  QUIT: 'app:quit'
+  QUIT: 'app:quit',
+  GET_SETTINGS: 'settings:get',
+  SET_SETTINGS: 'settings:set',
+  SET_API_KEY: 'settings:set-key',
+  HAS_KEY: 'settings:has-key',
+  TEST_CONNECTION: 'settings:test',
+  OPEN_SETTINGS: 'settings:open',
+  CHAT_STREAM: 'chat:stream',
+  CHAT_DONE: 'chat:done',
+  CHAT_ERROR: 'chat:error',
+  CANCEL_CHAT: 'chat:cancel'
 } as const
 
 export interface LoadedPet {
@@ -44,12 +55,27 @@ export interface PetApi {
 export interface ChatApi {
   send(payload: ChatSendPayload): void
   onUpdate(cb: (messages: ChatMessage[]) => void): void
+  onStream(cb: (text: string) => void): void
+  onDone(cb: () => void): void
+  onError(cb: (message: string) => void): void
+  cancel(): void
   setSize(collapsed: boolean): void
   close(): void
+  openSettings(): void
+}
+
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean }
+export interface TestResult { ok: boolean; error?: string }
+
+export interface SettingsApi {
+  getSettings(): Promise<SettingsSnapshot>
+  setSettings(settings: AppSettings): Promise<void>
+  setApiKey(key: string): Promise<boolean>
+  testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
 }
 
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi }
 }
 
 export type { PetEvent, Bounds }
