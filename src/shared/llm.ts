@@ -35,3 +35,16 @@ export const PRESETS: Preset[] = [
   { id: 'moonshot', label: 'Moonshot (Kimi)', kind: 'openai-compat', baseURL: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
   { id: 'ollama', label: '本地 Ollama', kind: 'openai-compat', baseURL: 'http://localhost:11434/v1', defaultModel: 'llama3.1' }
 ]
+
+/**
+ * 回填设置窗时把已存 provider 映射回预设下拉:先按 kind + baseURL 精确匹配;匹配不到
+ * (如用户用了自定义 baseURL / 中转端点)退回同 kind 的首个预设,保证 provider.kind
+ * 不被改错(否则保存时会把 openai-compat 误写成列表首项 anthropic);两者皆无才回退列表首项。
+ */
+export function resolvePresetId(kind: ProviderKind, baseURL: string | undefined): string {
+  const norm = baseURL ?? ''
+  const exact = PRESETS.find((p) => p.kind === kind && (p.baseURL ?? '') === norm)
+  if (exact) return exact.id
+  const byKind = PRESETS.find((p) => p.kind === kind)
+  return (byKind ?? PRESETS[0]).id
+}

@@ -66,4 +66,17 @@ async function boot(): Promise<void> {
   })
 }
 
-boot().catch((err) => console.error('boot failed', err))
+function showBootError(err: unknown): void {
+  console.error('boot failed', err)
+  // 宠物包加载失败(最常见:fresh clone 缺 pets/luluka,该目录被 .gitignore)。
+  // 透明窗默认会静默空白,这里显式给出可见提示,避免"启动没反应"无从排查。
+  const el = document.createElement('div')
+  el.style.cssText =
+    'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'padding:12px;box-sizing:border-box;font:12px/1.5 system-ui,sans-serif;color:#fff;' +
+    'text-align:center;background:rgba(176,32,32,.92);border-radius:8px;-webkit-app-region:no-drag'
+  el.textContent = '宠物包加载失败:请确认 pets/luluka 存在(该目录被 .gitignore,新克隆需自行放置)。'
+  document.body.appendChild(el)
+}
+
+boot().catch(showBootError)

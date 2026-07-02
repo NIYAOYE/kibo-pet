@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { runAgent } from './agentLoop'
 import { createFakeProvider } from '../providers/fakeProvider'
+import type { LlmProvider } from '../providers/llmProvider'
+import type { StreamChunk } from '@shared/llm'
 
 const base = (over: Partial<Parameters<typeof runAgent>[0]> = {}) => ({
   provider: createFakeProvider({ reply: 'abcd', chunkSize: 2 }),
@@ -33,6 +35,25 @@ describe('runAgent', () => {
     const res = await runAgent(base({ signal: ctrl.signal, onText }))
     expect(res.canceled).toBe(true)
     expect(onText).not.toHaveBeenCalled()
+  })
+
+  it('外部取消后立即停止向 UI 推送被弃回复的文本(即使 provider 仍在产出)', async () => {
+    // 模拟不配合 abort 的真实 SDK:generator 不检查 signal,会一直往下 yield。
+    const stubborn: LlmProvider = {
+      async *streamChat(): AsyncIterable<StreamChunk> {
+        yield { type: 'text', text: 'a' }
+        await new Promise((r) => setTimeout(r, 5))
+        yield { type: 'text', text: 'b' }
+        await new Promise((r) => setTimeout(r, 5))
+        yield { type: 'text', text: 'c' }
+        yield { type: 'done' }
+      }
+    }
+    const ctrl = new AbortController()
+    const onText = vi.fn(() => { if (onText.mock.calls.length === 1) ctrl.abort() }) // 收到第一块后模拟"用户打断"
+    const res = await runAgent(base({ provider: stubborn, signal: ctrl.signal, onText }))
+    expect(res.canceled).toBe(true)
+    expect(onText).toHaveBeenCalledTimes(1) // 只推了 'a';'b'/'c' 不再进入 UI
   })
 
   it('times out a hanging provider and reports 响应超时', async () => {

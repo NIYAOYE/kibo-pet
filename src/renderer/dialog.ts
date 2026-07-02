@@ -62,6 +62,14 @@ function setCollapsed(c: boolean): void {
 function submit(): void {
   const text = input.value.trim()
   if (!text) return
+  // 开新一轮:立即抹掉上一条(正在流式/将被取消)回复的累积与显示,让"打断"在视觉上
+  // 即时生效——不必等主进程回推 CHAT_UPDATE。否则 collapsed 气泡会残留旧文字直到淡出,
+  // 且被取消回复的残留前缀会串进新回复(取消结果被静默丢弃,不发 onDone/onError)。
+  streaming = ''
+  document.getElementById('streaming-msg')?.remove()
+  if (bubbleTimer !== null) { clearTimeout(bubbleTimer); bubbleTimer = null }
+  bubble.classList.remove('show')
+  bubble.textContent = ''
   window.chatApi.send({ text })
   input.value = ''
 }

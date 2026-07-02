@@ -38,6 +38,9 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
       maxOutputTokens: opts.maxOutputTokens,
       signal: internal.signal
     })) {
+      // 取消/超时后立即停手,不再向 UI 推送被弃回复的文本。不能只依赖 provider 在
+      // abort 时抛错/返回:真实 SDK 不一定及时中止流,否则被打断的回复仍会跑完(见 test)。
+      if (internal.signal.aborted) break
       if (chunk.type === 'text') { text += chunk.text; opts.onText(chunk.text) }
       else if (chunk.type === 'error') return finish({ text, error: chunk.message })
       else if (chunk.type === 'done') return finish({ text })

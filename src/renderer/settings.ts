@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, type ProviderSettings, type ProviderKind } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind } from '@shared/llm'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -62,9 +62,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 // 初始化:回填已存设置
 void (async () => {
   const snap = await window.settingsApi.getSettings()
-  const kind = snap.settings.provider.kind
-  const match = PRESETS.find((p) => p.kind === kind && (p.baseURL ?? '') === (snap.settings.provider.baseURL ?? ''))
-  preset.value = match?.id ?? PRESETS[0].id
+  preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
   if (snap.settings.provider.baseURL) baseURL.value = snap.settings.provider.baseURL
   if (snap.settings.provider.model) model.value = snap.settings.provider.model
