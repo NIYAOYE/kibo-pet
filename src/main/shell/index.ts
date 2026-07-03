@@ -4,13 +4,10 @@ import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   IPC,
-  type MoveDelta,
   type WindowBounds,
-  type ChatSendPayload,
   type SettingsSnapshot,
   type TestResult
 } from '@shared/ipc'
-import type { AppSettings, ProviderSettings } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
@@ -19,12 +16,17 @@ import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
-import { loadSettings, saveSettings } from '../config/settings'
+import { loadSettings, saveSettings, normalizeSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
 import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
+import { ensurePetHome } from '../pets/petHome'
+import {
+  validateMoveDelta, validateBool, validateChatSend,
+  validateKey, validateTestConnectionArg
+} from '@shared/ipcValidation'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -37,7 +39,18 @@ export function startShell(): void {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const petHtml = join(dirname, '../renderer/index.html')
   const dialogHtml = join(dirname, '../renderer/dialog.html')
-  const petDir = join(petsDir(appRoot), 'luluka')
+  const userData = app.getPath('userData')
+  const settingsFile = join(userData, 'settings.json')
+  const { petHome, memoryDir } = ensurePetHome({
+    userDataDir: userData,
+    bundledPetsDir: petsDir(appRoot),
+    activePetId: loadSettings(settingsFile).activePetId,
+    legacyMemoryDir: join(userData, 'memory')
+  })
+  const petDir = petHome
+  const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
+  const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
+  const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
 
   const petWin = createPetWindow({ preload, url: rendererUrl, indexHtml: petHtml })
 
@@ -56,11 +69,6 @@ export function startShell(): void {
     onClosed: () => emitPetEvent('dialogClose')
   })
 
-  const settingsFile = join(app.getPath('userData'), 'settings.json')
-  const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
-  const searchSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-tavily.bin'), safeStorage)
-  const embeddingSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-embedding.bin'), safeStorage)
-  const memoryDir = join(app.getPath('userData'), 'memory')
   // 产品运行时技能:仓库根 skills/(打包后随 resources 分发,MVP-06 处理拷贝)
   const skills = loadSkills(join(appRoot, 'skills'))
 
@@ -115,7 +123,9 @@ export function startShell(): void {
     const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
     return { workArea, window: { x, y, width, height } }
   })
-  ipcMain.on(IPC.MOVE_WINDOW, (_e, delta: MoveDelta) => {
+  ipcMain.on(IPC.MOVE_WINDOW, (_e, raw) => {
+    const delta = validateMoveDelta(raw)
+    if (!delta) return
     const [x, y] = petWin.getPosition()
     const nx = Math.round(x + delta.dx)
     const ny = Math.round(y + delta.dy)
@@ -134,11 +144,17 @@ export function startShell(): void {
       petWin.setPosition(nx, ny)
     }
   })
-  ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, ignore: boolean) => {
+  ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, raw) => {
+    const ignore = validateBool(raw)
+    if (ignore === null) return
     petWin.setIgnoreMouseEvents(ignore, { forward: true })
   })
   ipcMain.on(IPC.TOGGLE_DIALOG, () => toggleDialog())
-  ipcMain.on(IPC.CHAT_SEND, (_e, payload: ChatSendPayload) => chat.handleSend(payload))
+  ipcMain.on(IPC.CHAT_SEND, (_e, raw) => {
+    const payload = validateChatSend(raw)
+    if (!payload) return
+    chat.handleSend(payload)
+  })
   ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
@@ -147,18 +163,30 @@ export function startShell(): void {
     hasSearchKey: searchSecrets.hasKey(),
     hasEmbeddingKey: embeddingSecrets.hasKey()
   }))
-  ipcMain.handle(IPC.SET_SETTINGS, async (_e, s: AppSettings) => { saveSettings(settingsFile, s) })
-  ipcMain.handle(IPC.SET_API_KEY, async (_e, key: string): Promise<boolean> => secrets.setKey(String(key ?? '')))
-  ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, key: string): Promise<boolean> => searchSecrets.setKey(String(key ?? '')))
-  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, key: string): Promise<boolean> => embeddingSecrets.setKey(String(key ?? '')))
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => { saveSettings(settingsFile, normalizeSettings(raw)) })
+  ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : searchSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : embeddingSecrets.setKey(key)
+  })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
     mkdirSync(memoryDir, { recursive: true })
     void electronShell.openPath(memoryDir)
   })
-  ipcMain.handle(IPC.TEST_CONNECTION, async (_e, arg: { provider: ProviderSettings; key: string }): Promise<TestResult> =>
-    testConnection(arg.provider, arg.key)
-  )
-  ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, collapsed: boolean) => dialog.setSize(!!collapsed))
+  ipcMain.handle(IPC.TEST_CONNECTION, async (_e, raw): Promise<TestResult> => {
+    const arg = validateTestConnectionArg(raw)
+    if (!arg) return { ok: false, error: 'invalid request' }
+    return testConnection(arg.provider, arg.key)
+  })
+  ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
+    const collapsed = validateBool(raw)
+    if (collapsed === null) return
+    dialog.setSize(collapsed)
+  })
   ipcMain.on(IPC.QUIT, () => app.quit())
 
   registerHotkeys(toggleDialog)
