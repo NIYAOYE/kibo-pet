@@ -1,28 +1,39 @@
 import { app, dialog } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { startShell } from './shell'
 
 /**
  * 打包后的 GUI 进程没有控制台,任何致命错误都无处可看(表现为"任务栏闪一下就消失")。
- * 把致命信息落到 userData/startup-crash.log,便于诊断;绝不因日志本身再抛错。
+ * 把诊断信息同时落到 userData 和系统临时目录(app 未 ready 时 userData 可能取不到),
+ * 绝不因日志本身再抛错。
  */
 function logDiag(tag: string, detail: unknown): void {
-  try {
-    const p = join(app.getPath('userData'), 'startup-crash.log')
-    const msg = detail instanceof Error ? (detail.stack ?? detail.message) : String(detail)
-    writeFileSync(p, `[${new Date().toISOString()}] ${tag}: ${msg}\n`, { flag: 'a' })
-  } catch {
-    /* 最后兜底:连日志都写不了也不能崩 */
+  const msg = detail instanceof Error ? (detail.stack ?? detail.message) : String(detail)
+  const line = `[${new Date().toISOString()}] ${tag}: ${msg}\n`
+  const targets: string[] = []
+  try { targets.push(join(app.getPath('userData'), 'startup-crash.log')) } catch { /* userData 未就绪 */ }
+  try { targets.push(join(tmpdir(), 'pet-agent-startup.log')) } catch { /* ignore */ }
+  for (const p of targets) {
+    try { writeFileSync(p, line, { flag: 'a' }) } catch { /* 写不了也不能崩 */ }
   }
 }
 
-// GUI 进程(双击启动)无有效 stdout/stderr,向其写入会触发未处理的 'error' 事件→
-// 未捕获异常→进程 abort(0x80000003)。挂处理器,令写失败不致命。
-process.stdout.on('error', (e) => logDiag('stdout error', e))
-process.stderr.on('error', (e) => logDiag('stderr error', e))
+logDiag('boot', `main entered (packaged=${app.isPackaged}, argv=${JSON.stringify(process.argv)})`)
+
 process.on('uncaughtException', (e) => logDiag('uncaughtException', e))
 process.on('unhandledRejection', (e) => logDiag('unhandledRejection', e))
+
+/**
+ * 真机双击崩溃根因(用户机崩溃转储确认):GPU 子进程以 0xC0000135 退出 →
+ * 主进程 FATAL "GPU process isn't usable. Goodbye."(事件日志 0x80000003)秒退。
+ * 对策:① 禁用硬件加速走软件渲染;② --in-process-gpu 让 GPU 跑在主进程内、
+ * 不再派生独立 GPU 子进程,从根上消除"GPU 子进程启动失败"这一崩溃点。
+ * 小透明置顶精灵窗对软件/进程内渲染性能无感。必须在 app ready 前设置。
+ */
+app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('in-process-gpu')
 
 app.whenReady()
   .then(() => startShell())
