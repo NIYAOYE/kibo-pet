@@ -17,7 +17,7 @@ pnpm dev          # 开发模式(HMR)。正常终端可用
 # 或:构建后预览(更接近打包版,启动更稳)
 pnpm build && pnpm preview
 
-pnpm test         # 单元测试(当前 122/122 通过)
+pnpm test         # 单元测试(当前 184/184 通过)
 pnpm typecheck    # 类型检查
 ```
 
@@ -43,9 +43,8 @@ src/
               llm.ts(跨进程 LLM 纯类型 + 预设 PRESETS + DEFAULT_SETTINGS〔默认 claude-haiku-4-5〕;MVP-04 加 ToolDef/ToolUse/AgentMessage + StreamChunk 的 tool_use 变体 + search 设置,schemaVersion=2)
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
               index.ts(应用入口 → startShell)
-              providers/   (llmProvider 接口 + fakeProvider〔支持 script 多轮脚本〕+ anthropicProvider + openaiCompatProvider + createProvider;MVP-04:messageMapping〔AgentMessage→两 SDK 消息形状,含测试〕+ 两 provider 流式 tool_use/tool_calls 归一化,含测试)
+              providers/   (llmProvider 接口 + fakeProvider〔支持 script 多轮脚本〕+ anthropicProvider + openaiCompatProvider + createProvider;MVP-04:messageMapping〔AgentMessage→两 SDK 消息形状,含测试〕+ 两 provider 流式 tool_use/tool_calls 归一化,含测试;MVP-05:embedder.ts〔openai-compat /embeddings 客户端 + fake embedder + key 复用解析,含测试〕)
               tools/       (MVP-04:toolSpec/toolRegistry〔校验+错误回灌不抛,含测试〕+ webSearch〔不可信包裹+据此作答+来源附URL+状态播报,含测试〕+ readSkill〔含测试〕+ searchBackends/〔searchBackend 接口 + duckduckgo 免key HTML解析〔fixture 单测〕+ tavily〔key注入,含测试〕〕;MVP-05:saveMemory〔写事实库,含测试〕)
-              providers/   embedder.ts(MVP-05:embedding 提供者抽象 + dashscope 实现 + 本地降级,含测试)
               skills/      (MVP-04:skillLoader — 扫描 skills/ + frontmatter 纯解析,坏文件跳过/目录缺失退化空清单,含测试)
               agent/       (promptAssembler〔persona+对话窗口→system/messages;MVP-04 加可用技能清单段;MVP-05 加用户记忆(facts+summary)上下文,含测试〕+ agentLoop〔MVP-04 升级为 ≤6 轮工具回灌循环:取消贯穿工具执行/每轮独立超时/工具报错回灌不终止;MVP-05 集成 save_memory,含测试〕+ testConnection)
               persona/     (personaLoader — persona.md 分块解析 + 缓存,含测试)
