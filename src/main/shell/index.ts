@@ -22,7 +22,8 @@ import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
-import { ensurePetHome } from '../pets/petHome'
+import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { DEFAULT_SETTINGS } from '@shared/llm'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg
@@ -41,12 +42,24 @@ export function startShell(): void {
   const dialogHtml = join(dirname, '../renderer/dialog.html')
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
-  const { petHome, memoryDir } = ensurePetHome({
+  // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
+  // id 会让 ensurePetHome 抛错;若不兜底,startShell 的异常会变成无窗口的静默启动失败。故:
+  // 配置的宠物包缺失时回退到默认宠物(default 自身仍缺失才真正抛错)。
+  const petHomeOpts = {
     userDataDir: userData,
     bundledPetsDir: petsDir(appRoot),
-    activePetId: loadSettings(settingsFile).activePetId,
     legacyMemoryDir: join(userData, 'memory')
-  })
+  }
+  const configuredPetId = loadSettings(settingsFile).activePetId
+  let petHomeResult: PetHomeResult
+  try {
+    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: configuredPetId })
+  } catch (err) {
+    if (configuredPetId === DEFAULT_SETTINGS.activePetId) throw err
+    console.warn(`[pet] activePetId "${configuredPetId}" 无对应宠物包,回退默认 "${DEFAULT_SETTINGS.activePetId}"`, err)
+    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: DEFAULT_SETTINGS.activePetId })
+  }
+  const { petHome, memoryDir } = petHomeResult
   const petDir = petHome
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
