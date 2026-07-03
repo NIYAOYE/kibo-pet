@@ -1,4 +1,6 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type MemorySettings } from '@shared/llm'
+
+let savedMemory: MemorySettings = { embedding: null }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -65,7 +67,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
     await window.settingsApi.setSettings({
       schemaVersion: SETTINGS_SCHEMA_VERSION,
       provider,
-      search: { backend: searchBackend.value as SearchBackendKind }
+      search: { backend: searchBackend.value as SearchBackendKind },
+      memory: savedMemory
     })
     status.textContent = '✓ 已保存'
   } catch (err) {
@@ -76,6 +79,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 // 初始化:回填已存设置
 void (async () => {
   const snap = await window.settingsApi.getSettings()
+  savedMemory = snap.settings.memory
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
   if (snap.settings.provider.baseURL) baseURL.value = snap.settings.provider.baseURL

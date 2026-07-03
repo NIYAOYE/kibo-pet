@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
@@ -15,7 +15,14 @@ function normalize(raw: unknown): AppSettings {
   const backend = BACKENDS.includes(s.backend as SearchBackendKind)
     ? (s.backend as SearchBackendKind)
     : DEFAULT_SETTINGS.search.backend
-  return { schemaVersion: SETTINGS_SCHEMA_VERSION, provider: { kind, model, baseURL }, search: { backend } }
+  const m = (r.memory ?? {}) as Record<string, unknown>
+  const e = (m.embedding ?? null) as Record<string, unknown> | null
+  const embedding =
+    e && typeof e.baseURL === 'string' && e.baseURL.length > 0 &&
+    typeof e.model === 'string' && e.model.length > 0
+      ? { baseURL: e.baseURL, model: e.model }
+      : null
+  return { schemaVersion: SETTINGS_SCHEMA_VERSION, provider: { kind, model, baseURL }, search: { backend }, memory: { embedding } }
 }
 
 export function loadSettings(file: string): AppSettings {

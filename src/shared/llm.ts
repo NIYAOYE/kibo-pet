@@ -25,14 +25,18 @@ export interface ProviderSettings { kind: ProviderKind; baseURL?: string; model:
 export type SearchBackendKind = 'duckduckgo' | 'tavily'
 export interface SearchSettings { backend: SearchBackendKind }
 
-export const SETTINGS_SCHEMA_VERSION = 2
+export interface EmbeddingSettings { baseURL: string; model: string }
+export interface MemorySettings { embedding: EmbeddingSettings | null }
 
-export interface AppSettings { schemaVersion: number; provider: ProviderSettings; search: SearchSettings }
+export const SETTINGS_SCHEMA_VERSION = 3
+
+export interface AppSettings { schemaVersion: number; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
   provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
-  search: { backend: 'duckduckgo' }
+  search: { backend: 'duckduckgo' },
+  memory: { embedding: null }
 }
 
 export interface Preset {

@@ -15,14 +15,15 @@ describe('settings v1 → v2 迁移', () => {
   }
   afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }) })
 
-  it('读 v1 文件(无 search)补默认 duckduckgo 并升到 v2', () => {
+  it('读 v1 文件(无 search)补默认 duckduckgo 并升到 v3', () => {
     const file = tempFile(JSON.stringify({
       schemaVersion: 1,
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(2)
+    expect(s.schemaVersion).toBe(3)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
+    expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
   })
 
@@ -44,9 +45,57 @@ describe('settings v1 → v2 迁移', () => {
     expect(loadSettings(file).search.backend).toBe('duckduckgo')
   })
 
-  it('文件缺失时默认设置含 search 段', () => {
+  it('文件缺失时默认设置含 search 和 memory 段', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
-    expect(s.schemaVersion).toBe(2)
+    expect(s.memory).toEqual({ embedding: null })
+    expect(s.schemaVersion).toBe(3)
+  })
+})
+
+describe('v2 -> v3 迁移(memory)', () => {
+  const dirs: string[] = []
+  const tempFile = (content: string): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'pet-settings-'))
+    dirs.push(dir)
+    const file = join(dir, 'settings.json')
+    writeFileSync(file, content, 'utf-8')
+    return file
+  }
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }) })
+
+  it('v2 设置(无 memory)加载后补 memory.embedding = null,schemaVersion 升为 3', () => {
+    const file = tempFile(JSON.stringify({
+      schemaVersion: 2,
+      provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+      search: { backend: 'tavily' }
+    }))
+    const s = loadSettings(file)
+    expect(s.schemaVersion).toBe(3)
+    expect(s.memory).toEqual({ embedding: null })
+    expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
+    expect(s.search.backend).toBe('tavily')
+  })
+
+  it('合法 embedding 配置原样保留', () => {
+    const file = tempFile(JSON.stringify({
+      schemaVersion: 3,
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: { baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'text-embedding-v3' } }
+    }))
+    expect(loadSettings(file).memory.embedding).toEqual({
+      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'text-embedding-v3'
+    })
+  })
+
+  it('embedding 缺 model 或 baseURL 为空 → 归一化为 null', () => {
+    const file = tempFile(JSON.stringify({
+      schemaVersion: 3,
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: { baseURL: 'https://x.example/v1' } }
+    }))
+    expect(loadSettings(file).memory.embedding).toBeNull()
   })
 })
