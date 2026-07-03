@@ -42,6 +42,20 @@
       <label id="searchKeyRow" style="display:none">Tavily API Key
         <input id="searchKey" type="password" placeholder="仅本机加密存储,不外传" />
       </label>
+      <h1 style="margin-top:8px">记忆(可选)</h1>
+      <div style="opacity:.8;line-height:1.5">配置 embedding 后,宠物记住的事实会发送到该端点做向量化,以便按话题召回;三项留空则记忆完全本地(按最近记忆召回)。</div>
+      <label>Embedding Base URL
+        <input id="embBaseURL" type="text" placeholder="https://...(OpenAI 兼容,如 DashScope)" />
+      </label>
+      <label>Embedding 模型
+        <input id="embModel" type="text" placeholder="如 text-embedding-v3" />
+      </label>
+      <label>Embedding API Key
+        <input id="embKey" type="password" placeholder="留空且与聊天同 Base URL 时自动复用聊天 Key" />
+      </label>
+      <div class="row">
+        <button id="openMemoryDir" class="secondary">打开记忆文件夹</button>
+      </div>
       <div class="row">
         <button id="test" class="secondary">测试连接</button>
         <button id="save">保存</button>

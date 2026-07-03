@@ -52,6 +52,8 @@ const settingsApi: SettingsApi = {
   setSettings: (s: AppSettings) => ipcRenderer.invoke(IPC.SET_SETTINGS, s),
   setApiKey: (key: string) => ipcRenderer.invoke(IPC.SET_API_KEY, key),
   setSearchKey: (key: string) => ipcRenderer.invoke(IPC.SET_SEARCH_KEY, key),
+  setEmbeddingKey: (key: string) => ipcRenderer.invoke(IPC.SET_EMBEDDING_KEY, key),
+  openMemoryDir: (): void => ipcRenderer.send(IPC.OPEN_MEMORY_DIR),
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key })
 }
 

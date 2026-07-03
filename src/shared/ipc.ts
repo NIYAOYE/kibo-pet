@@ -24,7 +24,9 @@ export const IPC = {
   CHAT_ERROR: 'chat:error',
   CANCEL_CHAT: 'chat:cancel',
   CHAT_STATUS: 'chat:status',
-  SET_SEARCH_KEY: 'settings:set-search-key'
+  SET_SEARCH_KEY: 'settings:set-search-key',
+  SET_EMBEDDING_KEY: 'settings:set-embedding-key',
+  OPEN_MEMORY_DIR: 'settings:open-memory-dir'
 } as const
 
 export interface LoadedPet {
@@ -67,7 +69,7 @@ export interface ChatApi {
   openSettings(): void
 }
 
-export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean }
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean }
 export interface TestResult { ok: boolean; error?: string }
 
 export interface SettingsApi {
@@ -75,6 +77,8 @@ export interface SettingsApi {
   setSettings(settings: AppSettings): Promise<void>
   setApiKey(key: string): Promise<boolean>
   setSearchKey(key: string): Promise<boolean>
+  setEmbeddingKey(key: string): Promise<boolean>
+  openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
 }
 

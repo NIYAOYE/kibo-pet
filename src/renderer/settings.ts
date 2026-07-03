@@ -9,6 +9,9 @@ const status = $<HTMLElement>('status')
 const searchBackend = $<HTMLSelectElement>('searchBackend')
 const searchKeyRow = $<HTMLElement>('searchKeyRow')
 const searchKey = $<HTMLInputElement>('searchKey')
+const embBaseURL = $<HTMLInputElement>('embBaseURL')
+const embModel = $<HTMLInputElement>('embModel')
+const embKey = $<HTMLInputElement>('embKey')
 
 for (const p of PRESETS) {
   const opt = document.createElement('option')
@@ -40,6 +43,7 @@ preset.addEventListener('change', () => applyPreset(preset.value))
 searchBackend.addEventListener('change', () => {
   searchKeyRow.style.display = searchBackend.value === 'tavily' ? '' : 'none'
 })
+$<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 $<HTMLButtonElement>('test').addEventListener('click', async () => {
   status.textContent = '测试中…'
@@ -62,10 +66,19 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       const ok = await window.settingsApi.setSearchKey(searchKey.value)
       if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存搜索 Key'; return }
     }
+    if (embKey.value) {
+      const ok = await window.settingsApi.setEmbeddingKey(embKey.value)
+      if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Embedding Key'; return }
+    }
+    const embedding =
+      embBaseURL.value.trim() && embModel.value.trim()
+        ? { baseURL: embBaseURL.value.trim(), model: embModel.value.trim() }
+        : null
     await window.settingsApi.setSettings({
       schemaVersion: SETTINGS_SCHEMA_VERSION,
       provider,
-      search: { backend: searchBackend.value as SearchBackendKind }
+      search: { backend: searchBackend.value as SearchBackendKind },
+      memory: { embedding }
     })
     status.textContent = '✓ 已保存'
   } catch (err) {
@@ -83,5 +96,10 @@ void (async () => {
   searchBackend.value = snap.settings.search.backend
   searchKeyRow.style.display = snap.settings.search.backend === 'tavily' ? '' : 'none'
   if (snap.hasSearchKey) searchKey.placeholder = '(已配置,如需更换请重新填写)'
+  if (snap.settings.memory.embedding) {
+    embBaseURL.value = snap.settings.memory.embedding.baseURL
+    embModel.value = snap.settings.memory.embedding.model
+  }
+  if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
 })()

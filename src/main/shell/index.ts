@@ -1,5 +1,6 @@
-import { app, ipcMain, safeStorage, screen, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, type Tray } from 'electron'
 import { join } from 'node:path'
+import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   IPC,
@@ -22,6 +23,8 @@ import { loadSettings, saveSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
 import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
+import { createMemoryManager } from '../memory/memoryManager'
+import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -56,6 +59,8 @@ export function startShell(): void {
   const settingsFile = join(app.getPath('userData'), 'settings.json')
   const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-tavily.bin'), safeStorage)
+  const embeddingSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-embedding.bin'), safeStorage)
+  const memoryDir = join(app.getPath('userData'), 'memory')
   // 产品运行时技能:仓库根 skills/(打包后随 resources 分发,MVP-06 处理拷贝)
   const skills = loadSkills(join(appRoot, 'skills'))
 
@@ -65,9 +70,23 @@ export function startShell(): void {
     settingsHtml: join(dirname, '../renderer/settings.html')
   })
 
+  // embedding 按当前设置即时构建(设置可变);未配置返回 null → 召回退化
+  function getEmbedder(): Embedder | null {
+    const s = loadSettings(settingsFile)
+    const emb = s.memory.embedding
+    if (!emb) return null
+    return createOpenAiCompatEmbedder({
+      baseURL: emb.baseURL,
+      model: emb.model,
+      getKey: () => resolveEmbeddingKey(s, embeddingSecrets.getKey(), secrets.getKey())
+    })
+  }
+  const memory = createMemoryManager({ dir: memoryDir, getEmbedder })
+
   const chat = createChatStore({
     petDir,
     skills,
+    memory,
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
@@ -125,11 +144,17 @@ export function startShell(): void {
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
     settings: loadSettings(settingsFile),
     hasKey: secrets.hasKey(),
-    hasSearchKey: searchSecrets.hasKey()
+    hasSearchKey: searchSecrets.hasKey(),
+    hasEmbeddingKey: embeddingSecrets.hasKey()
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, s: AppSettings) => { saveSettings(settingsFile, s) })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, key: string): Promise<boolean> => secrets.setKey(String(key ?? '')))
   ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, key: string): Promise<boolean> => searchSecrets.setKey(String(key ?? '')))
+  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, key: string): Promise<boolean> => embeddingSecrets.setKey(String(key ?? '')))
+  ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
+    mkdirSync(memoryDir, { recursive: true })
+    void electronShell.openPath(memoryDir)
+  })
   ipcMain.handle(IPC.TEST_CONNECTION, async (_e, arg: { provider: ProviderSettings; key: string }): Promise<TestResult> =>
     testConnection(arg.provider, arg.key)
   )
