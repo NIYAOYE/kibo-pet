@@ -2,7 +2,8 @@
 node_modules/
 dist/
 out/
-build/
+build/*
+!build/icon.ico
 release/
 *.tsbuildinfo
 
@@ -36,5 +37,7 @@ Thumbs.db
 # 说明:docs/ pets/ skills/ tools/(源码与资产)必须入库跟踪,
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 docs/*
+build
 pets/luluka
 pets/youka
+pets/shiraishi-mio

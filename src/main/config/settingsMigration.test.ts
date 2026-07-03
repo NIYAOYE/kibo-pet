@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(3)
+    expect(s.schemaVersion).toBe(4)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(3)
+    expect(s.schemaVersion).toBe(4)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(3)
+    expect(s.schemaVersion).toBe(4)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')

@@ -2,6 +2,7 @@
   "name": "pet-agent",
   "version": "0.0.1",
   "description": "Desktop pet with an agent kernel",
+  "author": "niyaoye",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -9,7 +10,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dist": "pnpm build && electron-builder --win"
   },
   "devDependencies": {
     "electron": "^31.0.0",

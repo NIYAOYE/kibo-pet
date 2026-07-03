@@ -1,0 +1,38 @@
+appId: com.petagent.app
+productName: Pet-Agent
+directories:
+  buildResources: build
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src'
+  - '!docs'
+  - '!tools'
+  - '!.superpowers'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{tsconfig.json,tsconfig.node.json}'
+  - '!{README.md,PROGRESS.md,CLAUDE.md,pnpm-lock.yaml}'
+  - '!**/*.test.*'
+# 运行时资源:主进程用 process.resourcesPath/<name> 读取。
+# - pets: 全部磁盘宠物(luluka/youka...),activePetId 可选任意一只,首启播种到 userData。
+# - skills: 产品运行时技能(全局只读)。
+# - resources: 托盘图标 tray.png(shell 从 process.resourcesPath/resources/tray.png 读)。
+extraResources:
+  - from: pets
+    to: pets
+    # 防御:即便开发机的 pets/<id>/ 里意外攒了运行时记忆,也不打进公开安装包(记忆属用户数据)。
+    filter:
+      - '!**/memory/**'
+  - from: skills
+    to: skills
+  - from: resources
+    to: resources
+win:
+  target: nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

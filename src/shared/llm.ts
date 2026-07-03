@@ -28,12 +28,13 @@ export interface SearchSettings { backend: SearchBackendKind }
 export interface EmbeddingSettings { baseURL: string; model: string }
 export interface MemorySettings { embedding: EmbeddingSettings | null }
 
-export const SETTINGS_SCHEMA_VERSION = 3
+export const SETTINGS_SCHEMA_VERSION = 4
 
-export interface AppSettings { schemaVersion: number; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings }
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
+  activePetId: 'luluka',
   provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null }
