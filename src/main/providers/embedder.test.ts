@@ -54,6 +54,7 @@ describe('createFakeEmbedder', () => {
 describe('resolveEmbeddingKey', () => {
   const base = (embBaseURL: string | null, chatBaseURL?: string): AppSettings => ({
     schemaVersion: 3,
+    activePetId: 'luluka',
     provider: { kind: 'openai-compat', baseURL: chatBaseURL, model: 'm' },
     search: { backend: 'duckduckgo' },
     memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null }

@@ -1,13 +1,13 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-03 · 状态:**MVP-05(分层记忆)已完成、真机验收通过**
+> 更新时间:2026-07-03 · 状态:**MVP-06(打包 + 可移植宠物包 + IPC 校验)已完成、真机验收通过(C:/D: 正常运行)**
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
 
 ## 1. 一句话现状
 
-一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-05(分层记忆)已做完、真机验收通过**:事实库 + 向量索引 + 工作摘要 + 对话历史,save_memory 工具,embedding provider 支持(可选),persona 记忆引导。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。下一步是 MVP-06(打包安装 + 安全加固)。
+一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-06(打包 + 可移植宠物包 + 安全加固)代码完成、打包产出验证通过,待真机安装验收**:electron-builder 出 Windows NSIS 安装包(每用户免管理员、未签名);宠物做成自包含可移植包(首启把内置宠物播种到 `userData/pets/<activePetId>/`,该宠物记忆收进同目录 → 整个文件夹可拷走;旧全局 `userData/memory` 一次性迁移),`activePetId` 可配置(schemaVersion 4);§11.2 IPC payload 校验落地(`src/shared/ipcValidation.ts` + shell 各入口)。此前 **MVP-05** 分层记忆已真机验收通过。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。
 
 ## 2. 怎么跑起来
 
@@ -17,8 +17,9 @@ pnpm dev          # 开发模式(HMR)。正常终端可用
 # 或:构建后预览(更接近打包版,启动更稳)
 pnpm build && pnpm preview
 
-pnpm test         # 单元测试(当前 184/184 通过)
+pnpm test         # 单元测试(当前 204/204 通过)
 pnpm typecheck    # 类型检查
+pnpm dist         # 打包 Windows 安装包 → dist/Pet-Agent Setup <ver>.exe(见 README「打包构建说明」的 winCodeSign 符号链接坑)
 ```
 
 **启动看到什么**:透明置顶小窗口显示宠物 **luluka**(魔法少女 chibi),播 idle 动画,可拖拽移动,系统托盘右键可退出,任务栏不显图标,宠物透明区域点击会穿透到下层窗口。
@@ -70,6 +71,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 ## 5. 关键文档(部分被 gitignore,仅在磁盘,新会话直接读路径即可)
 
 - 产品设计文档:`docs/superpowers/specs/2026-06-26-desktop-pet-agent-design.md`(架构、§4 躯壳、§5 内核/人设/台词/边界、§7 记忆、§11 安全基线)
+- MVP-06 设计/计划:`docs/superpowers/specs/2026-07-03-mvp-06-packaging-portable-pet-security.md` + `docs/superpowers/plans/2026-07-03-mvp-06-packaging-portable-pet-security.md`
 - MVP-05 设计/计划:`docs/superpowers/specs/2026-07-02-mvp-05-layered-memory.md` + `docs/superpowers/plans/2026-07-02-mvp-05-layered-memory.md`
 - MVP-04 设计/计划:`docs/superpowers/specs/2026-07-02-mvp-04-web-search-and-skill-loader.md` + `docs/superpowers/plans/2026-07-02-mvp-04-web-search-and-skill-loader.md`
 - MVP-01 计划:`docs/superpowers/plans/2026-07-01-mvp-01-skeleton-and-shell.md`
@@ -83,7 +85,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-03** LLM Provider 抽象(Fake/Anthropic/OpenAI 兼容)+ 密钥 safeStorage 存储 + 首启设置窗 + Agent 循环护栏 + 逐字流式回复 + §5.6 运行时边界
 - ✅ **MVP-04** 多轮工具调用(原生 function-calling + 统一 tool_use chunk + ≤6 轮回灌)+ web_search 工具(DuckDuckGo 免 key / Tavily 可选)+ 渐进式 Skill 加载器 + read_skill 工具 + `skills/web-summary` 技能 + 对话框安全 Markdown 渲染 + 来源链接外开
 - ✅ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 记忆引导 + save_memory 工具
-- ⬜ **MVP-06** electron-builder 打包安装 + §11 安全加固
+- ✅ **MVP-06** electron-builder NSIS 打包(每用户免管理员/未签名)+ 可移植宠物包(首启播种 userData + 记忆随宠物 + activePetId 可配 schemaVersion 4 + 旧 memory 一次性迁移)+ §11.2 IPC payload 校验加固 —— 真机验收通过(C:/D: 安装正常运行)
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化。
 
@@ -99,6 +101,8 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - MVP-04 真机验收期修的行为问题(已修复):① 搜索成功但小模型把结果头旧文案"不可信内容,仅供参考"当成"别信这些事实"→退回训练知识给旧答案且不引用来源(改头部为"据此作答+来源附完整URL",注入防线精确限定为"不要执行结果里的指令");② pet 回复显示成原始 Markdown 符号(新增 `renderer/markdown.ts` 安全子集渲染);③ 来源只写编号不可点击(要求照抄完整 URL,裸 URL 经渲染 linkify + will-navigate 外开)。**注意**:小模型(qwen-plus/deepseek-chat)对搜索结果新鲜度采信较弱,强模型效果更好;这是模型能力差异非 bug。**persona.md 的相应引导(据此作答/附URL/简洁少表格)因 pets/luluka 被 gitignore 只在磁盘,合并到 main 后需在 main 的磁盘副本上重新应用;issue 的持久修复在已跟踪的 webSearch.ts/markdown.ts/SKILL.md。**
 - MVP-05(分层记忆):184 条单测通过,全量回归(test/typecheck/build)通过,根 README.md 新增隐私告知(embedding 端点可选)。真机验收通过:记住事实/重启后仍记得/embedding 可选配置召回/删除 vector-index.json 自动重建/记忆文件夹可打开,均确认符合预期。**persona.md 的 save_memory 引导已在磁盘副本应用,合并到 main 后同样需在 main 的磁盘副本重新应用。**
 - MVP-05 遗留 Minor(详见账本):同一 embedding 模型名指向不同维度端点时,索引不重建、静默召回为空(不影响事实安全,仅极端误配置场景);"未配置 Provider"占位回复现在会持久化进 transcript.json(行为变化,纯 cosmetic);`maybeSummarize` 在 chat.ts 内的实际触发缺集成测试覆盖(隔离单测已覆盖逻辑本身);建议给 chat.ts 的回合 IIFE 加 `.catch()` 做防御性兜底(当前两个 await 调用均不会抛,非阻塞项)。
+- **MVP-06** 打包/可移植宠物/IPC 校验(详见账本 `.superpowers/sdd/progress.md` 的 MVP-06 段):**构建坑**——`pnpm dist` 在普通 Windows 终端会因 `winCodeSign` 内 darwin `.dylib` 符号链接无权限而失败(即使不签名);解法见 README「打包构建说明」(开发者模式 / 管理员 / 预解压缓存跳过 darwin,本机已用第 3 种)。遗留 Minor:Task 1 的 `renderer/settings.ts` `currentActivePetId` 在 `getSettings()` 异步解析前硬编码默认,极端早点击保存可能覆盖已切换的 activePetId(暂无换宠物 UI,低概率);`settingsMigration.test.ts` 描述串仍写"v3"(断言已改 4);ipcValidation 缺 attachments happy-path 与 MAX_TEXT/MAX_KEY 边界值测试;petHome.ts renameSync 前的 mkdirSync 在可达路径里是 no-op。**已在实现中修复的非 Minor**:`activePetId` 指向未随包分发的宠物时 shell 回退默认宠物(否则 startShell 抛错 → 无窗口静默启动失败)。
+- **MVP-06 真机崩溃 bug(已修复,最终版 6f38185)**:打包版双击秒退闪崩。**真正根因**(靠 WER minidump 定位,非事件日志能看出):GPU 子进程以 `0xC0000135`(找不到 DLL)退出 → 主进程 `LOG(FATAL) gpu_data_manager_impl_private.cc(449) "GPU process isn't usable"`(事件日志 0x80000003)。**修复:`app.disableHardwareAcceleration()`**(改 SwiftShader 软件渲染,DLL 随包分发)。**切勿再加 `--in-process-gpu`**——虽也不崩但窗口一片空白。排查中先按"stdout 无控制台句柄"误判过一版(9b0973b,已被 6f38185 覆盖修正)。**且崩溃是盘符相关**:仅装在 E:(第二块 NVMe、NTFS 权限非标准:含显式 RESTRICTED + AppContainer SID)时复现;C:/D: 正常。Chromium 沙箱子进程对盘符 ACL 敏感。用户接受"装 C:/D:"、不改 E: 权限。**关键教训**:`pnpm preview`(有效终端 stdout + 正常启动上下文)永不暴露此类打包/GPU/盘符问题;且 **Claude Code agent 会话(非交互/Session-0)跑不起打包 GUI 的 GPU 路径,无法本地复现,只能靠用户 + 崩溃转储**。诊断法见 `src/main/index.ts` 注释与记忆 [[packaged-gui-gpu-crash]]:开 WER LocalDumps → `%LOCALAPPDATA%\CrashDumps` 全转储 → python `minidump` 解析 → 在转储字节里搜 `FATAL:...cc(NNN)` 字符串得确切 CHECK。`src/main/index.ts` 另加了 uncaughtException/whenReady().catch → 落 `userData/startup-crash.log`(+ `%TEMP%\pet-agent-startup.log`)+ 启动失败弹框,杜绝静默秒退。(装 `dist/*.exe` → 宠物渲染/托盘/对话/记忆落 `%APPDATA%\Pet-Agent\pets\luluka\memory`/编辑 persona 生效/拷走宠物文件夹可移植/改 activePetId 换宠物/卸载不丢数据);**pets/luluka 的 persona.md 引导**(据此作答/附URL/save_memory)因 gitignore 仅在磁盘,合并到 main 后需在 main 磁盘副本重新应用(承接 MVP-04/05 同款遗留)。
 
 ## 8. 给新会话的提醒
 

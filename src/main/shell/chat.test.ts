@@ -10,6 +10,7 @@ import type { AppSettings } from '@shared/llm'
 
 const settings: AppSettings = {
   schemaVersion: 3,
+  activePetId: 'luluka',
   provider: { kind: 'fake', model: 'fake' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null }

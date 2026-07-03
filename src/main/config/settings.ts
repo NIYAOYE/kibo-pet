@@ -5,7 +5,12 @@ import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, S
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
 
-function normalize(raw: unknown): AppSettings {
+/** 合法宠物 id:仅字母数字下划线连字符,拒绝路径分隔/穿越(activePetId 会拼进文件路径)。 */
+function normalizePetId(v: unknown): string {
+  return typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v) ? v : DEFAULT_SETTINGS.activePetId
+}
+
+export function normalizeSettings(raw: unknown): AppSettings {
   const r = (raw ?? {}) as Record<string, unknown>
   const p = (r.provider ?? {}) as Record<string, unknown>
   const kind = KINDS.includes(p.kind as ProviderKind) ? (p.kind as ProviderKind) : DEFAULT_SETTINGS.provider.kind
@@ -22,12 +27,18 @@ function normalize(raw: unknown): AppSettings {
     typeof e.model === 'string' && e.model.length > 0
       ? { baseURL: e.baseURL, model: e.model }
       : null
-  return { schemaVersion: SETTINGS_SCHEMA_VERSION, provider: { kind, model, baseURL }, search: { backend }, memory: { embedding } }
+  return {
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
+    activePetId: normalizePetId(r.activePetId),
+    provider: { kind, model, baseURL },
+    search: { backend },
+    memory: { embedding }
+  }
 }
 
 export function loadSettings(file: string): AppSettings {
   try {
-    return normalize(JSON.parse(readFileSync(file, 'utf-8')))
+    return normalizeSettings(JSON.parse(readFileSync(file, 'utf-8')))
   } catch {
     return { ...DEFAULT_SETTINGS }
   }

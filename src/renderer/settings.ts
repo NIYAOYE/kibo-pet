@@ -12,6 +12,7 @@ const searchKey = $<HTMLInputElement>('searchKey')
 const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
+let currentActivePetId = 'luluka' // default, will be overwritten on init
 
 for (const p of PRESETS) {
   const opt = document.createElement('option')
@@ -76,6 +77,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         : null
     await window.settingsApi.setSettings({
       schemaVersion: SETTINGS_SCHEMA_VERSION,
+      activePetId: currentActivePetId,
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
       memory: { embedding }
@@ -89,6 +91,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 // 初始化:回填已存设置
 void (async () => {
   const snap = await window.settingsApi.getSettings()
+  currentActivePetId = snap.settings.activePetId
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
   if (snap.settings.provider.baseURL) baseURL.value = snap.settings.provider.baseURL
