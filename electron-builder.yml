@@ -5,10 +5,10 @@ directories:
   output: dist
 files:
   - '!**/.vscode/*'
-  - '!src/*'
-  - '!docs/*'
-  - '!tools/*'
-  - '!.superpowers/*'
+  - '!src'
+  - '!docs'
+  - '!tools'
+  - '!.superpowers'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{tsconfig.json,tsconfig.node.json}'
   - '!{README.md,PROGRESS.md,CLAUDE.md,pnpm-lock.yaml}'
@@ -20,6 +20,9 @@ files:
 extraResources:
   - from: pets
     to: pets
+    # 防御:即便开发机的 pets/<id>/ 里意外攒了运行时记忆,也不打进公开安装包(记忆属用户数据)。
+    filter:
+      - '!**/memory/**'
   - from: skills
     to: skills
   - from: resources

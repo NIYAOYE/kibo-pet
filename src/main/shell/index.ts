@@ -45,19 +45,24 @@ export function startShell(): void {
   // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
   // id 会让 ensurePetHome 抛错;若不兜底,startShell 的异常会变成无窗口的静默启动失败。故:
   // 配置的宠物包缺失时回退到默认宠物(default 自身仍缺失才真正抛错)。
-  const petHomeOpts = {
-    userDataDir: userData,
-    bundledPetsDir: petsDir(appRoot),
-    legacyMemoryDir: join(userData, 'memory')
-  }
+  const petHomeOpts = { userDataDir: userData, bundledPetsDir: petsDir(appRoot) }
+  // MVP-05 的旧全局 userData/memory 是在默认宠物 luluka 下攒的,只在"激活的就是默认宠物"时
+  // 一次性迁入,避免把 luluka 的记忆错误搬进另一只宠物的文件夹(spec §3.3:仅对默认宠物迁移)。
+  const legacyMemoryDir = join(userData, 'memory')
   const configuredPetId = loadSettings(settingsFile).activePetId
+  const defaultPetId = DEFAULT_SETTINGS.activePetId
   let petHomeResult: PetHomeResult
   try {
-    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: configuredPetId })
+    petHomeResult = ensurePetHome({
+      ...petHomeOpts,
+      activePetId: configuredPetId,
+      legacyMemoryDir: configuredPetId === defaultPetId ? legacyMemoryDir : undefined
+    })
   } catch (err) {
-    if (configuredPetId === DEFAULT_SETTINGS.activePetId) throw err
-    console.warn(`[pet] activePetId "${configuredPetId}" 无对应宠物包,回退默认 "${DEFAULT_SETTINGS.activePetId}"`, err)
-    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: DEFAULT_SETTINGS.activePetId })
+    if (configuredPetId === defaultPetId) throw err
+    console.warn(`[pet] activePetId "${configuredPetId}" 无对应宠物包,回退默认 "${defaultPetId}"`, err)
+    // 回退到默认宠物 → 此时迁移旧全局记忆(luluka 的)是正确的
+    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: defaultPetId, legacyMemoryDir })
   }
   const { petHome, memoryDir } = petHomeResult
   const petDir = petHome
