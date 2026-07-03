@@ -23,6 +23,8 @@ import { loadSettings, saveSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
 import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
+import { createMemoryManager } from '../memory/memoryManager'
+import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -68,9 +70,23 @@ export function startShell(): void {
     settingsHtml: join(dirname, '../renderer/settings.html')
   })
 
+  // embedding 按当前设置即时构建(设置可变);未配置返回 null → 召回退化
+  function getEmbedder(): Embedder | null {
+    const s = loadSettings(settingsFile)
+    const emb = s.memory.embedding
+    if (!emb) return null
+    return createOpenAiCompatEmbedder({
+      baseURL: emb.baseURL,
+      model: emb.model,
+      getKey: () => resolveEmbeddingKey(s, embeddingSecrets.getKey(), secrets.getKey())
+    })
+  }
+  const memory = createMemoryManager({ dir: memoryDir, getEmbedder })
+
   const chat = createChatStore({
     petDir,
     skills,
+    memory,
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
