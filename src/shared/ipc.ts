@@ -26,7 +26,12 @@ export const IPC = {
   CHAT_STATUS: 'chat:status',
   SET_SEARCH_KEY: 'settings:set-search-key',
   SET_EMBEDDING_KEY: 'settings:set-embedding-key',
-  OPEN_MEMORY_DIR: 'settings:open-memory-dir'
+  OPEN_MEMORY_DIR: 'settings:open-memory-dir',
+  MEDIA_PICK_IMAGE: 'media:pick-image',
+  MEDIA_CAPTURE_REGION: 'media:capture-region',
+  OVERLAY_INIT: 'overlay:init',
+  OVERLAY_SUBMIT: 'overlay:submit',
+  OVERLAY_CANCEL: 'overlay:cancel'
 } as const
 
 export interface LoadedPet {
@@ -41,9 +46,25 @@ export interface MoveDelta { dx: number; dy: number; clamp?: boolean }
 
 export interface WindowBounds { workArea: Bounds; window: Bounds }
 
+/** 持久化/展示用:仅标记"这轮有图",绝不携带字节 */
 export interface ChatAttachment { kind: 'image' }
+/** 发送用(瞬态):携带降采样后的图像字节,不落盘 */
+export interface ChatSendAttachment { kind: 'image'; mimeType: string; dataBase64: string }
 export interface ChatMessage { role: 'user' | 'pet'; text: string; attachments?: ChatAttachment[] }
-export interface ChatSendPayload { text: string; attachments?: ChatAttachment[] }
+export interface ChatSendPayload { text: string; attachments?: ChatSendAttachment[] }
+
+export interface OverlayInit { screenshotDataUrl: string; width: number; height: number }
+export interface OverlayRect { x: number; y: number; width: number; height: number }
+
+export interface MediaApi {
+  pickImage(): Promise<ChatSendAttachment[]>
+  captureRegion(): Promise<ChatSendAttachment | null>
+}
+export interface OverlayApi {
+  onInit(cb: (d: OverlayInit) => void): void
+  submit(rect: OverlayRect): void
+  cancel(): void
+}
 
 export interface PetApi {
   getPet(): Promise<LoadedPet>
@@ -83,7 +104,7 @@ export interface SettingsApi {
 }
 
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi }
 }
 
 export type { PetEvent, Bounds }

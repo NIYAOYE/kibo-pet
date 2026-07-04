@@ -1,6 +1,6 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-03 · 状态:**MVP-06(打包 + 可移植宠物包 + IPC 校验)已完成、真机验收通过(C:/D: 正常运行)**
+> 更新时间:2026-07-03 · 状态:**MVP-07(多模态识图)代码完成 + 全任务审查通过、待真机验收**;此前 MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
@@ -51,6 +51,7 @@ src/
               persona/     (personaLoader — persona.md 分块解析 + 缓存,含测试)
               config/      (settings〔原子写+schemaVersion,v1→v2 迁移补 search,v2→v3 迁移补 memory embedding,含测试〕+ secrets〔safeStorage 加密,可注入,含测试;MVP-04 第二实例存 Tavily key;MVP-05 第三实例存 embedding key〕)
               memory/      (MVP-05:factStore/vectorIndex/transcriptStore/workingSummary/memoryManager — 事实库/向量索引/对话历史/工作摘要、权威源 facts.json 及可重建索引、与 agent/embedder/persona 交互)
+              media/       (MVP-07:imageResize〔纯 targetSize 单测〕+ imagePrep〔nativeImage 降采样≤1568/重编码 base64,含 electron 故无单测〕+ screenCapture〔desktopCapturer 抓当前屏 + 全屏覆盖层框选 + crop,按 sender 过滤事件〕)
               shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ settingsWindow + 全部 IPC 注册)
   preload/    index.ts(contextBridge 暴露 petApi / chatApi〔含 onStream/onDone/onError/onStatus+cancel〕/ settingsApi〔含 setSearchKey〕)
   renderer/   index.html(含 CSP)
@@ -58,7 +59,8 @@ src/
               spritePlayer.ts(精灵动画播放器 + nextFrameIndex + isPetPixel 命中测试;含测试)
               petController.ts(自主行为控制器:基于 petBrain 状态机驱动游走/睡眠/动画切换)
               markdown.ts(MVP-04:极简安全 Markdown 子集渲染器 — 先转义防XSS再套加粗/斜体/行内代码/列表/链接/标题降级/表格降级,含测试)
-              dialog.ts / dialog.html(对话框:常态薄条〔气泡〕+ 展开双态 + 逐字流式渲染;MVP-04:展开历史 pet 消息经 markdown.ts 渲染 + 搜索状态行;样式内联于 html)
+              dialog.ts / dialog.html(对话框:常态薄条〔气泡〕+ 展开双态 + 逐字流式渲染;MVP-04:展开历史 pet 消息经 markdown.ts 渲染 + 搜索状态行;样式内联于 html;MVP-07:待发缩略图带 + ＋选图/📷截屏钮 + 拖拽/粘贴〔canvas 降采样〕+ 纯图发送 + 历史 🖼×N 标记;CSP 加 img-src data: blob:)
+              regionOverlay.ts / regionOverlay.html(MVP-07:截屏框选全屏覆盖层——显示屏幕截图 dataURL + 拖矩形选区 + Esc 取消,复用同一 preload 的 overlayApi)
               settings.ts / settings.html(首启/设置窗 — 预设/baseURL/model/key + 测试连接;MVP-04 加「搜索」小节:后端下拉 + Tavily key)
 skills/       web-summary/SKILL.md(MVP-04:第一个产品运行时技能 — 话题/网页总结,带来源;正常 git 跟踪)
 pets/luluka/  宠物包(pet.json + spritesheet.webp + persona.md + lines.json + voice/)  ← 注意:被 .gitignore 忽略,仅在磁盘
@@ -86,8 +88,9 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-04** 多轮工具调用(原生 function-calling + 统一 tool_use chunk + ≤6 轮回灌)+ web_search 工具(DuckDuckGo 免 key / Tavily 可选)+ 渐进式 Skill 加载器 + read_skill 工具 + `skills/web-summary` 技能 + 对话框安全 Markdown 渲染 + 来源链接外开
 - ✅ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 记忆引导 + save_memory 工具
 - ✅ **MVP-06** electron-builder NSIS 打包(每用户免管理员/未签名)+ 可移植宠物包(首启播种 userData + 记忆随宠物 + activePetId 可配 schemaVersion 4 + 旧 memory 一次性迁移)+ §11.2 IPC payload 校验加固 —— 真机验收通过(C:/D: 安装正常运行)
+- ✅ **MVP-07** 多模态识图 —— 代码完成 + 全 8 任务两阶段审查通过、待真机验收:归一化图像管线(`ChatTurn.images` + `imagePrep` nativeImage 降采样≤1568/重编码)+ 两 Provider 图像序列化(anthropic base64 block / openai image_url data URL)+ 四种输入(选文件/拖拽/粘贴/截屏框选覆盖层)+ 缩略图带 UI + 视觉能力错误兜底 + 图片永不落盘(transcript 只存 `[图片]` 占位)。测试 228/228。
 
-> 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化。
+> 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化;宠物自主截屏工具(承接 MVP-07 管线,配合浏览器自动化)。
 
 ## 7. 已知遗留及完成项(Minor,记在账本)
 
@@ -103,6 +106,8 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - MVP-05 遗留 Minor(详见账本):同一 embedding 模型名指向不同维度端点时,索引不重建、静默召回为空(不影响事实安全,仅极端误配置场景);"未配置 Provider"占位回复现在会持久化进 transcript.json(行为变化,纯 cosmetic);`maybeSummarize` 在 chat.ts 内的实际触发缺集成测试覆盖(隔离单测已覆盖逻辑本身);建议给 chat.ts 的回合 IIFE 加 `.catch()` 做防御性兜底(当前两个 await 调用均不会抛,非阻塞项)。
 - **MVP-06** 打包/可移植宠物/IPC 校验(详见账本 `.superpowers/sdd/progress.md` 的 MVP-06 段):**构建坑**——`pnpm dist` 在普通 Windows 终端会因 `winCodeSign` 内 darwin `.dylib` 符号链接无权限而失败(即使不签名);解法见 README「打包构建说明」(开发者模式 / 管理员 / 预解压缓存跳过 darwin,本机已用第 3 种)。遗留 Minor:Task 1 的 `renderer/settings.ts` `currentActivePetId` 在 `getSettings()` 异步解析前硬编码默认,极端早点击保存可能覆盖已切换的 activePetId(暂无换宠物 UI,低概率);`settingsMigration.test.ts` 描述串仍写"v3"(断言已改 4);ipcValidation 缺 attachments happy-path 与 MAX_TEXT/MAX_KEY 边界值测试;petHome.ts renameSync 前的 mkdirSync 在可达路径里是 no-op。**已在实现中修复的非 Minor**:`activePetId` 指向未随包分发的宠物时 shell 回退默认宠物(否则 startShell 抛错 → 无窗口静默启动失败)。
 - **MVP-06 真机崩溃 bug(已修复,最终版 6f38185)**:打包版双击秒退闪崩。**真正根因**(靠 WER minidump 定位,非事件日志能看出):GPU 子进程以 `0xC0000135`(找不到 DLL)退出 → 主进程 `LOG(FATAL) gpu_data_manager_impl_private.cc(449) "GPU process isn't usable"`(事件日志 0x80000003)。**修复:`app.disableHardwareAcceleration()`**(改 SwiftShader 软件渲染,DLL 随包分发)。**切勿再加 `--in-process-gpu`**——虽也不崩但窗口一片空白。排查中先按"stdout 无控制台句柄"误判过一版(9b0973b,已被 6f38185 覆盖修正)。**且崩溃是盘符相关**:仅装在 E:(第二块 NVMe、NTFS 权限非标准:含显式 RESTRICTED + AppContainer SID)时复现;C:/D: 正常。Chromium 沙箱子进程对盘符 ACL 敏感。用户接受"装 C:/D:"、不改 E: 权限。**关键教训**:`pnpm preview`(有效终端 stdout + 正常启动上下文)永不暴露此类打包/GPU/盘符问题;且 **Claude Code agent 会话(非交互/Session-0)跑不起打包 GUI 的 GPU 路径,无法本地复现,只能靠用户 + 崩溃转储**。诊断法见 `src/main/index.ts` 注释与记忆 [[packaged-gui-gpu-crash]]:开 WER LocalDumps → `%LOCALAPPDATA%\CrashDumps` 全转储 → python `minidump` 解析 → 在转储字节里搜 `FATAL:...cc(NNN)` 字符串得确切 CHECK。`src/main/index.ts` 另加了 uncaughtException/whenReady().catch → 落 `userData/startup-crash.log`(+ `%TEMP%\pet-agent-startup.log`)+ 启动失败弹框,杜绝静默秒退。(装 `dist/*.exe` → 宠物渲染/托盘/对话/记忆落 `%APPDATA%\Pet-Agent\pets\luluka\memory`/编辑 persona 生效/拷走宠物文件夹可移植/改 activePetId 换宠物/卸载不丢数据);**pets/luluka 的 persona.md 引导**(据此作答/附URL/save_memory)因 gitignore 仅在磁盘,合并到 main 后需在 main 磁盘副本重新应用(承接 MVP-04/05 同款遗留)。
+
+- **MVP-07** 多模态识图(详见账本 `.superpowers/sdd/progress.md` 的 MVP-07 段,range 68a57ed..933e5c2):8 任务全部两阶段审查通过,自动化全绿(typecheck/test 228/**待真机验收**)。**关键设计**:图片走"渲染层 canvas 降采样→IPC→主进程 prepareImages 注入(chat.ts 不碰 electron)→挂当前 user 回合 ChatTurn.images→两 Provider 序列化"一条管线;图片**永不落盘**(transcript 只存 `[图片] 文本` + `{kind:'image'}` 标记,无 base64)。**Task 7 审出并已修的 Important**:截屏覆盖层 `ipcMain.on(OVERLAY_SUBMIT/CANCEL)` 未按 sender 过滤,并发两个覆盖层会串扰裁错图 → fix f48127d 加 `e.sender!==win.webContents` 守卫 + did-fail-load 兜底。遗留 Minor:截屏限当前显示器(多显示器 deferred);imagePrep/screenCapture 为 native 无单测;拖粘图 canvas 降采样丢透明通道(识图无碍);paste 未 preventDefault(富剪贴板可能同时粘文本进输入框,真机 UX 检查);addFiles 先降采样再 cap(大批拖入浪费 CPU);openaiCompat 错误提示路径整体无测试(需 mock SDK 抛错);宠物自主截屏工具未实现(留浏览器自动化,管线已预留)。**待真机肉眼验收**:选文件/拖粘/截屏三路识图、不支持视觉模型的换模型提示、transcript 无 base64——见计划 Task 9 Step 2 清单。
 
 ## 8. 给新会话的提醒
 

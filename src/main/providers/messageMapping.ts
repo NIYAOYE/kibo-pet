@@ -32,6 +32,13 @@ export function toAnthropicMessages(messages: AgentMessage[]): AnthropicMessageL
       const last = out[out.length - 1]
       if (last && last.role === 'user' && Array.isArray(last.content)) last.content.push(block)
       else out.push({ role: 'user', content: [block] })
+    } else if (m.role === 'user' && m.images && m.images.length > 0) {
+      const blocks: Array<Record<string, unknown>> = m.images.map((img) => ({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mimeType, data: img.dataBase64 }
+      }))
+      if (m.content) blocks.push({ type: 'text', text: m.content })
+      out.push({ role: 'user', content: blocks })
     } else {
       out.push({ role: m.role, content: m.content })
     }
@@ -58,6 +65,11 @@ export function toOpenAiMessages(system: string, messages: AgentMessage[]): Open
     } else if (m.role === 'tool_result') {
       // openai 无 is_error 概念:错误信息就在 content 文本里,模型可读
       out.push({ role: 'tool', tool_call_id: m.toolUseId, content: m.content })
+    } else if (m.role === 'user' && m.images && m.images.length > 0) {
+      const content: Array<Record<string, unknown>> = []
+      if (m.content) content.push({ type: 'text', text: m.content })
+      for (const img of m.images) content.push({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.dataBase64}` } })
+      out.push({ role: 'user', content })
     } else {
       out.push({ role: m.role, content: m.content })
     }

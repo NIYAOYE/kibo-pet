@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import type { LlmProvider, StreamChatRequest } from './llmProvider'
 import type { StreamChunk } from '@shared/llm'
 import { toOpenAiMessages } from './messageMapping'
+import { describeProviderError } from './errorHint'
 
 /** SDK 流分片的结构化最小集(供归一化与测试) */
 export interface OpenAiChunkLike {
@@ -71,7 +72,7 @@ export function createOpenAiCompatProvider(opts: { apiKey: string; baseURL?: str
         if (req.signal.aborted) return
         // 不支持 function calling 的端点/模型会在这里报错;文案指向解决办法
         const msg = String((err as Error)?.message ?? err)
-        yield { type: 'error', message: /tool|function/i.test(msg) ? `${msg}(当前模型可能不支持工具调用,请换支持 function calling 的模型)` : msg }
+        yield { type: 'error', message: describeProviderError(msg) }
       }
     }
   }

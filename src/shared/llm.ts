@@ -1,6 +1,13 @@
 export type ProviderKind = 'fake' | 'anthropic' | 'openai-compat'
 
-export interface ChatTurn { role: 'user' | 'assistant'; content: string }
+export interface ImagePart { mimeType: string; dataBase64: string }
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+  /** 仅对 role:'user' 有意义:经预处理的图像;永不持久化 */
+  images?: ImagePart[]
+}
 
 export interface ToolDef { name: string; description: string; inputSchema: Record<string, unknown> }
 export interface ToolUse { id: string; name: string; input: unknown }

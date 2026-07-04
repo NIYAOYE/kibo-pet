@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  validateMoveDelta, validateBool, validateChatSend,
+  validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg
 } from './ipcValidation'
 
@@ -68,5 +68,37 @@ describe('validateTestConnectionArg', () => {
   it('provider 或 key 非法 → null', () => {
     expect(validateTestConnectionArg({ provider: { kind: 'x', model: 'm' }, key: 'k' })).toBeNull()
     expect(validateTestConnectionArg({ provider: { kind: 'anthropic', model: 'm' }, key: 5 })).toBeNull()
+  })
+})
+
+describe('validateChatSend 附件', () => {
+  const okAtt = { kind: 'image', mimeType: 'image/jpeg', dataBase64: 'AAAA' }
+  it('放行合法图片附件', () => {
+    const r = validateChatSend({ text: '这是什么', attachments: [okAtt] })
+    expect(r?.attachments?.length).toBe(1)
+  })
+  it('允许纯图(text 空字符串)', () => {
+    expect(validateChatSend({ text: '', attachments: [okAtt] })).not.toBeNull()
+  })
+  it('拒绝非白名单 mimeType', () => {
+    expect(validateChatSend({ text: 'x', attachments: [{ ...okAtt, mimeType: 'image/svg+xml' }] })).toBeNull()
+  })
+  it('拒绝超张数', () => {
+    expect(validateChatSend({ text: 'x', attachments: Array(7).fill(okAtt) })).toBeNull()
+  })
+  it('拒绝超大单图', () => {
+    expect(validateChatSend({ text: 'x', attachments: [{ ...okAtt, dataBase64: 'a'.repeat(14_000_001) }] })).toBeNull()
+  })
+  it('拒绝 dataBase64 非字符串', () => {
+    expect(validateChatSend({ text: 'x', attachments: [{ kind: 'image', mimeType: 'image/png', dataBase64: 123 }] })).toBeNull()
+  })
+})
+
+describe('validateOverlayRect', () => {
+  it('放行有限数字矩形', () => {
+    expect(validateOverlayRect({ x: 1, y: 2, width: 3, height: 4 })).toEqual({ x: 1, y: 2, width: 3, height: 4 })
+  })
+  it('拒绝非数字', () => {
+    expect(validateOverlayRect({ x: 'a', y: 2, width: 3, height: 4 })).toBeNull()
   })
 })

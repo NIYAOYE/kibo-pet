@@ -1,6 +1,6 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, type Tray } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   IPC,
@@ -23,10 +23,13 @@ import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { prepareImage } from '../media/imagePrep'
+import { captureRegion } from '../media/screenCapture'
 import { DEFAULT_SETTINGS } from '@shared/llm'
+import type { ChatSendAttachment } from '@shared/ipc'
 import {
   validateMoveDelta, validateBool, validateChatSend,
-  validateKey, validateTestConnectionArg
+  validateKey, validateTestConnectionArg, MAX_ATTACHMENTS
 } from '@shared/ipcValidation'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
@@ -40,6 +43,8 @@ export function startShell(): void {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const petHtml = join(dirname, '../renderer/index.html')
   const dialogHtml = join(dirname, '../renderer/dialog.html')
+  const overlayHtml = join(dirname, '../renderer/regionOverlay.html')
+  const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
   // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
@@ -116,6 +121,7 @@ export function startShell(): void {
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
+    prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
     pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
@@ -174,6 +180,40 @@ export function startShell(): void {
     chat.handleSend(payload)
   })
   ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
+
+  function mimeFromPath(p: string): string {
+    const ext = p.slice(p.lastIndexOf('.') + 1).toLowerCase()
+    if (ext === 'png') return 'image/png'
+    if (ext === 'webp') return 'image/webp'
+    if (ext === 'gif') return 'image/gif'
+    return 'image/jpeg'
+  }
+
+  ipcMain.handle(IPC.MEDIA_PICK_IMAGE, async (): Promise<ChatSendAttachment[]> => {
+    const r = await electronDialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+    })
+    if (r.canceled) return []
+    const out: ChatSendAttachment[] = []
+    for (const p of r.filePaths.slice(0, MAX_ATTACHMENTS)) {
+      try {
+        const prepped = prepareImage({ mimeType: mimeFromPath(p), dataBase64: readFileSync(p).toString('base64') })
+        out.push({ kind: 'image', mimeType: prepped.mimeType, dataBase64: prepped.dataBase64 })
+      } catch (e) {
+        console.warn('[media] 读取/预处理图片失败', p, e)
+      }
+    }
+    return out
+  })
+
+  ipcMain.handle(IPC.MEDIA_CAPTURE_REGION, async (): Promise<ChatSendAttachment | null> => {
+    const [x, y] = petWin.getPosition()
+    const [w, h] = petWin.getSize()
+    const display = screen.getDisplayMatching({ x, y, width: w, height: h })
+    return captureRegion({ preload, overlayHtml, overlayUrl, display })
+  })
+
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
     settings: loadSettings(settingsFile),

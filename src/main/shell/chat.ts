@@ -1,5 +1,5 @@
-import type { ChatMessage, ChatSendPayload } from '@shared/ipc'
-import type { AppSettings, ProviderSettings } from '@shared/llm'
+import type { ChatMessage, ChatSendPayload, ChatSendAttachment } from '@shared/ipc'
+import type { AppSettings, ProviderSettings, ImagePart } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
 import { loadPersona } from '../persona/personaLoader'
 import { assemblePrompt } from '../agent/promptAssembler'
@@ -34,6 +34,8 @@ export function createChatStore(opts: {
   getSearchKey: () => string | null
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
+  /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
+  prepareImages: (attachments: ChatSendAttachment[]) => ImagePart[]
   emitPetEvent: (event: PetEvent) => void
   pushUpdate: (messages: ChatMessage[]) => void
   pushStream: (text: string) => void
@@ -54,9 +56,20 @@ export function createChatStore(opts: {
     cancel,
     handleSend(payload: ChatSendPayload): void {
       const text = (payload?.text ?? '').trim()
-      if (!text) return
+      const rawAtts = payload?.attachments ?? []
+      const hasImages = rawAtts.length > 0
+      if (!text && !hasImages) return
       cancel() // 新消息取消在途
-      opts.memory.appendMessage({ role: 'user', text })
+
+      // 单一预处理点:注入的 prepareImages 产出最终 ImagePart(图片永不落盘)
+      const images: ImagePart[] = hasImages ? opts.prepareImages(rawAtts) : []
+      // transcript 只存文本占位 + 标记;带图时前缀 [图片],让后续文本窗口知道这轮有图
+      const storedText = hasImages ? (text ? `[图片] ${text}` : '[图片]') : text
+      opts.memory.appendMessage(
+        hasImages
+          ? { role: 'user', text: storedText, attachments: rawAtts.map(() => ({ kind: 'image' as const })) }
+          : { role: 'user', text: storedText }
+      )
       opts.pushUpdate(opts.memory.messages())
       opts.emitPetEvent('messageSent')
 
@@ -90,6 +103,9 @@ export function createChatStore(opts: {
         const recalled = await opts.memory.recall(text, ctrl.signal)
         if (ctrl.signal.aborted) return
         const { system, messages } = assemblePrompt(persona, opts.memory.messages(), opts.skills.list(), recalled)
+        // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
+        const lastUser = messages[messages.length - 1]
+        if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
         const res = await runAgent({
           provider,
           system,

@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; cursor: crosshair; user-select: none; }
+      #shot { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: fill; }
+      #mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); }
+      #sel { position: fixed; display: none; border: 2px solid #6ea8ff;
+             background: rgba(110, 168, 255, 0.15); box-shadow: 0 0 0 9999px rgba(0,0,0,0.4); }
+      #hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+              color: #fff; font: 13px system-ui; background: rgba(0,0,0,0.6);
+              padding: 6px 12px; border-radius: 8px; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <img id="shot" />
+    <div id="mask"></div>
+    <div id="sel"></div>
+    <div id="hint">拖动框选区域发给宠物 · Esc 取消</div>
+    <script type="module" src="./regionOverlay.ts"></script>
+  </body>
+</html>

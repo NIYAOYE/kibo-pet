@@ -54,3 +54,39 @@ describe('toOpenAiMessages', () => {
     expect(out[4]).toEqual({ role: 'tool', tool_call_id: 'tu_2', content: '结果B' })
   })
 })
+
+describe('图像序列化', () => {
+  const img = { mimeType: 'image/jpeg', dataBase64: 'QUJD' }
+
+  it('anthropic:user 图在前、文字在后', () => {
+    const out = toAnthropicMessages([{ role: 'user', content: '这是什么', images: [img] }])
+    expect(out[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } },
+        { type: 'text', text: '这是什么' }
+      ]
+    })
+  })
+
+  it('openai-compat:user 文字在前、image_url data URL 在后', () => {
+    const out = toOpenAiMessages('sys', [{ role: 'user', content: '这是什么', images: [img] }])
+    expect(out[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: '这是什么' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,QUJD' } }
+      ]
+    })
+  })
+
+  it('无图 user 回合行为不变(字符串 content)', () => {
+    expect(toAnthropicMessages([{ role: 'user', content: 'hi' }])[0]).toEqual({ role: 'user', content: 'hi' })
+    expect(toOpenAiMessages('s', [{ role: 'user', content: 'hi' }])[1]).toEqual({ role: 'user', content: 'hi' })
+  })
+
+  it('纯图无文字:不产出空 text block', () => {
+    const out = toAnthropicMessages([{ role: 'user', content: '', images: [img] }])
+    expect((out[0].content as unknown[]).length).toBe(1)
+  })
+})

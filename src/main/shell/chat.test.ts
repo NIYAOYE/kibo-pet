@@ -36,6 +36,7 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[]) {
     getKey: () => 'k',
     getSearchKey: () => null,
     makeProvider: () => recording(provider, seen),
+    prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     emitPetEvent: () => {},
     pushUpdate: () => {},
     pushStream: () => {},
@@ -90,5 +91,45 @@ describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
     await first.finished
     const second = makeStore(createFakeProvider({ reply: '好' }), [])
     expect(second.store.messages().map((m) => m.text)).toEqual(['第一句', '好'])
+  })
+})
+
+describe('chat 图像', () => {
+  const att = { kind: 'image' as const, mimeType: 'image/jpeg', dataBase64: 'QUJD' }
+
+  it('图挂在当前 user 回合,传给 provider', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: '看到啦' }), seen)
+    store.handleSend({ text: '这是什么', attachments: [att] })
+    await finished
+    const last = seen[0].messages[seen[0].messages.length - 1]
+    expect(last.role).toBe('user')
+    expect((last as { images?: unknown[] }).images?.length).toBe(1)
+  })
+
+  it('transcript 用户回合存 [图片] 前缀,不含 base64', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: '看看', attachments: [att] })
+    await finished
+    const raw = readFileSync(join(dir, 'memory', 'transcript.json'), 'utf-8')
+    expect(raw).not.toContain('QUJD')
+    const t = JSON.parse(raw)
+    expect(t.messages[0].text).toBe('[图片] 看看')
+  })
+
+  it('纯图(空文字)也能发送', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: '', attachments: [att] })
+    await finished
+    expect(seen.length).toBe(1)
+  })
+
+  it('无文字无图直接忽略', () => {
+    const seen: StreamChatRequest[] = []
+    const { store } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: '   ' })
+    expect(seen.length).toBe(0)
   })
 })

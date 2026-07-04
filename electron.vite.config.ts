@@ -19,7 +19,8 @@ export default defineConfig({
         input: {
           index: resolve('src/renderer/index.html'),
           dialog: resolve('src/renderer/dialog.html'),
-          settings: resolve('src/renderer/settings.html')
+          settings: resolve('src/renderer/settings.html'),
+          overlay: resolve('src/renderer/regionOverlay.html')
         }
       }
     },
