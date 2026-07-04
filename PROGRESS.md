@@ -7,7 +7,7 @@
 
 ## 1. 一句话现状
 
-一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-06(打包 + 可移植宠物包 + 安全加固)代码完成、打包产出验证通过,待真机安装验收**:electron-builder 出 Windows NSIS 安装包(每用户免管理员、未签名);宠物做成自包含可移植包(首启把内置宠物播种到 `userData/pets/<activePetId>/`,该宠物记忆收进同目录 → 整个文件夹可拷走;旧全局 `userData/memory` 一次性迁移),`activePetId` 可配置(schemaVersion 4);§11.2 IPC payload 校验落地(`src/shared/ipcValidation.ts` + shell 各入口)。此前 **MVP-05** 分层记忆已真机验收通过。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。
+一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-06(打包 + 可移植宠物包 + 安全加固)代码完成、打包产出验证通过,待真机安装验收**:electron-builder 出 Windows NSIS 安装包(每用户免管理员、未签名);宠物做成自包含可移植包(首启把内置宠物播种到 `userData/pets/<activePetId>/`,该宠物记忆收进同目录 → 整个文件夹可拷走;旧全局 `userData/memory` 一次性迁移),`activePetId` 可配置(schemaVersion 4);§11.2 IPC payload 校验落地(`src/shared/ipcValidation.ts` + shell 各入口)。此前 **MVP-05** 分层记忆已真机验收通过。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。**MVP-07 多模态识图 + MVP-08 文字加工助手皆代码完成、全审查通过、待真机验收**。
 
 ## 2. 怎么跑起来
 
@@ -45,14 +45,14 @@ src/
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
               index.ts(应用入口 → startShell)
               providers/   (llmProvider 接口 + fakeProvider〔支持 script 多轮脚本〕+ anthropicProvider + openaiCompatProvider + createProvider;MVP-04:messageMapping〔AgentMessage→两 SDK 消息形状,含测试〕+ 两 provider 流式 tool_use/tool_calls 归一化,含测试;MVP-05:embedder.ts〔openai-compat /embeddings 客户端 + fake embedder + key 复用解析,含测试〕)
-              tools/       (MVP-04:toolSpec/toolRegistry〔校验+错误回灌不抛,含测试〕+ webSearch〔不可信包裹+据此作答+来源附URL+状态播报,含测试〕+ readSkill〔含测试〕+ searchBackends/〔searchBackend 接口 + duckduckgo 免key HTML解析〔fixture 单测〕+ tavily〔key注入,含测试〕〕;MVP-05:saveMemory〔写事实库,含测试〕)
+              tools/       (MVP-04:toolSpec/toolRegistry〔校验+错误回灌不抛,含测试〕+ webSearch〔不可信包裹+据此作答+来源附URL+状态播报,含测试〕+ readSkill〔含测试〕+ searchBackends/〔searchBackend 接口 + duckduckgo 免key HTML解析〔fixture 单测〕+ tavily〔key注入,含测试〕〕;MVP-05:saveMemory〔写事实库,含测试〕;MVP-08:clipboardTools〔read_clipboard/write_clipboard 工具,含测试〕)
               skills/      (MVP-04:skillLoader — 扫描 skills/ + frontmatter 纯解析,坏文件跳过/目录缺失退化空清单,含测试)
               agent/       (promptAssembler〔persona+对话窗口→system/messages;MVP-04 加可用技能清单段;MVP-05 加用户记忆(facts+summary)上下文,含测试〕+ agentLoop〔MVP-04 升级为 ≤6 轮工具回灌循环:取消贯穿工具执行/每轮独立超时/工具报错回灌不终止;MVP-05 集成 save_memory,含测试〕+ testConnection)
               persona/     (personaLoader — persona.md 分块解析 + 缓存,含测试)
               config/      (settings〔原子写+schemaVersion,v1→v2 迁移补 search,v2→v3 迁移补 memory embedding,含测试〕+ secrets〔safeStorage 加密,可注入,含测试;MVP-04 第二实例存 Tavily key;MVP-05 第三实例存 embedding key〕)
               memory/      (MVP-05:factStore/vectorIndex/transcriptStore/workingSummary/memoryManager — 事实库/向量索引/对话历史/工作摘要、权威源 facts.json 及可重建索引、与 agent/embedder/persona 交互)
               media/       (MVP-07:imageResize〔纯 targetSize 单测〕+ imagePrep〔nativeImage 降采样≤1568/重编码 base64,含 electron 故无单测〕+ screenCapture〔desktopCapturer 抓当前屏 + 全屏覆盖层框选 + crop,按 sender 过滤事件〕)
-              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ settingsWindow + 全部 IPC 注册)
+              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager;MVP-08:runQuickAction + 剪贴板工具挂进 registry〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ quickActions.ts〔MVP-08:QUICK_ACTIONS 四预设〕+ settingsWindow + 全部 IPC 注册)
   preload/    index.ts(contextBridge 暴露 petApi / chatApi〔含 onStream/onDone/onError/onStatus+cancel〕/ settingsApi〔含 setSearchKey〕)
   renderer/   index.html(含 CSP)
               main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透)
@@ -89,6 +89,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 记忆引导 + save_memory 工具
 - ✅ **MVP-06** electron-builder NSIS 打包(每用户免管理员/未签名)+ 可移植宠物包(首启播种 userData + 记忆随宠物 + activePetId 可配 schemaVersion 4 + 旧 memory 一次性迁移)+ §11.2 IPC payload 校验加固 —— 真机验收通过(C:/D: 安装正常运行)
 - ✅ **MVP-07** 多模态识图 —— 代码完成 + 全 8 任务两阶段审查通过、待真机验收:归一化图像管线(`ChatTurn.images` + `imagePrep` nativeImage 降采样≤1568/重编码)+ 两 Provider 图像序列化(anthropic base64 block / openai image_url data URL)+ 四种输入(选文件/拖拽/粘贴/截屏框选覆盖层)+ 缩略图带 UI + 视觉能力错误兜底 + 图片永不落盘(transcript 只存 `[图片]` 占位)。测试 228/228。
+- ✅ **MVP-08** 文字加工助手 —— 代码完成 + 全 7 任务审查通过、待真机验收:剪贴板工具(read_clipboard/write_clipboard 信息头防注入)+ 托盘快捷加工菜单(translate/summarize/polish/explain)+ `autoCopyResult` 可选写回 + 原文仅喂当轮不落盘。测试 243/243。
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化;宠物自主截屏工具(承接 MVP-07 管线,配合浏览器自动化)。
 
@@ -108,6 +109,8 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - **MVP-06 真机崩溃 bug(已修复,最终版 6f38185)**:打包版双击秒退闪崩。**真正根因**(靠 WER minidump 定位,非事件日志能看出):GPU 子进程以 `0xC0000135`(找不到 DLL)退出 → 主进程 `LOG(FATAL) gpu_data_manager_impl_private.cc(449) "GPU process isn't usable"`(事件日志 0x80000003)。**修复:`app.disableHardwareAcceleration()`**(改 SwiftShader 软件渲染,DLL 随包分发)。**切勿再加 `--in-process-gpu`**——虽也不崩但窗口一片空白。排查中先按"stdout 无控制台句柄"误判过一版(9b0973b,已被 6f38185 覆盖修正)。**且崩溃是盘符相关**:仅装在 E:(第二块 NVMe、NTFS 权限非标准:含显式 RESTRICTED + AppContainer SID)时复现;C:/D: 正常。Chromium 沙箱子进程对盘符 ACL 敏感。用户接受"装 C:/D:"、不改 E: 权限。**关键教训**:`pnpm preview`(有效终端 stdout + 正常启动上下文)永不暴露此类打包/GPU/盘符问题;且 **Claude Code agent 会话(非交互/Session-0)跑不起打包 GUI 的 GPU 路径,无法本地复现,只能靠用户 + 崩溃转储**。诊断法见 `src/main/index.ts` 注释与记忆 [[packaged-gui-gpu-crash]]:开 WER LocalDumps → `%LOCALAPPDATA%\CrashDumps` 全转储 → python `minidump` 解析 → 在转储字节里搜 `FATAL:...cc(NNN)` 字符串得确切 CHECK。`src/main/index.ts` 另加了 uncaughtException/whenReady().catch → 落 `userData/startup-crash.log`(+ `%TEMP%\pet-agent-startup.log`)+ 启动失败弹框,杜绝静默秒退。(装 `dist/*.exe` → 宠物渲染/托盘/对话/记忆落 `%APPDATA%\Pet-Agent\pets\luluka\memory`/编辑 persona 生效/拷走宠物文件夹可移植/改 activePetId 换宠物/卸载不丢数据);**pets/luluka 的 persona.md 引导**(据此作答/附URL/save_memory)因 gitignore 仅在磁盘,合并到 main 后需在 main 磁盘副本重新应用(承接 MVP-04/05 同款遗留)。
 
 - **MVP-07** 多模态识图(详见账本 `.superpowers/sdd/progress.md` 的 MVP-07 段,range 68a57ed..933e5c2):8 任务全部两阶段审查通过,自动化全绿(typecheck/test 228/**待真机验收**)。**关键设计**:图片走"渲染层 canvas 降采样→IPC→主进程 prepareImages 注入(chat.ts 不碰 electron)→挂当前 user 回合 ChatTurn.images→两 Provider 序列化"一条管线;图片**永不落盘**(transcript 只存 `[图片] 文本` + `{kind:'image'}` 标记,无 base64)。**Task 7 审出并已修的 Important**:截屏覆盖层 `ipcMain.on(OVERLAY_SUBMIT/CANCEL)` 未按 sender 过滤,并发两个覆盖层会串扰裁错图 → fix f48127d 加 `e.sender!==win.webContents` 守卫 + did-fail-load 兜底。遗留 Minor:截屏限当前显示器(多显示器 deferred);imagePrep/screenCapture 为 native 无单测;拖粘图 canvas 降采样丢透明通道(识图无碍);paste 未 preventDefault(富剪贴板可能同时粘文本进输入框,真机 UX 检查);addFiles 先降采样再 cap(大批拖入浪费 CPU);openaiCompat 错误提示路径整体无测试(需 mock SDK 抛错);宠物自主截屏工具未实现(留浏览器自动化,管线已预留)。**待真机肉眼验收**:选文件/拖粘/截屏三路识图、不支持视觉模型的换模型提示、transcript 无 base64——见计划 Task 9 Step 2 清单。
+
+- **MVP-08** 文字加工助手(详见账本 `.superpowers/sdd/progress.md` 的 MVP-08 段):7 任务全部审查通过,自动化全绿(typecheck/test 243/**待真机验收**)。**关键设计**:剪贴板工具注入式无 electron import + 信息头防注入 + 占位持久化不落字节 + 原文仅喂当轮 + autoCopyResult 可选写回;托盘菜单从 QUICK_ACTIONS 同源生成;快捷动作刻意不联网不进记忆。**遗留 Minor**:未知 quick-action id 静默 no-op,无 pushError 反馈;MAX_CLIPBOARD_CHARS 截断路径与未知 id 路径均无专门测试(回灰但无直接场景覆盖);托盘菜单与设置 UI 无单测,靠肉眼验收。**待真机肉眼验收**:託盤菜單触发、设置勾选框生效、文本工具完整流程(读剪贴板/快捷加工/结果写回可选)。真机 GUI 验收 = 人类待办(后台环境无显示器,依项目既定惯例同 MVP-06/07)。
 
 ## 8. 给新会话的提醒
 
