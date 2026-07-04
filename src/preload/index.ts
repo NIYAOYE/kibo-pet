@@ -55,7 +55,10 @@ const settingsApi: SettingsApi = {
   setSearchKey: (key: string) => ipcRenderer.invoke(IPC.SET_SEARCH_KEY, key),
   setEmbeddingKey: (key: string) => ipcRenderer.invoke(IPC.SET_EMBEDDING_KEY, key),
   openMemoryDir: (): void => ipcRenderer.send(IPC.OPEN_MEMORY_DIR),
-  testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key })
+  testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key }),
+  listPets: () => ipcRenderer.invoke(IPC.LIST_PETS),
+  importPet: () => ipcRenderer.invoke(IPC.IMPORT_PET),
+  relaunch: (): void => ipcRenderer.send(IPC.RELAUNCH_APP)
 }
 
 const mediaApi: MediaApi = {

@@ -23,6 +23,7 @@ import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { listPets, importPetFolder } from '../pets/petCatalog'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
 import { DEFAULT_SETTINGS } from '@shared/llm'
@@ -241,6 +242,14 @@ export function startShell(): void {
     if (!arg) return { ok: false, error: 'invalid request' }
     return testConnection(arg.provider, arg.key)
   })
+  const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
+  ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
+  ipcMain.handle(IPC.IMPORT_PET, async () => {
+    const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (r.canceled || r.filePaths.length === 0) return null
+    return importPetFolder(r.filePaths[0], petCatalogDirs)
+  })
+  ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
     const collapsed = validateBool(raw)
     if (collapsed === null) return

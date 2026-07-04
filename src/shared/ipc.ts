@@ -31,7 +31,10 @@ export const IPC = {
   MEDIA_CAPTURE_REGION: 'media:capture-region',
   OVERLAY_INIT: 'overlay:init',
   OVERLAY_SUBMIT: 'overlay:submit',
-  OVERLAY_CANCEL: 'overlay:cancel'
+  OVERLAY_CANCEL: 'overlay:cancel',
+  LIST_PETS: 'pets:list',
+  IMPORT_PET: 'pets:import',
+  RELAUNCH_APP: 'app:relaunch'
 } as const
 
 export interface LoadedPet {
@@ -93,6 +96,12 @@ export interface ChatApi {
 export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean }
 export interface TestResult { ok: boolean; error?: string }
 
+export interface PetSummary { id: string; displayName: string; description: string }
+export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists' | 'copy-failed'
+export type ImportResult =
+  | { ok: true; pet: PetSummary }
+  | { ok: false; reason: ImportReason; message: string }
+
 export interface SettingsApi {
   getSettings(): Promise<SettingsSnapshot>
   setSettings(settings: AppSettings): Promise<void>
@@ -101,6 +110,9 @@ export interface SettingsApi {
   setEmbeddingKey(key: string): Promise<boolean>
   openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
+  listPets(): Promise<PetSummary[]>
+  importPet(): Promise<ImportResult | null>
+  relaunch(): void
 }
 
 declare global {
