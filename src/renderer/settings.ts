@@ -12,8 +12,8 @@ const searchKey = $<HTMLInputElement>('searchKey')
 const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
+const autoCopyResult = $<HTMLInputElement>('autoCopyResult')
 let currentActivePetId = 'luluka' // default, will be overwritten on init
-let currentAutoCopyResult = false // default, will be overwritten on init
 
 for (const p of PRESETS) {
   const opt = document.createElement('option')
@@ -82,7 +82,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
       memory: { embedding },
-      textTools: { autoCopyResult: currentAutoCopyResult }
+      textTools: { autoCopyResult: autoCopyResult.checked }
     })
     status.textContent = '✓ 已保存'
   } catch (err) {
@@ -94,7 +94,6 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   currentActivePetId = snap.settings.activePetId
-  currentAutoCopyResult = snap.settings.textTools.autoCopyResult
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
   if (snap.settings.provider.baseURL) baseURL.value = snap.settings.provider.baseURL
@@ -107,5 +106,6 @@ void (async () => {
     embModel.value = snap.settings.memory.embedding.model
   }
   if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
+  autoCopyResult.checked = snap.settings.textTools.autoCopyResult
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
 })()
