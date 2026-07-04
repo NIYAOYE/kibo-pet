@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, type Tray } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -122,6 +122,7 @@ export function startShell(): void {
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
+    clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
     pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
@@ -248,7 +249,13 @@ export function startShell(): void {
   ipcMain.on(IPC.QUIT, () => app.quit())
 
   registerHotkeys(toggleDialog)
-  tray = createTray(join(appRoot, 'resources/tray.png'), openSettings)
+  tray = createTray(join(appRoot, 'resources/tray.png'), {
+    onSettings: openSettings,
+    onQuickAction: (id) => {
+      if (!dialog.isOpen()) dialog.toggle(petBounds) // 没开先弹出,用户才看得到流式结果
+      chat.runQuickAction(id)
+    }
+  })
 
   if (!secrets.hasKey()) openSettings()
 
