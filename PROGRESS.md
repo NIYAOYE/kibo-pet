@@ -1,6 +1,6 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-03 · 状态:**MVP-07(多模态识图)代码完成 + 全任务审查通过、待真机验收**;此前 MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
+> 更新时间:2026-07-04 · 状态:**MVP-08(文字加工助手)代码完成 + 全任务审查通过、待真机验收**;此前 MVP-07(多模态识图)代码完成 + 全审查通过、待真机验收;MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
@@ -110,7 +110,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 
 - **MVP-07** 多模态识图(详见账本 `.superpowers/sdd/progress.md` 的 MVP-07 段,range 68a57ed..933e5c2):8 任务全部两阶段审查通过,自动化全绿(typecheck/test 228/**待真机验收**)。**关键设计**:图片走"渲染层 canvas 降采样→IPC→主进程 prepareImages 注入(chat.ts 不碰 electron)→挂当前 user 回合 ChatTurn.images→两 Provider 序列化"一条管线;图片**永不落盘**(transcript 只存 `[图片] 文本` + `{kind:'image'}` 标记,无 base64)。**Task 7 审出并已修的 Important**:截屏覆盖层 `ipcMain.on(OVERLAY_SUBMIT/CANCEL)` 未按 sender 过滤,并发两个覆盖层会串扰裁错图 → fix f48127d 加 `e.sender!==win.webContents` 守卫 + did-fail-load 兜底。遗留 Minor:截屏限当前显示器(多显示器 deferred);imagePrep/screenCapture 为 native 无单测;拖粘图 canvas 降采样丢透明通道(识图无碍);paste 未 preventDefault(富剪贴板可能同时粘文本进输入框,真机 UX 检查);addFiles 先降采样再 cap(大批拖入浪费 CPU);openaiCompat 错误提示路径整体无测试(需 mock SDK 抛错);宠物自主截屏工具未实现(留浏览器自动化,管线已预留)。**待真机肉眼验收**:选文件/拖粘/截屏三路识图、不支持视觉模型的换模型提示、transcript 无 base64——见计划 Task 9 Step 2 清单。
 
-- **MVP-08** 文字加工助手(详见账本 `.superpowers/sdd/progress.md` 的 MVP-08 段):7 任务全部审查通过,自动化全绿(typecheck/test 243/**待真机验收**)。**关键设计**:剪贴板工具注入式无 electron import + 信息头防注入 + 占位持久化不落字节 + 原文仅喂当轮 + autoCopyResult 可选写回;托盘菜单从 QUICK_ACTIONS 同源生成;快捷动作刻意不联网不进记忆。**遗留 Minor**:未知 quick-action id 静默 no-op,无 pushError 反馈;MAX_CLIPBOARD_CHARS 截断路径与未知 id 路径均无专门测试(回灰但无直接场景覆盖);托盘菜单与设置 UI 无单测,靠肉眼验收。**待真机肉眼验收**:託盤菜單触发、设置勾选框生效、文本工具完整流程(读剪贴板/快捷加工/结果写回可选)。真机 GUI 验收 = 人类待办(后台环境无显示器,依项目既定惯例同 MVP-06/07)。
+- **MVP-08** 文字加工助手(详见账本 `.superpowers/sdd/progress.md` 的 MVP-08 段):7 任务全部审查通过,自动化全绿(typecheck/test 243/**待真机验收**)。**关键设计**:剪贴板工具注入式无 electron import + 信息头防注入 + 占位持久化不落字节 + 原文仅喂当轮 + autoCopyResult 可选写回;托盘菜单从 QUICK_ACTIONS 同源生成;快捷动作刻意不联网不进记忆。**遗留 Minor**:未知 quick-action id 静默 no-op,无 pushError 反馈;MAX_CLIPBOARD_CHARS 截断路径与未知 id 路径均无专门测试(回灰但无直接场景覆盖);托盘菜单与设置 UI 无单测,靠肉眼验收。**待真机肉眼验收**:托盘菜单触发、设置勾选框生效、文本工具完整流程(读剪贴板/快捷加工/结果写回可选)。真机 GUI 验收 = 人类待办(后台环境无显示器,依项目既定惯例同 MVP-06/07)。
 
 ## 8. 给新会话的提醒
 
