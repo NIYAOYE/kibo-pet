@@ -21,6 +21,13 @@
   <body>
     <div id="app">
       <h1>宠物大脑设置</h1>
+      <label>当前宠物(重启后生效)
+        <select id="petSelect"></select>
+      </label>
+      <div class="row">
+        <button id="importPet" class="secondary">导入宠物包…</button>
+        <button id="relaunch" class="secondary" style="display:none">立即重启</button>
+      </div>
       <label>Provider 预设
         <select id="preset"></select>
       </label>
