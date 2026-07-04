@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC, type PetApi, type ChatApi, type LoadedPet, type MoveDelta,
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
-  type SettingsApi
+  type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
+  type OverlayInit, type OverlayRect
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -57,6 +58,22 @@ const settingsApi: SettingsApi = {
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key })
 }
 
+const mediaApi: MediaApi = {
+  pickImage: (): Promise<ChatSendAttachment[]> => ipcRenderer.invoke(IPC.MEDIA_PICK_IMAGE),
+  captureRegion: (): Promise<ChatSendAttachment | null> => ipcRenderer.invoke(IPC.MEDIA_CAPTURE_REGION)
+}
+
+const overlayApi: OverlayApi = {
+  onInit: (cb: (d: OverlayInit) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.OVERLAY_INIT)
+    ipcRenderer.on(IPC.OVERLAY_INIT, (_e, d: OverlayInit) => cb(d))
+  },
+  submit: (rect: OverlayRect): void => ipcRenderer.send(IPC.OVERLAY_SUBMIT, rect),
+  cancel: (): void => ipcRenderer.send(IPC.OVERLAY_CANCEL)
+}
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
+contextBridge.exposeInMainWorld('mediaApi', mediaApi)
+contextBridge.exposeInMainWorld('overlayApi', overlayApi)

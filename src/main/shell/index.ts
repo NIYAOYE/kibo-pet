@@ -1,6 +1,6 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, type Tray } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   IPC,
@@ -25,9 +25,10 @@ import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
 import { prepareImage } from '../media/imagePrep'
 import { DEFAULT_SETTINGS } from '@shared/llm'
+import type { ChatSendAttachment } from '@shared/ipc'
 import {
   validateMoveDelta, validateBool, validateChatSend,
-  validateKey, validateTestConnectionArg
+  validateKey, validateTestConnectionArg, MAX_ATTACHMENTS
 } from '@shared/ipcValidation'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
@@ -176,6 +177,33 @@ export function startShell(): void {
     chat.handleSend(payload)
   })
   ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
+
+  function mimeFromPath(p: string): string {
+    const ext = p.slice(p.lastIndexOf('.') + 1).toLowerCase()
+    if (ext === 'png') return 'image/png'
+    if (ext === 'webp') return 'image/webp'
+    if (ext === 'gif') return 'image/gif'
+    return 'image/jpeg'
+  }
+
+  ipcMain.handle(IPC.MEDIA_PICK_IMAGE, async (): Promise<ChatSendAttachment[]> => {
+    const r = await electronDialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+    })
+    if (r.canceled) return []
+    const out: ChatSendAttachment[] = []
+    for (const p of r.filePaths.slice(0, MAX_ATTACHMENTS)) {
+      try {
+        const prepped = prepareImage({ mimeType: mimeFromPath(p), dataBase64: readFileSync(p).toString('base64') })
+        out.push({ kind: 'image', mimeType: prepped.mimeType, dataBase64: prepped.dataBase64 })
+      } catch (e) {
+        console.warn('[media] 读取/预处理图片失败', p, e)
+      }
+    }
+    return out
+  })
+
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
     settings: loadSettings(settingsFile),
