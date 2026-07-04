@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
                    font-family: system-ui, sans-serif; font-size: 13px; }
@@ -51,14 +51,27 @@
                background: rgba(255, 255, 255, 0.16); color: #f0f0f4; }
       #send { display: none; }
       #panel.expanded #send { display: inline-block; }
+
+      /* 待发缩略图带 */
+      #attach { display: none; flex-shrink: 0; gap: 6px; flex-wrap: wrap; -webkit-app-region: no-drag; }
+      #attach .thumb { position: relative; width: 44px; height: 44px; }
+      #attach .thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+      #attach .thumb button { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;
+             padding: 0; line-height: 14px; border-radius: 8px; font-size: 11px;
+             background: rgba(30,30,40,0.95); color: #fff; }
+      #bar button.icon { padding: 6px 7px; }
+      .msg .imgmark { opacity: 0.85; margin-right: 4px; }
     </style>
   </head>
   <body>
     <div id="panel" class="collapsed">
       <div id="bubble"></div>
       <div id="history"></div>
+      <div id="attach"></div>
       <div id="bar">
         <input id="input" type="text" placeholder="说点什么…" />
+        <button id="pick" class="icon" title="选择图片">＋</button>
+        <button id="shot" class="icon" title="框选截屏">📷</button>
         <button id="toggle" title="展开">⤢</button>
         <button id="send">发送</button>
       </div>
