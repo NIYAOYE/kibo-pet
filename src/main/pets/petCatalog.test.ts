@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { isValidPetId, listPets } from './petCatalog'
+import { isValidPetId, listPets, importPetFolder } from './petCatalog'
 
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), 'petcatalog-'))
@@ -77,5 +77,83 @@ describe('listPets', () => {
   it('来源目录不存在 → 返回空数组不抛', () => {
     const out = listPets({ bundledPetsDir: join(tmpdir(), 'no-such-x'), userPetsDir: join(tmpdir(), 'no-such-y') })
     expect(out).toEqual([])
+  })
+})
+
+describe('importPetFolder', () => {
+  it('合法包 → 复制到 userPetsDir/<id> 并返回 summary', () => {
+    const src = scratch()
+    const user = scratch()
+    const bundled = scratch()
+    const petSrc = makePet(src, 'newpet', '新宠物')
+    const r = importPetFolder(petSrc, { bundledPetsDir: bundled, userPetsDir: user })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.pet).toEqual({ id: 'newpet', displayName: '新宠物', description: 'newpet 的描述' })
+    expect(existsSync(join(user, 'newpet', 'pet.json'))).toBe(true)
+    expect(existsSync(join(user, 'newpet', 'spritesheet.webp'))).toBe(true)
+  })
+
+  it('缺 pet.json → no-manifest,不复制', () => {
+    const src = scratch()
+    const user = scratch()
+    mkdirSync(join(src, 'x'), { recursive: true })
+    const r = importPetFolder(join(src, 'x'), { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(r).toMatchObject({ ok: false, reason: 'no-manifest' })
+  })
+
+  it('pet.json 字段不合法 → invalid-manifest', () => {
+    const src = scratch()
+    const dir = join(src, 'x'); mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify({ id: 'x' }), 'utf-8')
+    const r = importPetFolder(dir, { bundledPetsDir: scratch(), userPetsDir: scratch() })
+    expect(r).toMatchObject({ ok: false, reason: 'invalid-manifest' })
+  })
+
+  it('spritesheet 缺失 → missing-spritesheet', () => {
+    const src = scratch()
+    const dir = join(src, 'x'); mkdirSync(dir, { recursive: true })
+    const manifest = {
+      id: 'x', displayName: 'X', description: 'd', spritesheetPath: 'spritesheet.webp',
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const r = importPetFolder(dir, { bundledPetsDir: scratch(), userPetsDir: scratch() })
+    expect(r).toMatchObject({ ok: false, reason: 'missing-spritesheet' })
+  })
+
+  it('id 含路径穿越 → bad-id', () => {
+    const src = scratch()
+    const dir = join(src, 'x'); mkdirSync(dir, { recursive: true })
+    const manifest = {
+      id: '../evil', displayName: 'X', description: 'd', spritesheetPath: 'spritesheet.webp',
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    writeFileSync(join(dir, 'spritesheet.webp'), 'x', 'utf-8')
+    const r = importPetFolder(dir, { bundledPetsDir: scratch(), userPetsDir: scratch() })
+    expect(r).toMatchObject({ ok: false, reason: 'bad-id' })
+  })
+
+  it('id 与 userData 已有宠物冲突 → id-exists,不覆盖', () => {
+    const src = scratch()
+    const user = scratch()
+    const petSrc = makePet(src, 'dup', '导入版')
+    makePet(user, 'dup', '原有版') // userData 已存在
+    const r = importPetFolder(petSrc, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(r).toMatchObject({ ok: false, reason: 'id-exists' })
+    // 原有目录未被覆盖
+    const kept = JSON.parse(readFileSync(join(user, 'dup', 'pet.json'), 'utf-8'))
+    expect(kept.displayName).toBe('原有版')
+  })
+
+  it('id 与内置宠物冲突 → id-exists', () => {
+    const src = scratch()
+    const bundled = scratch()
+    const petSrc = makePet(src, 'youka', '导入幽香')
+    makePet(bundled, 'youka', '内置幽香')
+    const r = importPetFolder(petSrc, { bundledPetsDir: bundled, userPetsDir: scratch() })
+    expect(r).toMatchObject({ ok: false, reason: 'id-exists' })
   })
 })

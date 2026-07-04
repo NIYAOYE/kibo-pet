@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parsePetManifest } from '@shared/petPackage'
 
@@ -42,4 +42,40 @@ export function listPets(dirs: { bundledPetsDir: string; userPetsDir: string }):
   for (const s of scanDir(dirs.bundledPetsDir)) byId.set(s.id, s)
   for (const s of scanDir(dirs.userPetsDir)) byId.set(s.id, s) // userData 覆盖内置
   return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en'))
+}
+
+export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists'
+export type ImportResult =
+  | { ok: true; pet: PetSummary }
+  | { ok: false; reason: ImportReason; message: string }
+
+/**
+ * 校验外部宠物文件夹并导入到 userData/pets/<id>。校验链任一失败即返回,不复制。
+ * 冲突(id 已存在于内置或 userData)一律拒绝,绝不覆盖(护住 persona/memory)。
+ */
+export function importPetFolder(
+  srcDir: string,
+  dirs: { bundledPetsDir: string; userPetsDir: string }
+): ImportResult {
+  const manifestPath = join(srcDir, 'pet.json')
+  if (!existsSync(manifestPath)) {
+    return { ok: false, reason: 'no-manifest', message: '所选文件夹里没有 pet.json' }
+  }
+  let manifest
+  try {
+    manifest = parsePetManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+  } catch (e) {
+    return { ok: false, reason: 'invalid-manifest', message: `pet.json 不合法:${(e as Error).message}` }
+  }
+  if (!existsSync(join(srcDir, manifest.spritesheetPath))) {
+    return { ok: false, reason: 'missing-spritesheet', message: `找不到精灵图:${manifest.spritesheetPath}` }
+  }
+  if (!isValidPetId(manifest.id)) {
+    return { ok: false, reason: 'bad-id', message: `pet.json 的 id 非法:${manifest.id}(只允许字母数字下划线连字符)` }
+  }
+  if (existsSync(join(dirs.bundledPetsDir, manifest.id)) || existsSync(join(dirs.userPetsDir, manifest.id))) {
+    return { ok: false, reason: 'id-exists', message: `id「${manifest.id}」已存在,请修改宠物包 pet.json 的 id 后重试` }
+  }
+  cpSync(srcDir, join(dirs.userPetsDir, manifest.id), { recursive: true })
+  return { ok: true, pet: { id: manifest.id, displayName: manifest.displayName, description: manifest.description } }
 }
