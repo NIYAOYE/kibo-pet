@@ -44,7 +44,8 @@ export async function captureRegion(opts: {
       if (!win.isDestroyed()) win.close()
       resolve(v)
     }
-    const onSubmit = (_e: unknown, raw: unknown): void => {
+    const onSubmit = (e: Electron.IpcMainEvent, raw: unknown): void => {
+      if (e.sender !== win.webContents) return
       const rect = validateOverlayRect(raw)
       if (!rect) return finish(null)
       const dx = Math.round(rect.x * scale), dy = Math.round(rect.y * scale)
@@ -58,7 +59,10 @@ export async function captureRegion(opts: {
         finish(null)
       }
     }
-    const onCancel = (): void => finish(null)
+    const onCancel = (e: Electron.IpcMainEvent): void => {
+      if (e.sender !== win.webContents) return
+      finish(null)
+    }
 
     ipcMain.on(IPC.OVERLAY_SUBMIT, onSubmit)
     ipcMain.on(IPC.OVERLAY_CANCEL, onCancel)
@@ -70,6 +74,7 @@ export async function captureRegion(opts: {
         height: display.bounds.height
       })
     })
+    win.webContents.on('did-fail-load', () => finish(null))
     if (opts.overlayUrl) void win.loadURL(opts.overlayUrl)
     else void win.loadFile(opts.overlayHtml)
     win.show()
