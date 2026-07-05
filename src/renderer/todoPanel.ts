@@ -4,6 +4,7 @@ const listEl = document.getElementById('list') as HTMLUListElement
 const titleEl = document.getElementById('title') as HTMLInputElement
 const dueEl = document.getElementById('due') as HTMLInputElement
 const addBtn = document.getElementById('addBtn') as HTMLButtonElement
+const closeBtn = document.getElementById('closeBtn') as HTMLButtonElement
 
 let firedId: string | null = null
 
@@ -50,6 +51,7 @@ async function add(): Promise<void> {
 
 addBtn.onclick = () => { void add() }
 titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') void add() })
+closeBtn.onclick = () => { window.close() }
 
 window.todoApi.onUpdate((items) => render(items))
 window.todoApi.onFired((id) => { firedId = id; void window.todoApi.list().then(render) })
