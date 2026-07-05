@@ -38,9 +38,9 @@ export function sortTodos(items: TodoItem[], now: number = Date.now()): TodoItem
   return [...items].sort((a, b) => {
     const ra = rank(a, now), rb = rank(b, now)
     if (ra !== rb) return ra - rb
-    // 有 dueAt 的组按 dueAt 升序;纯待办按 createdAt 升序;已完成按 doneAt 降序
-    if (a.dueAt !== null && b.dueAt !== null) return a.dueAt - b.dueAt
+    // 已完成按 doneAt 降序;有 dueAt 的未完成组按 dueAt 升序;纯待办按 createdAt 升序
     if (ra === 3) return (b.doneAt ?? 0) - (a.doneAt ?? 0)
+    if (a.dueAt !== null && b.dueAt !== null) return a.dueAt - b.dueAt
     return a.createdAt - b.createdAt
   })
 }

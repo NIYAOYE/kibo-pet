@@ -4,7 +4,6 @@ import {
   formatRelative, type TodoItem
 } from './todo'
 
-const base: Omit<TodoItem, 'id' | 'dueAt' | 'done' | 'doneAt' | 'firedAt'> = { title: 't', createdAt: 0 }
 function item(p: Partial<TodoItem>): TodoItem {
   return { id: p.id ?? 'i', title: 't', createdAt: 0, dueAt: null, done: false, doneAt: null, firedAt: null, ...p }
 }
@@ -43,6 +42,15 @@ describe('sortTodos', () => {
     const overdue = item({ id: 'overdue', dueAt: 100 })
     const sorted = sortTodos([done, plain, later, soon, overdue])
     expect(sorted.map((t) => t.id)).toEqual(['overdue', 'soon', 'later', 'plain', 'done'])
+  })
+
+  it('两个已完成且都带 dueAt 的项,按 doneAt 降序而非 dueAt 升序', () => {
+    // A 的 dueAt 更早但 doneAt 更早(更早完成);B 的 dueAt 更晚但 doneAt 更晚(更晚完成/更近完成)
+    // 若误按 dueAt 升序排列会得到 [A, B],正确结果应为 [B, A]
+    const a = item({ id: 'a', done: true, dueAt: 1000, doneAt: 3000 })
+    const b = item({ id: 'b', done: true, dueAt: 2000, doneAt: 5000 })
+    const sorted = sortTodos([a, b], 9999)
+    expect(sorted.map((t) => t.id)).toEqual(['b', 'a'])
   })
 })
 
