@@ -3,7 +3,7 @@ import {
   IPC, type PetApi, type ChatApi, type LoadedPet, type MoveDelta,
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
-  type OverlayInit, type OverlayRect
+  type OverlayInit, type OverlayRect, type TodoApi, type TodoItem
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -75,8 +75,25 @@ const overlayApi: OverlayApi = {
   cancel: (): void => ipcRenderer.send(IPC.OVERLAY_CANCEL)
 }
 
+const todoApi: TodoApi = {
+  list: (): Promise<TodoItem[]> => ipcRenderer.invoke(IPC.LIST_TODOS),
+  add: (input): Promise<TodoItem[]> => ipcRenderer.invoke(IPC.ADD_TODO, input),
+  toggle: (id: string): Promise<TodoItem[]> => ipcRenderer.invoke(IPC.TOGGLE_TODO, id),
+  remove: (id: string): Promise<TodoItem[]> => ipcRenderer.invoke(IPC.REMOVE_TODO, id),
+  onUpdate: (cb: (items: TodoItem[]) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.TODO_UPDATE)
+    ipcRenderer.on(IPC.TODO_UPDATE, (_e, items: TodoItem[]) => cb(items))
+  },
+  onFired: (cb: (id: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.TODO_FIRED)
+    ipcRenderer.on(IPC.TODO_FIRED, (_e, id: string) => cb(id))
+  },
+  openPanel: (): void => ipcRenderer.send(IPC.OPEN_TODO_PANEL)
+}
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
 contextBridge.exposeInMainWorld('mediaApi', mediaApi)
 contextBridge.exposeInMainWorld('overlayApi', overlayApi)
+contextBridge.exposeInMainWorld('todoApi', todoApi)

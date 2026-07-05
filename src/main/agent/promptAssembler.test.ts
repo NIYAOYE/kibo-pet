@@ -55,3 +55,14 @@ describe('memory 注入', () => {
     expect(system).not.toContain('<!--')
   })
 })
+
+describe('promptAssembler 当前时间注入', () => {
+  it('给 nowMs 时 system 含"当前时间"', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined, 1_700_000_000_000)
+    expect(system).toContain('当前时间')
+  })
+  it('不给 nowMs 时不含"当前时间"', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined)
+    expect(system).not.toContain('当前时间')
+  })
+})

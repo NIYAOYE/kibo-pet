@@ -1,5 +1,6 @@
 import type { MoveDelta, ChatSendPayload, ChatSendAttachment, OverlayRect } from './ipc'
 import type { ProviderSettings, ProviderKind } from './llm'
+import { MAX_TITLE_LEN } from './todo'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const MAX_TEXT = 8000
@@ -73,4 +74,22 @@ export function validateOverlayRect(v: unknown): OverlayRect | null {
   if (!isObject(v)) return null
   if (!Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.width) || !Number.isFinite(v.height)) return null
   return { x: v.x as number, y: v.y as number, width: v.width as number, height: v.height as number }
+}
+
+export function validateTodoAdd(v: unknown, now: number = Date.now()): { title: string; dueAt: number | null } | null {
+  if (!isObject(v)) return null
+  if (typeof v.title !== 'string') return null
+  const title = v.title.trim()
+  if (title.length === 0 || title.length > MAX_TITLE_LEN) return null
+  let dueAt: number | null = null
+  if (v.dueAt !== null && v.dueAt !== undefined) {
+    if (typeof v.dueAt !== 'number' || !Number.isFinite(v.dueAt) || v.dueAt <= 0) return null
+    if (v.dueAt <= now) return null
+    dueAt = v.dueAt
+  }
+  return { title, dueAt }
+}
+
+export function validateTodoId(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 && v.length <= 200 ? v : null
 }

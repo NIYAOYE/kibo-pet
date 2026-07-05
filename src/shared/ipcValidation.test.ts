@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
-  validateKey, validateProviderSettings, validateTestConnectionArg
+  validateKey, validateProviderSettings, validateTestConnectionArg,
+  validateTodoAdd, validateTodoId
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -100,5 +101,36 @@ describe('validateOverlayRect', () => {
   })
   it('拒绝非数字', () => {
     expect(validateOverlayRect({ x: 'a', y: 2, width: 3, height: 4 })).toBeNull()
+  })
+})
+
+describe('validateTodoAdd', () => {
+  it('合法:标题 + null dueAt', () => {
+    expect(validateTodoAdd({ title: '买菜', dueAt: null })).toEqual({ title: '买菜', dueAt: null })
+  })
+  it('合法:标题 + 数值 dueAt(将来)', () => {
+    const future = Date.now() + 3600_000
+    expect(validateTodoAdd({ title: '开会', dueAt: future })).toEqual({ title: '开会', dueAt: future })
+  })
+  it('空标题 / 非对象 / 非法 dueAt → null', () => {
+    expect(validateTodoAdd({ title: '   ', dueAt: null })).toBeNull()
+    expect(validateTodoAdd(null)).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: 'nope' })).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: -5 })).toBeNull()
+  })
+  it('超长标题 → null', () => {
+    expect(validateTodoAdd({ title: 'a'.repeat(1000), dueAt: null })).toBeNull()
+  })
+  it('拒绝:dueAt 早于等于 now(过去时间)', () => {
+    expect(validateTodoAdd({ title: 'x', dueAt: 500 }, 1000)).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: 1000 }, 1000)).toBeNull() // 等于 now 也拒绝
+  })
+})
+
+describe('validateTodoId', () => {
+  it('非空字符串通过,其它 null', () => {
+    expect(validateTodoId('abc')).toBe('abc')
+    expect(validateTodoId('')).toBeNull()
+    expect(validateTodoId(123)).toBeNull()
   })
 })

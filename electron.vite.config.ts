@@ -20,7 +20,8 @@ export default defineConfig({
           index: resolve('src/renderer/index.html'),
           dialog: resolve('src/renderer/dialog.html'),
           settings: resolve('src/renderer/settings.html'),
-          overlay: resolve('src/renderer/regionOverlay.html')
+          overlay: resolve('src/renderer/regionOverlay.html'),
+          todoPanel: resolve('src/renderer/todoPanel.html')
         }
       }
     },
