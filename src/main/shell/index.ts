@@ -22,6 +22,7 @@ import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
+import { createTodoStore } from '../todos/todoStore'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
 import { prepareImage } from '../media/imagePrep'
@@ -114,11 +115,14 @@ export function startShell(): void {
     })
   }
   const memory = createMemoryManager({ dir: memoryDir, getEmbedder })
+  // 待办随宠物家目录走(与 memory 同一惯例),文件本身由 Task 2 的 todoStore 负责原子读写
+  const todoStore = createTodoStore({ file: join(petHome, 'todos.json') })
 
   const chat = createChatStore({
     petDir,
     skills,
     memory,
+    todoStore,
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),

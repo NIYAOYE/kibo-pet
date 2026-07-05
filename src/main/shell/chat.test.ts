@@ -7,6 +7,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
 import type { AppSettings } from '@shared/llm'
+import type { TodoStore } from '../todos/todoStore'
 
 const settings: AppSettings = {
   schemaVersion: 3,
@@ -34,6 +35,14 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { re
     petDir: join(dir, 'no-pet'), // persona 缺失退化为空,无碍
     skills: { list: () => [], body: () => null },
     memory,
+    todoStore: {
+      list: () => [],
+      add: (i) => ({ id: 'x', title: i.title, createdAt: 0, dueAt: i.dueAt, done: false, doneAt: null, firedAt: null }),
+      toggleDone: () => null,
+      remove: () => false,
+      markFired: () => {},
+      onChange: () => () => {}
+    } as TodoStore,
     loadSettings: () => settings,
     getKey: () => 'k',
     getSearchKey: () => null,

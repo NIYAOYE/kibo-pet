@@ -32,13 +32,23 @@ function memorySection(memory?: MemoryContext): string {
   return out
 }
 
+function timeSection(nowMs?: number): string {
+  if (nowMs === undefined) return ''
+  return (
+    '# 当前时间\n现在是 ' + new Date(nowMs).toLocaleString('zh-CN') +
+    '。当用户说"X分钟后/今天下午3点"等相对时间时,据此换算成绝对时间再调用工具。\n\n'
+  )
+}
+
 export function assemblePrompt(
   persona: PersonaBlocks,
   transcript: ChatMessage[],
   skills: SkillMeta[] = [],
-  memory?: MemoryContext
+  memory?: MemoryContext,
+  nowMs?: number
 ): AssembledPrompt {
   const system =
+    timeSection(nowMs) +
     [persona.persona, persona.voice, persona.behavior, persona.tools]
       .filter((s) => s.trim().length > 0)
       .join('\n\n') +

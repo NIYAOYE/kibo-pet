@@ -13,9 +13,11 @@ import { createSaveMemoryTool } from '../tools/saveMemory'
 import { createDuckDuckGoBackend } from '../tools/searchBackends/duckduckgo'
 import { createTavilyBackend } from '../tools/searchBackends/tavily'
 import { createReadClipboardTool, createWriteClipboardTool } from '../tools/clipboardTools'
+import { createTodoTools } from '../tools/todoTools'
 import { findQuickAction } from './quickActions'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
+import type { TodoStore } from '../todos/todoStore'
 
 const TIMEOUT_MS = 60000
 const MAX_OUTPUT_TOKENS = 1024
@@ -42,6 +44,7 @@ export function createChatStore(opts: {
   petDir: string
   skills: SkillIndex
   memory: MemoryManager
+  todoStore: TodoStore
   loadSettings: () => AppSettings
   getKey: () => string | null
   getSearchKey: () => string | null
@@ -178,7 +181,8 @@ export function createChatStore(opts: {
         createReadSkillTool(opts.skills),
         createSaveMemoryTool((t) => opts.memory.saveFact(t)),
         createReadClipboardTool({ readText: () => opts.clipboard.readText() }),
-        createWriteClipboardTool({ writeText: (t) => opts.clipboard.writeText(t) })
+        createWriteClipboardTool({ writeText: (t) => opts.clipboard.writeText(t) }),
+        ...createTodoTools({ store: opts.todoStore, now: () => Date.now() })
       ])
 
       const ctrl = new AbortController()
@@ -188,7 +192,7 @@ export function createChatStore(opts: {
         // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
         const recalled = await opts.memory.recall(text, ctrl.signal)
         if (ctrl.signal.aborted) return
-        const { system, messages } = assemblePrompt(persona, opts.memory.messages(), opts.skills.list(), recalled)
+        const { system, messages } = assemblePrompt(persona, opts.memory.messages(), opts.skills.list(), recalled, Date.now())
         // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
         const lastUser = messages[messages.length - 1]
         if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
