@@ -1,6 +1,7 @@
 import type { PetManifest } from './petPackage'
 import type { PetEvent, Bounds } from './petBrain'
 import type { AppSettings, ProviderSettings } from './llm'
+import type { TodoItem } from './todo'
 
 export const IPC = {
   GET_PET: 'pet:get',
@@ -34,7 +35,14 @@ export const IPC = {
   OVERLAY_CANCEL: 'overlay:cancel',
   LIST_PETS: 'pets:list',
   IMPORT_PET: 'pets:import',
-  RELAUNCH_APP: 'app:relaunch'
+  RELAUNCH_APP: 'app:relaunch',
+  LIST_TODOS: 'todos:list',
+  ADD_TODO: 'todos:add',
+  TOGGLE_TODO: 'todos:toggle',
+  REMOVE_TODO: 'todos:remove',
+  TODO_UPDATE: 'todos:update',
+  TODO_FIRED: 'todos:fired',
+  OPEN_TODO_PANEL: 'todos:open-panel'
 } as const
 
 export interface LoadedPet {
@@ -115,8 +123,19 @@ export interface SettingsApi {
   relaunch(): void
 }
 
+export interface TodoApi {
+  list(): Promise<TodoItem[]>
+  add(input: { title: string; dueAt: number | null }): Promise<TodoItem[]>
+  toggle(id: string): Promise<TodoItem[]>
+  remove(id: string): Promise<TodoItem[]>
+  onUpdate(cb: (items: TodoItem[]) => void): void
+  onFired(cb: (id: string) => void): void
+  openPanel(): void
+}
+
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi }
 }
 
 export type { PetEvent, Bounds }
+export type { TodoItem } from './todo'

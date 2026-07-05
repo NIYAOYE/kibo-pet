@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
-  validateKey, validateProviderSettings, validateTestConnectionArg
+  validateKey, validateProviderSettings, validateTestConnectionArg,
+  validateTodoAdd, validateTodoId
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -100,5 +101,31 @@ describe('validateOverlayRect', () => {
   })
   it('拒绝非数字', () => {
     expect(validateOverlayRect({ x: 'a', y: 2, width: 3, height: 4 })).toBeNull()
+  })
+})
+
+describe('validateTodoAdd', () => {
+  it('合法:标题 + null dueAt', () => {
+    expect(validateTodoAdd({ title: '买菜', dueAt: null })).toEqual({ title: '买菜', dueAt: null })
+  })
+  it('合法:标题 + 数值 dueAt', () => {
+    expect(validateTodoAdd({ title: '开会', dueAt: 1_700_000_000_000 })).toEqual({ title: '开会', dueAt: 1_700_000_000_000 })
+  })
+  it('空标题 / 非对象 / 非法 dueAt → null', () => {
+    expect(validateTodoAdd({ title: '   ', dueAt: null })).toBeNull()
+    expect(validateTodoAdd(null)).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: 'nope' })).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: -5 })).toBeNull()
+  })
+  it('超长标题 → null', () => {
+    expect(validateTodoAdd({ title: 'a'.repeat(1000), dueAt: null })).toBeNull()
+  })
+})
+
+describe('validateTodoId', () => {
+  it('非空字符串通过,其它 null', () => {
+    expect(validateTodoId('abc')).toBe('abc')
+    expect(validateTodoId('')).toBeNull()
+    expect(validateTodoId(123)).toBeNull()
   })
 })

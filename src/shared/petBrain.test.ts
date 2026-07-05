@@ -165,3 +165,11 @@ describe('petBrain pause (dialog open)', () => {
     expect(res.ctx.state).toBe('walk')
   })
 })
+
+describe('petBrain remind 事件', () => {
+  it("'remind' 使宠物进入 greet(复用打招呼动画)", () => {
+    const ctx = initBrain()
+    const res = step(ctx, input({ dtMs: 0, event: 'remind' }))
+    expect(res.ctx.state).toBe('greet')
+  })
+})

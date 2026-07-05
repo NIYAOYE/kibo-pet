@@ -1,5 +1,5 @@
 export type PetLogicalState = 'idle' | 'walk' | 'drag' | 'sleep' | 'greet' | 'thinking' | 'talk'
-export type PetEvent = 'pickup' | 'drop' | 'wake' | 'dialogOpen' | 'dialogClose' | 'messageSent' | 'replyDone'
+export type PetEvent = 'pickup' | 'drop' | 'wake' | 'dialogOpen' | 'dialogClose' | 'messageSent' | 'replyDone' | 'remind'
 export type Direction = 'left' | 'right'
 
 export interface Bounds { x: number; y: number; width: number; height: number }
@@ -99,6 +99,7 @@ function applyEvent(ctx: PetBrainCtx, event: PetEvent, rng: () => number): PetBr
     case 'dialogClose': return { ...enterIdle(ctx, rng), idleAccumMs: 0, paused: false }
     case 'messageSent': return { ...enterState(ctx, 'thinking'), idleAccumMs: 0 }
     case 'replyDone': return { ...enterState(ctx, 'talk'), idleAccumMs: 0 }
+    case 'remind': return { ...enterState(ctx, 'greet'), idleAccumMs: 0 }
     default: return ctx
   }
 }
