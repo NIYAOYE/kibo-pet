@@ -42,7 +42,7 @@ export function createScheduler(opts: {
   }
 
   // store 变更(增删改/标记)后自动校准最近到期项
-  opts.store.onChange(() => rearm())
+  const unsubscribe = opts.store.onChange(() => rearm())
 
   return {
     start(): void {
@@ -51,7 +51,10 @@ export function createScheduler(opts: {
       if (overdue.length > 0 && opts.onCatchup) opts.onCatchup(overdue)
       rearm()
     },
-    stop: clear,
+    stop(): void {
+      clear()
+      unsubscribe()
+    },
     rearm
   }
 }

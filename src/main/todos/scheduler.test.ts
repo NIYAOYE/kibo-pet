@@ -69,9 +69,15 @@ describe('scheduler', () => {
 
   it('超过定时器上限时封顶(不误触发)', () => {
     const store = memStore([item({ id: 'far', dueAt: 10 * MAX_TIMER_DELAY })])
+    const fired: string[] = []
     const timer = fakeTimer()
-    const sch = createScheduler({ store, now: () => 0, onFire: () => {}, setTimer: timer.set, clearTimer: timer.clear })
+    const sch = createScheduler({ store, now: () => 0, onFire: (it) => fired.push(it.id), setTimer: timer.set, clearTimer: timer.clear })
     sch.rearm()
+    expect(timer.pendingMs()).toBe(MAX_TIMER_DELAY)
+    // 封顶定时器到点:不应触发 onFire,而是 rearm() 重新计算并再次封顶(项仍远未到期)
+    timer.fire()
+    expect(fired).toEqual([])
+    expect(store.list()[0].firedAt).toBeNull()
     expect(timer.pendingMs()).toBe(MAX_TIMER_DELAY)
   })
 
