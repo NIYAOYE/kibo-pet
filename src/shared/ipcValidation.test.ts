@@ -108,8 +108,9 @@ describe('validateTodoAdd', () => {
   it('合法:标题 + null dueAt', () => {
     expect(validateTodoAdd({ title: '买菜', dueAt: null })).toEqual({ title: '买菜', dueAt: null })
   })
-  it('合法:标题 + 数值 dueAt', () => {
-    expect(validateTodoAdd({ title: '开会', dueAt: 1_700_000_000_000 })).toEqual({ title: '开会', dueAt: 1_700_000_000_000 })
+  it('合法:标题 + 数值 dueAt(将来)', () => {
+    const future = Date.now() + 3600_000
+    expect(validateTodoAdd({ title: '开会', dueAt: future })).toEqual({ title: '开会', dueAt: future })
   })
   it('空标题 / 非对象 / 非法 dueAt → null', () => {
     expect(validateTodoAdd({ title: '   ', dueAt: null })).toBeNull()
@@ -119,6 +120,10 @@ describe('validateTodoAdd', () => {
   })
   it('超长标题 → null', () => {
     expect(validateTodoAdd({ title: 'a'.repeat(1000), dueAt: null })).toBeNull()
+  })
+  it('拒绝:dueAt 早于等于 now(过去时间)', () => {
+    expect(validateTodoAdd({ title: 'x', dueAt: 500 }, 1000)).toBeNull()
+    expect(validateTodoAdd({ title: 'x', dueAt: 1000 }, 1000)).toBeNull() // 等于 now 也拒绝
   })
 })
 

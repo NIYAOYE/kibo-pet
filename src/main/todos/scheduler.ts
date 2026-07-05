@@ -31,12 +31,15 @@ export function createScheduler(opts: {
       handle = setTimer(() => { handle = null; rearm() }, MAX_TIMER_DELAY) // 封顶:到点仅重新武装,不触发
       return
     }
-    handle = setTimer(() => { handle = null; fire() }, Math.max(0, delay))
+    handle = setTimer(() => { handle = null; fire(next.id) }, Math.max(0, delay))
   }
 
-  function fire(): void {
-    const item = nextDueItem(opts.store.list(), opts.now())
-    if (!item) { rearm(); return }
+  function fire(id: string): void {
+    // 不能用 nextDueItem 重新按"当前时间"筛选:真实时钟在定时器触发时已经推进到
+    // (>=)dueAt,nextDueItem 的 dueAt>now 严格条件会把刚到期的这一项自己排除掉。
+    // 改为直接按 id 取出定时器当初武装时锁定的那一项的最新状态。
+    const item = opts.store.list().find((it) => it.id === id)
+    if (!item || item.done || item.firedAt !== null) { rearm(); return }
     opts.store.markFired(item.id) // → onChange → rearm(取下一条)
     opts.onFire(item)
   }

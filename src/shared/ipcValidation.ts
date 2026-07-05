@@ -76,7 +76,7 @@ export function validateOverlayRect(v: unknown): OverlayRect | null {
   return { x: v.x as number, y: v.y as number, width: v.width as number, height: v.height as number }
 }
 
-export function validateTodoAdd(v: unknown): { title: string; dueAt: number | null } | null {
+export function validateTodoAdd(v: unknown, now: number = Date.now()): { title: string; dueAt: number | null } | null {
   if (!isObject(v)) return null
   if (typeof v.title !== 'string') return null
   const title = v.title.trim()
@@ -84,6 +84,7 @@ export function validateTodoAdd(v: unknown): { title: string; dueAt: number | nu
   let dueAt: number | null = null
   if (v.dueAt !== null && v.dueAt !== undefined) {
     if (typeof v.dueAt !== 'number' || !Number.isFinite(v.dueAt) || v.dueAt <= 0) return null
+    if (v.dueAt <= now) return null
     dueAt = v.dueAt
   }
   return { title, dueAt }

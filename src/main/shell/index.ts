@@ -151,8 +151,14 @@ export function startShell(): void {
   function fireReminder(item: TodoItem): void {
     if (Notification.isSupported()) new Notification({ title: '⏰ 提醒', body: item.title }).show()
     emitPetEvent('remind')
-    if (!dialog.isOpen()) dialog.toggle(petBounds)
-    dialog.window()?.webContents.send(IPC.CHAT_STATUS, `⏰ 提醒:${item.title}`)
+    // 对话框若是刚刚才新建的窗口,渲染进程的监听器还没注册好,直接 send 会被静默丢弃;
+    // 只有"本来就已打开"才能立即发送,否则要等 did-finish-load 之后再发
+    const wasOpen = dialog.isOpen()
+    if (!wasOpen) dialog.toggle(petBounds)
+    const win = dialog.window()
+    const sendStatus = (): void => { win?.webContents.send(IPC.CHAT_STATUS, `⏰ 提醒:${item.title}`) }
+    if (wasOpen) sendStatus()
+    else win?.webContents.once('did-finish-load', sendStatus)
     todoWin.open()
     todoWin.pushFired(item.id)
   }

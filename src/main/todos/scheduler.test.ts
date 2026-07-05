@@ -81,6 +81,23 @@ describe('scheduler', () => {
     expect(timer.pendingMs()).toBe(MAX_TIMER_DELAY)
   })
 
+  it('真实推进的时钟下，到点后 fire 仍能正确触发（不会被 nextDueItem 的 dueAt>now 过滤掉）', () => {
+    let nowValue = 1000
+    const store = memStore([item({ id: 'a', dueAt: 2000 })])
+    const fired: string[] = []
+    const timer = fakeTimer()
+    const sch = createScheduler({
+      store, now: () => nowValue, onFire: (it) => fired.push(it.id),
+      setTimer: timer.set, clearTimer: timer.clear
+    })
+    sch.rearm()
+    expect(timer.pendingMs()).toBe(1000)
+    nowValue = 2000 // 模拟真实时钟推进到 dueAt（不是测试之前那种全程冻结的 now）
+    timer.fire()
+    expect(fired).toEqual(['a'])
+    expect(store.list()[0].firedAt).not.toBeNull()
+  })
+
   it('无将来项时不设定时器', () => {
     const store = memStore([item({ id: 'p', dueAt: null })])
     const timer = fakeTimer()
