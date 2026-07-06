@@ -14,6 +14,7 @@ import { createDuckDuckGoBackend } from '../tools/searchBackends/duckduckgo'
 import { createTavilyBackend } from '../tools/searchBackends/tavily'
 import { createReadClipboardTool, createWriteClipboardTool } from '../tools/clipboardTools'
 import { createTodoTools } from '../tools/todoTools'
+import { createWeatherTool, createOpenMeteoClient } from '../tools/weather'
 import { findQuickAction } from './quickActions'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
@@ -182,7 +183,8 @@ export function createChatStore(opts: {
         createSaveMemoryTool((t) => opts.memory.saveFact(t)),
         createReadClipboardTool({ readText: () => opts.clipboard.readText() }),
         createWriteClipboardTool({ writeText: (t) => opts.clipboard.writeText(t) }),
-        ...createTodoTools({ store: opts.todoStore, now: () => Date.now() })
+        ...createTodoTools({ store: opts.todoStore, now: () => Date.now() }),
+        createWeatherTool(createOpenMeteoClient())
       ])
 
       const ctrl = new AbortController()
