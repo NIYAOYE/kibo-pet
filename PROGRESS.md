@@ -1,6 +1,6 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-04 · 状态:**MVP-09(UI 选宠物 + 导入宠物包)代码完成 + 全 6 任务两阶段审查通过 + build/typecheck/全量测试通过、待真机 GUI 验收**;此前 MVP-08(文字加工助手)代码完成 + 全任务审查通过、待真机验收;MVP-07(多模态识图)代码完成 + 全审查通过、待真机验收;MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
+> 更新时间:2026-07-06 · 状态:**MVP-11(信息查询增强·天气查询)代码完成 + 全 4 任务两阶段审查通过 + 最终全分支审查通过、待真机验收**;此前 MVP-09(UI 选宠物 + 导入宠物包)代码完成 + 全 6 任务两阶段审查通过 + build/typecheck/全量测试通过、待真机 GUI 验收;MVP-08(文字加工助手)代码完成 + 全任务审查通过、待真机验收;MVP-07(多模态识图)代码完成 + 全审查通过、待真机验收;MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
@@ -91,6 +91,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-07** 多模态识图 —— 代码完成 + 全 8 任务两阶段审查通过、待真机验收:归一化图像管线(`ChatTurn.images` + `imagePrep` nativeImage 降采样≤1568/重编码)+ 两 Provider 图像序列化(anthropic base64 block / openai image_url data URL)+ 四种输入(选文件/拖拽/粘贴/截屏框选覆盖层)+ 缩略图带 UI + 视觉能力错误兜底 + 图片永不落盘(transcript 只存 `[图片]` 占位)。测试 228/228。
 - ✅ **MVP-08** 文字加工助手 —— 代码完成 + 全 7 任务审查通过、待真机验收:剪贴板工具(read_clipboard/write_clipboard 信息头防注入)+ 托盘快捷加工菜单(translate/summarize/polish/explain)+ `autoCopyResult` 可选写回 + 原文仅喂当轮不落盘。测试 243/243。
 - ✅ **MVP-09** UI 选宠物 + 导入宠物包 —— 代码完成 + 全 6 任务两阶段审查通过(subagent-driven-development,含一处任务间修复:`SettingsApi.importPet()` 类型补 `| null`)、待真机 GUI 验收:新增 `src/main/pets/petCatalog.ts`(`listPets` 合并去重坏包跳过 + `importPetFolder` 校验链、id 冲突拒绝绝不覆盖)、IPC 三新增(`LIST_PETS`/`IMPORT_PET`/`RELAUNCH_APP`)、设置窗新增宠物下拉 + 导入按钮 + 重启按钮,**重启后生效**(不改切换核心 `ensurePetHome`/`loadPet`)。零新依赖。`pnpm build`(三包)、`pnpm typecheck`、`pnpm test` 均通过,测试 256/256。**真机 GUI 交互步骤(下拉选择/导入文件夹/冲突提示/重启换肤)未经自动化验证,需人工在真实窗口里走一遍**——本仓库无 Electron GUI 自动化驱动(非 Linux 容器、无 Playwright 依赖),按项目既有约定由人工完成,详见实现计划 §Task 6 的验收清单。
+- ✅ **MVP-11** 信息查询增强(天气查询)—— 代码完成 + 全 4 任务两阶段审查通过 + 最终全分支审查通过(无 Critical/Important)、待真机验收:承接 ROADMAP.md 第③项,新增 `src/main/tools/weather.ts`(纯函数 WMO 天气码映射/地理编码解析/预报解析/结果格式化 → 可注入 `fetch` 的 Open-Meteo 客户端 → `weather` 工具,`location` 必填、返回固定"实况+未来3天")、在 `chat.ts` 的 registry 里接入(项目默认注入,不进宠物包/不依赖 persona.md)。零 key、零新 IPC/设置/依赖。`pnpm typecheck`/`pnpm test`/`pnpm build` 均通过,测试 315/315。**真机对话验收(问天气/未来三天/查无此地/不给城市反问)未经自动化验证,按项目既有惯例由人工完成。**
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化;宠物自主截屏工具(承接 MVP-07 管线,配合浏览器自动化)。
 
