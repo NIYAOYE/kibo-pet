@@ -18,6 +18,19 @@ const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
 
+// 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
+const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
+const pages = Array.from(document.querySelectorAll<HTMLElement>('#pages .page'))
+
+function showPage(page: string): void {
+  for (const s of pages) s.classList.toggle('active', s.dataset.page === page)
+  for (const n of navItems) n.classList.toggle('active', n.dataset.page === page)
+}
+
+for (const n of navItems) {
+  n.addEventListener('click', () => showPage(n.dataset.page ?? 'model'))
+}
+
 for (const p of PRESETS) {
   const opt = document.createElement('option')
   opt.value = p.id
@@ -149,4 +162,5 @@ void (async () => {
   if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
   autoCopyResult.checked = snap.settings.textTools.autoCopyResult
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
+  showPage('model') // 默认落地页:模型 · API
 })()

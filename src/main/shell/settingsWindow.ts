@@ -11,7 +11,7 @@ export function createSettingsWindow(opts: {
 
   function build(): BrowserWindow {
     const w = new BrowserWindow({
-      width: 460,
+      width: 560,
       height: 520,
       title: '设置',
       resizable: false,

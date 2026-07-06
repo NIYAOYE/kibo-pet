@@ -5,8 +5,21 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
     <style>
       html, body { margin: 0; font-family: system-ui, sans-serif; font-size: 13px; background: #1e1e28; color: #f0f0f4; }
-      #app { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-      h1 { font-size: 15px; margin: 0 0 4px; }
+      #app { display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+      header { padding: 12px 16px 8px; }
+      h1 { font-size: 15px; margin: 0; }
+      #layout { flex: 1; display: flex; min-height: 0; }
+      /* 左侧边栏 */
+      #sidenav { flex: 0 0 118px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-right: 1px solid rgba(255,255,255,0.08); }
+      .navitem { text-align: left; border: none; border-radius: 8px; padding: 9px 10px; cursor: pointer; background: transparent; color: #c8c8d4; font-size: 13px; }
+      .navitem:hover { background: rgba(255,255,255,0.08); }
+      .navitem.active { background: rgba(90,110,200,0.95); color: #fff; }
+      /* 右侧分页内容 */
+      #pages { flex: 1; min-width: 0; overflow-y: auto; padding: 12px 16px; }
+      .page { display: none; flex-direction: column; gap: 10px; }
+      .page.active { display: flex; }
+      .page h2 { font-size: 13px; margin: 0 0 2px; opacity: 0.9; }
+      .hint { opacity: 0.8; line-height: 1.5; }
       label { display: flex; flex-direction: column; gap: 4px; }
       input { border: none; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.12); color: #f0f0f4; }
       /* select 用不透明底色,option 单独给高对比配色(半透明背景会让 OS 下拉列表很淡看不清) */
@@ -15,64 +28,93 @@
       .row { display: flex; gap: 8px; align-items: center; }
       button { border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: rgba(90,110,200,0.95); color: #fff; }
       button.secondary { background: rgba(255,255,255,0.16); }
-      #status { min-height: 18px; opacity: 0.85; }
+      /* 底部固定操作条 */
+      footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+      #status { flex: 1; min-height: 18px; opacity: 0.85; }
     </style>
   </head>
   <body>
     <div id="app">
-      <h1>宠物大脑设置</h1>
-      <label>当前宠物(重启后生效)
-        <select id="petSelect"></select>
-      </label>
-      <div class="row">
-        <button id="importPet" class="secondary">导入宠物包…</button>
-        <button id="relaunch" class="secondary" style="display:none">立即重启</button>
+      <header><h1>宠物大脑设置</h1></header>
+      <div id="layout">
+        <nav id="sidenav">
+          <button class="navitem" data-page="model" type="button">模型 · API</button>
+          <button class="navitem" data-page="pet" type="button">宠物</button>
+          <button class="navitem" data-page="tools" type="button">工具能力</button>
+          <button class="navitem" data-page="memory" type="button">记忆</button>
+        </nav>
+        <div id="pages">
+
+          <section class="page" data-page="model">
+            <h2>模型 · API</h2>
+            <label>Provider 预设
+              <select id="preset"></select>
+            </label>
+            <label>Base URL(可留空用默认)
+              <input id="baseURL" type="text" placeholder="https://..." />
+            </label>
+            <label>模型
+              <input id="model" type="text" />
+            </label>
+            <label>API Key
+              <input id="key" type="password" placeholder="仅本机加密存储,不外传" />
+            </label>
+            <div class="row">
+              <button id="test" class="secondary">测试连接</button>
+            </div>
+          </section>
+
+          <section class="page" data-page="pet">
+            <h2>宠物</h2>
+            <label>当前宠物(重启后生效)
+              <select id="petSelect"></select>
+            </label>
+            <div class="row">
+              <button id="importPet" class="secondary">导入宠物包…</button>
+              <button id="relaunch" class="secondary" style="display:none">立即重启</button>
+            </div>
+          </section>
+
+          <section class="page" data-page="tools">
+            <h2>工具能力</h2>
+            <label>搜索后端
+              <select id="searchBackend">
+                <option value="duckduckgo">免费·内置(默认)</option>
+                <option value="tavily">Tavily(需 API key)</option>
+              </select>
+            </label>
+            <label id="searchKeyRow" style="display:none">Tavily API Key
+              <input id="searchKey" type="password" placeholder="仅本机加密存储,不外传" />
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+              <input id="autoCopyResult" type="checkbox" style="width:auto" />
+              <span>快捷加工结果自动复制到剪贴板(会覆盖当前剪贴板)</span>
+            </label>
+          </section>
+
+          <section class="page" data-page="memory">
+            <h2>记忆(可选)</h2>
+            <div class="hint">配置 embedding 后,宠物记住的事实会发送到该端点做向量化,以便按话题召回;三项留空则记忆完全本地(按最近记忆召回)。</div>
+            <label>Embedding Base URL
+              <input id="embBaseURL" type="text" placeholder="https://...(OpenAI 兼容,如 DashScope)" />
+            </label>
+            <label>Embedding 模型
+              <input id="embModel" type="text" placeholder="如 text-embedding-v3" />
+            </label>
+            <label>Embedding API Key
+              <input id="embKey" type="password" placeholder="留空且与聊天同 Base URL 时自动复用聊天 Key" />
+            </label>
+            <div class="row">
+              <button id="openMemoryDir" class="secondary">打开记忆文件夹</button>
+            </div>
+          </section>
+
+        </div>
       </div>
-      <label>Provider 预设
-        <select id="preset"></select>
-      </label>
-      <label>Base URL(可留空用默认)
-        <input id="baseURL" type="text" placeholder="https://..." />
-      </label>
-      <label>模型
-        <input id="model" type="text" />
-      </label>
-      <label>API Key
-        <input id="key" type="password" placeholder="仅本机加密存储,不外传" />
-      </label>
-      <label>搜索后端
-        <select id="searchBackend">
-          <option value="duckduckgo">免费·内置(默认)</option>
-          <option value="tavily">Tavily(需 API key)</option>
-        </select>
-      </label>
-      <label id="searchKeyRow" style="display:none">Tavily API Key
-        <input id="searchKey" type="password" placeholder="仅本机加密存储,不外传" />
-      </label>
-      <h1 style="margin-top:8px">记忆(可选)</h1>
-      <div style="opacity:.8;line-height:1.5">配置 embedding 后,宠物记住的事实会发送到该端点做向量化,以便按话题召回;三项留空则记忆完全本地(按最近记忆召回)。</div>
-      <label>Embedding Base URL
-        <input id="embBaseURL" type="text" placeholder="https://...(OpenAI 兼容,如 DashScope)" />
-      </label>
-      <label>Embedding 模型
-        <input id="embModel" type="text" placeholder="如 text-embedding-v3" />
-      </label>
-      <label>Embedding API Key
-        <input id="embKey" type="password" placeholder="留空且与聊天同 Base URL 时自动复用聊天 Key" />
-      </label>
-      <h1 style="margin-top:8px">文字加工</h1>
-      <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
-        <input id="autoCopyResult" type="checkbox" style="width:auto" />
-        <span>快捷加工结果自动复制到剪贴板(会覆盖当前剪贴板)</span>
-      </label>
-      <div class="row">
-        <button id="openMemoryDir" class="secondary">打开记忆文件夹</button>
-      </div>
-      <div class="row">
-        <button id="test" class="secondary">测试连接</button>
+      <footer>
+        <div id="status"></div>
         <button id="save">保存</button>
-      </div>
-      <div id="status"></div>
+      </footer>
     </div>
     <script type="module" src="./settings.ts"></script>
   </body>
