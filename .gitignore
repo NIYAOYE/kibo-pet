@@ -34,6 +34,9 @@ tools/hatch-desktop-pet/**/frames/
 .DS_Store
 Thumbs.db
 
+# === superpowers 工作流暂存(brainstorm 会话产物等,非源码)===
+.superpowers/brainstorm/
+
 # 说明:docs/ pets/ skills/ tools/(源码与资产)必须入库跟踪,
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 AGENTS.md
