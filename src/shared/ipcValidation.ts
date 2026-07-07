@@ -1,6 +1,7 @@
 import type { MoveDelta, ChatSendPayload, ChatSendAttachment, OverlayRect } from './ipc'
 import type { ProviderSettings, ProviderKind } from './llm'
 import { MAX_TITLE_LEN } from './todo'
+import { REACTION_CATEGORIES, type ReactionCategory } from './reactionPlanner'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const MAX_TEXT = 8000
@@ -92,4 +93,10 @@ export function validateTodoAdd(v: unknown, now: number = Date.now()): { title: 
 
 export function validateTodoId(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 && v.length <= 200 ? v : null
+}
+
+export function validateReactionCategory(v: unknown): ReactionCategory | null {
+  return typeof v === 'string' && (REACTION_CATEGORIES as string[]).includes(v)
+    ? (v as ReactionCategory)
+    : null
 }

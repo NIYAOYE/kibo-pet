@@ -2,6 +2,7 @@ import type { PetManifest } from './petPackage'
 import type { PetEvent, Bounds } from './petBrain'
 import type { AppSettings, ProviderSettings } from './llm'
 import type { TodoItem } from './todo'
+import type { ReactionCategory } from './reactionPlanner'
 
 export const IPC = {
   GET_PET: 'pet:get',
@@ -49,7 +50,9 @@ export const IPC = {
   BUBBLE_DONE: 'bubble:done',
   BUBBLE_ERROR: 'bubble:error',
   BUBBLE_CLEAR: 'bubble:clear',
-  BUBBLE_PLACE: 'bubble:place'
+  BUBBLE_PLACE: 'bubble:place',
+  BUBBLE_LINE: 'bubble:line',
+  PET_SPEAK: 'pet:speak'
 } as const
 
 export interface LoadedPet {
@@ -92,6 +95,8 @@ export interface PetApi {
   getWindowBounds(): Promise<WindowBounds>
   toggleDialog(): void
   onPetEvent(cb: (event: PetEvent) => void): void
+  /** 自主/触碰反应：请求主进程按 category 选一句台词，用瞬态气泡显示 */
+  petSpeak(category: ReactionCategory): void
   quit(): void
 }
 
@@ -150,6 +155,7 @@ export interface BubbleApi {
   onError(cb: (message: string) => void): void
   onClear(cb: () => void): void
   onPlace(cb: (p: BubblePlace) => void): void
+  onLine(cb: (text: string) => void): void
 }
 
 declare global {
@@ -158,3 +164,4 @@ declare global {
 
 export type { PetEvent, Bounds }
 export type { TodoItem } from './todo'
+export type { ReactionCategory } from './reactionPlanner'

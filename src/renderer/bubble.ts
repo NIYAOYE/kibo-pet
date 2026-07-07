@@ -14,6 +14,12 @@ function clear(): void {
 // 打开外部链接由主进程 will-navigate/openExternal 兜底,这里无需处理。
 window.bubbleApi.onClear(() => clear())
 
+// 自主/触碰台词：定格一句纯文本（非流式、非 Markdown 富渲染），auto-hide 由主进程控
+window.bubbleApi.onLine((text) => {
+  clear()
+  box.textContent = text
+})
+
 window.bubbleApi.onStream((text) => {
   box.classList.remove('status')
   streaming += text

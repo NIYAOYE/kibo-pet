@@ -1,5 +1,6 @@
 import { SpritePlayer } from './spritePlayer'
 import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@shared/petBrain'
+import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
 
 const TICK_MS = 33
 
@@ -12,6 +13,8 @@ export class PetController {
   private windowX = 0
   private windowWidth = 256
   private currentAnim = ''
+  private reactionCtx: ReactionCtx = initReaction()
+  private pendingReaction: ReactionTrigger | null = null
 
   constructor(private player: SpritePlayer) {}
 
@@ -31,6 +34,9 @@ export class PetController {
 
   send(event: PetEvent): void { this.pending.push(event) }
 
+  /** 双击=戳：下一 tick 喂给反应规划器 */
+  poke(): void { this.pendingReaction = 'poke' }
+
   async syncBounds(): Promise<void> {
     const b = await window.petApi.getWindowBounds()
     this.workArea = b.workArea
@@ -43,6 +49,8 @@ export class PetController {
     const dtMs = now - this.lastTs
     this.lastTs = now
     const event = this.pending.shift()
+    if (event === 'pickup') this.pendingReaction = 'drag' // 拖起 → drag 台词
+    const prevState = this.ctx.state
     const { ctx, effects } = step(this.ctx, {
       dtMs,
       event,
@@ -65,5 +73,16 @@ export class PetController {
       window.petApi.moveWindow({ dx: effects.move, dy: 0, clamp: true })
       this.windowX += effects.move
     }
+
+    // 反应规划器:每 tick 一个触发,睡→醒(wake)优先于本 tick 的触碰
+    const wokeUp = prevState === 'sleep' && this.ctx.state !== 'sleep'
+    const trigger: ReactionTrigger | undefined = wokeUp ? 'wake' : (this.pendingReaction ?? undefined)
+    this.pendingReaction = null
+    // 真正仍在睡眠中(非本 tick 刚醒)时闭嘴:this.ctx.state 已是 step() 之后的状态,
+    // wokeUp 的那一 tick state 已不是 'sleep',故 wake 台词不受此抑制。
+    const sleeping = this.ctx.state === 'sleep'
+    const r = stepReaction(this.reactionCtx, { dtMs, trigger, paused: this.ctx.paused || sleeping, rng: Math.random })
+    this.reactionCtx = r.ctx
+    if (r.output.speak) window.petApi.petSpeak(r.output.speak)
   }
 }

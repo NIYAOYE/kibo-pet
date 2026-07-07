@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg,
-  validateTodoAdd, validateTodoId
+  validateTodoAdd, validateTodoId, validateReactionCategory
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -132,5 +132,17 @@ describe('validateTodoId', () => {
     expect(validateTodoId('abc')).toBe('abc')
     expect(validateTodoId('')).toBeNull()
     expect(validateTodoId(123)).toBeNull()
+  })
+})
+
+describe('validateReactionCategory', () => {
+  it('接受合法 category', () => {
+    expect(validateReactionCategory('idle')).toBe('idle')
+    expect(validateReactionCategory('click')).toBe('click')
+  })
+  it('拒绝非法/非字符串', () => {
+    expect(validateReactionCategory('nope')).toBeNull()
+    expect(validateReactionCategory(123)).toBeNull()
+    expect(validateReactionCategory(null)).toBeNull()
   })
 })

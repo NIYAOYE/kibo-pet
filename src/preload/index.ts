@@ -18,6 +18,7 @@ const petApi: PetApi = {
     ipcRenderer.removeAllListeners(IPC.PET_EVENT)
     ipcRenderer.on(IPC.PET_EVENT, (_e, event: PetEvent) => cb(event))
   },
+  petSpeak: (category): void => ipcRenderer.send(IPC.PET_SPEAK, category),
   quit: (): void => ipcRenderer.send(IPC.QUIT)
 }
 
@@ -117,6 +118,10 @@ const bubbleApi: BubbleApi = {
   onPlace: (cb: (p: BubblePlace) => void): void => {
     ipcRenderer.removeAllListeners(IPC.BUBBLE_PLACE)
     ipcRenderer.on(IPC.BUBBLE_PLACE, (_e, p: BubblePlace) => cb(p))
+  },
+  onLine: (cb: (text: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_LINE)
+    ipcRenderer.on(IPC.BUBBLE_LINE, (_e, text: string) => cb(text))
   }
 }
 

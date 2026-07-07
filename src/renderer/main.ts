@@ -2,6 +2,7 @@ import { SpritePlayer } from './spritePlayer'
 import { PetController } from './petController'
 
 const DRAG_THRESHOLD = 4
+const DBLCLICK_MS = 280
 
 async function boot(): Promise<void> {
   const canvas = document.getElementById('pet') as HTMLCanvasElement
@@ -23,6 +24,7 @@ async function boot(): Promise<void> {
   let lastY = 0
   let downX = 0
   let downY = 0
+  let clickTimer: number | null = null
 
   function setIgnore(ignore: boolean): void {
     if (ignore === ignoring) return
@@ -42,6 +44,9 @@ async function boot(): Promise<void> {
     if (dragging) {
       if (!moved && Math.abs(e.screenX - downX) + Math.abs(e.screenY - downY) > DRAG_THRESHOLD) {
         moved = true
+        if (clickTimer !== null) {
+          clearTimeout(clickTimer); clickTimer = null
+        }
         controller.send('pickup')
       }
       if (moved) {
@@ -61,7 +66,13 @@ async function boot(): Promise<void> {
       controller.send('drop')
       controller.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     } else {
-      window.petApi.toggleDialog() // 未越阈值 = 单击 → 开/关对话框
+      // 单击 → 开/关对话框;双击 → 戳(poke)。用短延时判别,双击时撤销开框
+      if (clickTimer !== null) {
+        clearTimeout(clickTimer); clickTimer = null
+        controller.poke()
+      } else {
+        clickTimer = window.setTimeout(() => { clickTimer = null; window.petApi.toggleDialog() }, DBLCLICK_MS)
+      }
     }
   })
 }
