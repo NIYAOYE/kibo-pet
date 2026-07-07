@@ -1,6 +1,6 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-06 · 状态:**MVP-12(网页深度阅读·Firecrawl 集成)代码完成 + 全 7 任务两阶段审查通过(含一处任务间修复:设置渲染层 Save 曾硬编码清空 firecrawl 配置,已修复)、待真机验收**;此前 MVP-11(信息查询增强·天气查询)代码完成 + 全 4 任务两阶段审查通过 + 最终全分支审查通过、待真机验收;MVP-09(UI 选宠物 + 导入宠物包)代码完成 + 全 6 任务两阶段审查通过 + build/typecheck/全量测试通过、待真机 GUI 验收;MVP-08(文字加工助手)代码完成 + 全任务审查通过、待真机验收;MVP-07(多模态识图)代码完成 + 全审查通过、待真机验收;MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
+> 更新时间:2026-07-07 · 状态:**MVP-13(台词引擎+点击反应)代码完成 + 全 6 任务两阶段审查通过(含一处任务间修复:单击后立即拖拽会残留计时器误触发对话框,已修复)+ 最终整支审查 Ready to merge、待真机验收**;此前 MVP-12(网页深度阅读·Firecrawl 集成)代码完成 + 全 7 任务两阶段审查通过(含一处任务间修复:设置渲染层 Save 曾硬编码清空 firecrawl 配置,已修复)、待真机验收;MVP-11(信息查询增强·天气查询)代码完成 + 全 4 任务两阶段审查通过 + 最终全分支审查通过、待真机验收;MVP-09(UI 选宠物 + 导入宠物包)代码完成 + 全 6 任务两阶段审查通过 + build/typecheck/全量测试通过、待真机 GUI 验收;MVP-08(文字加工助手)代码完成 + 全任务审查通过、待真机验收;MVP-07(多模态识图)代码完成 + 全审查通过、待真机验收;MVP-06(打包 + 可移植宠物包 + IPC 校验)真机验收通过(C:/D:)
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
@@ -17,7 +17,7 @@ pnpm dev          # 开发模式(HMR)。正常终端可用
 # 或:构建后预览(更接近打包版,启动更稳)
 pnpm build && pnpm preview
 
-pnpm test         # 单元测试(当前 256/256 通过)
+pnpm test         # 单元测试(当前 372/372 通过)
 pnpm typecheck    # 类型检查
 pnpm dist         # 打包 Windows 安装包 → dist/Pet-Agent Setup <ver>.exe(见 README「打包构建说明」的 winCodeSign 符号链接坑)
 ```
@@ -41,6 +41,7 @@ src/
   shared/     petPackage.ts(pet.json 类型 + frameRect + frameDurationMs + parsePetManifest;含测试)
               ipc.ts(IPC 通道常量 + PetApi/ChatApi/SettingsApi 等类型 + 三 window.* 全局声明)
               petBrain.ts(纯状态机 reducer:idle/walk/drag/sleep/greet/thinking/talk + applyEvent;含测试)
+              reactionPlanner.ts(MVP-13:纯函数台词反应规划器 — initReaction/stepReaction,决定"是否说话+说哪一类"category〔idle/long_idle/wake/click/drag〕,全局冷却+事件冷却+不复读,与 petBrain 各自独立字段互不干扰;含测试)
               llm.ts(跨进程 LLM 纯类型 + 预设 PRESETS + DEFAULT_SETTINGS〔默认 claude-haiku-4-5〕;MVP-04 加 ToolDef/ToolUse/AgentMessage + StreamChunk 的 tool_use 变体 + search 设置,schemaVersion=2)
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
               index.ts(应用入口 → startShell)
@@ -49,15 +50,16 @@ src/
               skills/      (MVP-04:skillLoader — 扫描 skills/ + frontmatter 纯解析,坏文件跳过/目录缺失退化空清单,含测试)
               agent/       (promptAssembler〔persona+对话窗口→system/messages;MVP-04 加可用技能清单段;MVP-05 加用户记忆(facts+summary)上下文,含测试〕+ agentLoop〔MVP-04 升级为 ≤6 轮工具回灌循环:取消贯穿工具执行/每轮独立超时/工具报错回灌不终止;MVP-05 集成 save_memory,含测试〕+ testConnection)
               persona/     (personaLoader — persona.md 分块解析 + 缓存,含测试)
+              lines/       (MVP-13:linesLoader — 仿 personaLoader 缓存+降级模式,解析宠物包 lines.json〔口癖台词库〕+ pickLine 按 category 随机选词并避免连续复读,含测试)
               config/      (settings〔原子写+schemaVersion,v1→v2 迁移补 search,v2→v3 迁移补 memory embedding,含测试〕+ secrets〔safeStorage 加密,可注入,含测试;MVP-04 第二实例存 Tavily key;MVP-05 第三实例存 embedding key〕)
               memory/      (MVP-05:factStore/vectorIndex/transcriptStore/workingSummary/memoryManager — 事实库/向量索引/对话历史/工作摘要、权威源 facts.json 及可重建索引、与 agent/embedder/persona 交互)
               media/       (MVP-07:imageResize〔纯 targetSize 单测〕+ imagePrep〔nativeImage 降采样≤1568/重编码 base64,含 electron 故无单测〕+ screenCapture〔desktopCapturer 抓当前屏 + 全屏覆盖层框选 + crop,按 sender 过滤事件〕)
-              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager;MVP-08:runQuickAction + 剪贴板工具挂进 registry〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ quickActions.ts〔MVP-08:QUICK_ACTIONS 四预设〕+ settingsWindow + 全部 IPC 注册)
+              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager;MVP-08:runQuickAction + 剪贴板工具挂进 registry〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ quickActions.ts〔MVP-08:QUICK_ACTIONS 四预设〕+ settingsWindow + bubbleWindow〔MVP-13:pushLine 瞬态纯文本显示,复用既有跟随气泡窗〕+ 全部 IPC 注册;MVP-13:PET_SPEAK 处理器 — 校验 category→dialog.isOpen 抑制→pickLine→showAmbientLine 带 auto-hide 计时器,messageSent/dialogOpen 两处清理计时器防串扰聊天气泡)
   preload/    index.ts(contextBridge 暴露 petApi / chatApi〔含 onStream/onDone/onError/onStatus+cancel〕/ settingsApi〔含 setSearchKey〕)
   renderer/   index.html(含 CSP)
-              main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透)
+              main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透;MVP-13:单击 280ms 缓冲判别双击=poke〔戳〕vs 单击=开对话框,拖拽开始时清理残留单击计时器防误触发)
               spritePlayer.ts(精灵动画播放器 + nextFrameIndex + isPetPixel 命中测试;含测试)
-              petController.ts(自主行为控制器:基于 petBrain 状态机驱动游走/睡眠/动画切换)
+              petController.ts(自主行为控制器:基于 petBrain 状态机驱动游走/睡眠/动画切换;MVP-13:tick() 内并行无条件驱动 reactionPlanner〔与 petBrain 各自独立字段〕,睡醒/拖起触发 wake/drag,speak 时调 petApi.petSpeak)
               markdown.ts(MVP-04:极简安全 Markdown 子集渲染器 — 先转义防XSS再套加粗/斜体/行内代码/列表/链接/标题降级/表格降级,含测试)
               dialog.ts / dialog.html(对话框:常态薄条〔气泡〕+ 展开双态 + 逐字流式渲染;MVP-04:展开历史 pet 消息经 markdown.ts 渲染 + 搜索状态行;样式内联于 html;MVP-07:待发缩略图带 + ＋选图/📷截屏钮 + 拖拽/粘贴〔canvas 降采样〕+ 纯图发送 + 历史 🖼×N 标记;CSP 加 img-src data: blob:)
               regionOverlay.ts / regionOverlay.html(MVP-07:截屏框选全屏覆盖层——显示屏幕截图 dataURL + 拖矩形选区 + Esc 取消,复用同一 preload 的 overlayApi)
@@ -93,8 +95,9 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-09** UI 选宠物 + 导入宠物包 —— 代码完成 + 全 6 任务两阶段审查通过(subagent-driven-development,含一处任务间修复:`SettingsApi.importPet()` 类型补 `| null`)、待真机 GUI 验收:新增 `src/main/pets/petCatalog.ts`(`listPets` 合并去重坏包跳过 + `importPetFolder` 校验链、id 冲突拒绝绝不覆盖)、IPC 三新增(`LIST_PETS`/`IMPORT_PET`/`RELAUNCH_APP`)、设置窗新增宠物下拉 + 导入按钮 + 重启按钮,**重启后生效**(不改切换核心 `ensurePetHome`/`loadPet`)。零新依赖。`pnpm build`(三包)、`pnpm typecheck`、`pnpm test` 均通过,测试 256/256。**真机 GUI 交互步骤(下拉选择/导入文件夹/冲突提示/重启换肤)未经自动化验证,需人工在真实窗口里走一遍**——本仓库无 Electron GUI 自动化驱动(非 Linux 容器、无 Playwright 依赖),按项目既有约定由人工完成,详见实现计划 §Task 6 的验收清单。
 - ✅ **MVP-11** 信息查询增强(天气查询)—— 代码完成 + 全 4 任务两阶段审查通过 + 最终全分支审查通过(无 Critical/Important)、待真机验收:承接 ROADMAP.md 第③项,新增 `src/main/tools/weather.ts`(纯函数 WMO 天气码映射/地理编码解析/预报解析/结果格式化 → 可注入 `fetch` 的 Open-Meteo 客户端 → `weather` 工具,`location` 必填、返回固定"实况+未来3天")、在 `chat.ts` 的 registry 里接入(项目默认注入,不进宠物包/不依赖 persona.md)。零 key、零新 IPC/设置/依赖。`pnpm typecheck`/`pnpm test`/`pnpm build` 均通过,测试 315/315。**真机对话验收(问天气/未来三天/查无此地/不给城市反问)未经自动化验证,按项目既有惯例由人工完成。**
 - ✅ **MVP-12** 网页深度阅读(Firecrawl 集成)—— 代码完成 + 全 7 任务两阶段审查通过(subagent-driven-development,含一处任务间修复见下)、待真机验收:承接 ROADMAP.md 第⑤项,新增 `src/main/tools/firecrawl/` 目录(`firecrawlClient.ts` 纯函数 body 组装/响应解析/截断/防注入包裹 → 可注入 `fetch` 的 client,走 `POST {baseURL}/v2/scrape`)+ 两新工具 `read_url`(整页转 Markdown)/`extract_from_url`(prompt-only 结构化抽取),都在 `chat.ts` 的 registry 里按 `settings.firecrawl.enabled && 有 key` 条件挂载(不进宠物包)。设置模型加 `firecrawl:{enabled,baseURL?}` 段,`SETTINGS_SCHEMA_VERSION` 5→6 并补迁移;第 4 个 `safeStorage` 密钥库 `secrets-firecrawl.bin` + `SET_FIRECRAWL_KEY` IPC + `hasFirecrawlKey` 快照;设置窗「工具能力」页新增启用开关 + Key + BaseURL 三控件(仿 Tavily key UI idiom)。零新依赖(原生 `fetch`)。**任务间修复**:Task 4 因 `AppSettings.firecrawl` 变为必填字段,曾在渲染层 Save 处理器里硬编码 `firecrawl:{enabled:false}` 作为 typecheck 过关的临时写法,复审发现这会导致**每次保存设置都清空已持久化的 firecrawl 配置**——已在同任务内修复(改为读回加载时的快照值),Task 7 再替换为真表单值,复审通过。`pnpm typecheck`/`pnpm test`/`pnpm build` 均通过,测试 344/344。**真机验收(设置里启用+填 key→对话触发 read_url/extract_from_url、关闭开关/清空 key→工具消失)需真实 Firecrawl API key(按量计费),未经自动化验证,按项目既有惯例由人工完成。**
+- ✅ **MVP-13** 台词引擎+点击反应 —— 代码完成 + 全 6 任务两阶段审查通过(subagent-driven-development,Task 6 含一处任务间修复见下)+ 最终整支审查 Ready to merge(无 Critical/Important)、待真机验收:"让桌宠作为一只生物活起来"系列首个 MVP(brainstorming 定下四方向——让它活/能碰能撞/懂我在干嘛/听得到声音——本 MVP 做前两者的脊柱)。新增 `src/shared/reactionPlanner.ts`(纯函数 initReaction/stepReaction,决定是否说话+说哪一类 category〔idle/long_idle/wake/click/drag〕,全局冷却+事件冷却+不复读,与既有 petBrain 各自独立字段互不干扰)+ `src/main/lines/linesLoader.ts`(仿 personaLoader 缓存+降级模式,首次激活此前一直只在磁盘、从未接线的 `pets/luluka/lines.json` 口癖台词库)+ IPC 新增 `PET_SPEAK`/`BUBBLE_LINE` + `validateReactionCategory` + `bubbleWindow.pushLine`(复用既有跟随气泡窗做瞬态纯文本显示,非流式非 Markdown)+ shell 接线(PET_SPEAK 处理器校验→dialog.isOpen 抑制→选词→auto-hide 计时器,messageSent/dialogOpen 两处清理计时器防串扰聊天回复)+ petController.tick() 并行驱动 reactionPlanner + main.ts 双击=戳〔poke〕/单击仍开对话框(280ms 缓冲判别)。**任务间修复(plan-mandated,非 implementer 偏差)**:Task 6 审查发现单击后 280ms 内若接着拖拽,残留的单击计时器会在拖拽中/后误触发对话框弹出——fix 在拖拽被识别的瞬间同步清理残留计时器,复审确认三条路径(纯拖拽/纯单击/双击poke)均不受影响。零新依赖、零新权限。`pnpm typecheck`/`pnpm test`/`pnpm build` 均通过,测试 372/372。最终整支审查独立验证:气泡窗双用途(流式聊天回复 vs 瞬态台词)由 `dialog.isOpen()` 互斥不变式保证不串扰、降级链分层真实(缺 lines.json 不崩)、非目标全部遵守(不播放 audio、无情绪数值)。**真机验收清单**(计划 Task 6 Step 5,并按最终审查建议追加):静置冒 idle/long_idle 台词、双击冒 click、拖起冒 drag、单击仍开对话框、对话框开着不冒话、连点不刷屏、lines.json 缺失优雅降级;**追加两项 UX 手感确认**(非 bug,睡眠态与 reactionPlanner 故意解耦的已知行为,验收时按感觉决定是否留后续 MVP 调整):睡眠中的宠物是否仍会冒 idle 闲聊、戳/拖睡眠中的宠物是否合理地出 wake 台词而非 click/drag。
 
-> 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化;宠物自主截屏工具(承接 MVP-07 管线,配合浏览器自动化)。
+> 更远期(设计文档 §10,MVP-13 已实现口癖台词触发的脊柱):情境感知触发(时间/专注时长/窗口焦点)、配音播放(lines.json 的 audio 字段已读入但未播放)、情绪/养成数值系统、桌面自动化;宠物自主截屏工具(承接 MVP-07 管线,配合浏览器自动化)。
 
 ## 7. 已知遗留及完成项(Minor,记在账本)
 
