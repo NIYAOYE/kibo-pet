@@ -37,7 +37,6 @@ Thumbs.db
 # 说明:docs/ pets/ skills/ tools/(源码与资产)必须入库跟踪,
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 ROADMAP.md
-docs/*
 build
 pets/luluka
 pets/youka
