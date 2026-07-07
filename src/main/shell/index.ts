@@ -28,6 +28,7 @@ import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
+import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
 import { DEFAULT_SETTINGS } from '@shared/llm'
@@ -35,7 +36,8 @@ import type { ChatSendAttachment } from '@shared/ipc'
 import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
-  validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS
+  validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
+  validateReactionCategory
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
@@ -94,6 +96,22 @@ export function startShell(): void {
   let dialogCollapsed = true   // 镜像对话框折叠态,决定气泡显隐
   let bubbleHasContent = false // 本轮是否已有可显示的回复/状态
 
+  const AMBIENT_TTL_MS = 3500
+  let ambientHideTimer: NodeJS.Timeout | null = null
+  let lastLineText: string | null = null // 供 pickLine 避免连续复读
+
+  function clearAmbientLine(): void {
+    if (ambientHideTimer) { clearTimeout(ambientHideTimer); ambientHideTimer = null }
+  }
+  function showAmbientLine(text: string): void {
+    if (dialog.isOpen()) return // 对话框开着:气泡让位给聊天(planner 已抑制,这里再兜一道)
+    clearAmbientLine()
+    bubble.clear()
+    bubble.pushLine(text)
+    bubble.show(petBoundsFull(), petWorkArea())
+    ambientHideTimer = setTimeout(() => { ambientHideTimer = null; bubble.hide() }, AMBIENT_TTL_MS)
+  }
+
   function petBoundsFull(): Bounds {
     const [x, y] = petWin.getPosition()
     const [width, height] = petWin.getSize()
@@ -111,7 +129,7 @@ export function startShell(): void {
   function emitPetEvent(event: PetEvent): void {
     petWin.webContents.send(IPC.PET_EVENT, event)
     // 送出瞬间保证界面干净:清掉本轮气泡内容并隐藏,待首个流式/状态到达再显示
-    if (event === 'messageSent') { bubbleHasContent = false; bubble.clear(); bubble.hide() }
+    if (event === 'messageSent') { clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide() }
   }
 
   const dialog = createDialogController({
@@ -119,6 +137,7 @@ export function startShell(): void {
     url: rendererUrl ? `${rendererUrl}/dialog.html` : undefined,
     dialogHtml,
     onOpened: () => {
+      clearAmbientLine()
       emitPetEvent('dialogOpen')
       dialog.pushUpdate(chat.messages())
       refreshBubble() // 折叠态打开:此刻无本轮内容 → 保持隐藏(界面干净)
@@ -283,6 +302,15 @@ export function startShell(): void {
     chat.handleSend(payload)
   })
   ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
+  ipcMain.on(IPC.PET_SPEAK, (_e, raw) => {
+    const category = validateReactionCategory(raw)
+    if (!category) return
+    if (dialog.isOpen()) return // 对话框开着不冒话
+    const line = pickLine(loadLines(petDir), category, lastLineText ?? undefined)
+    if (!line) return // lines.json 缺失或该 category 为空 → 静默降级
+    lastLineText = line.text
+    showAmbientLine(line.text)
+  })
 
   function mimeFromPath(p: string): string {
     const ext = p.slice(p.lastIndexOf('.') + 1).toLowerCase()
