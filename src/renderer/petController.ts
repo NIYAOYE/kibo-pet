@@ -78,7 +78,10 @@ export class PetController {
     const wokeUp = prevState === 'sleep' && this.ctx.state !== 'sleep'
     const trigger: ReactionTrigger | undefined = wokeUp ? 'wake' : (this.pendingReaction ?? undefined)
     this.pendingReaction = null
-    const r = stepReaction(this.reactionCtx, { dtMs, trigger, paused: this.ctx.paused, rng: Math.random })
+    // 真正仍在睡眠中(非本 tick 刚醒)时闭嘴:this.ctx.state 已是 step() 之后的状态,
+    // wokeUp 的那一 tick state 已不是 'sleep',故 wake 台词不受此抑制。
+    const sleeping = this.ctx.state === 'sleep'
+    const r = stepReaction(this.reactionCtx, { dtMs, trigger, paused: this.ctx.paused || sleeping, rng: Math.random })
     this.reactionCtx = r.ctx
     if (r.output.speak) window.petApi.petSpeak(r.output.speak)
   }
