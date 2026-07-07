@@ -24,7 +24,8 @@ function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
 }
 
 let dir: string
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'chat-')) })
+let firecrawlKey: string | null = null
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'chat-')); firecrawlKey = null })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { readText?: () => string; writeText?: (t: string) => void }) {
@@ -47,6 +48,7 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { re
     loadSettings: () => settings,
     getKey: () => 'k',
     getSearchKey: () => null,
+    getFirecrawlKey: () => firecrawlKey,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
@@ -95,6 +97,44 @@ describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
     store.handleSend({ text: 'hi' })
     await finished
     expect(seen[0].tools?.map((t) => t.name)).toContain('save_memory')
+  })
+
+  it('firecrawl 关闭时不挂载 read_url/extract_from_url(即便有 key)', async () => {
+    settings.firecrawl = { enabled: false }
+    firecrawlKey = 'k'
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    const names = seen[0].tools?.map((t) => t.name) ?? []
+    expect(names).not.toContain('read_url')
+    expect(names).not.toContain('extract_from_url')
+  })
+
+  it('firecrawl 启用且有 key 时挂载两个工具', async () => {
+    settings.firecrawl = { enabled: true }
+    firecrawlKey = 'k'
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    const names = seen[0].tools?.map((t) => t.name) ?? []
+    expect(names).toContain('read_url')
+    expect(names).toContain('extract_from_url')
+    settings.firecrawl = { enabled: false } // 复位,避免影响其它用例
+  })
+
+  it('firecrawl 启用但无 key 时不挂载', async () => {
+    settings.firecrawl = { enabled: true }
+    firecrawlKey = null
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    const names = seen[0].tools?.map((t) => t.name) ?? []
+    expect(names).not.toContain('read_url')
+    expect(names).not.toContain('extract_from_url')
+    settings.firecrawl = { enabled: false } // 复位,避免影响其它用例
   })
 
   it('重启(重建 store)后 messages 恢复', async () => {

@@ -15,6 +15,9 @@ import { createTavilyBackend } from '../tools/searchBackends/tavily'
 import { createReadClipboardTool, createWriteClipboardTool } from '../tools/clipboardTools'
 import { createTodoTools } from '../tools/todoTools'
 import { createWeatherTool, createOpenMeteoClient } from '../tools/weather'
+import { createFirecrawlClient } from '../tools/firecrawl/firecrawlClient'
+import { createReadUrlTool } from '../tools/firecrawl/readUrl'
+import { createExtractFromUrlTool } from '../tools/firecrawl/extractFromUrl'
 import { findQuickAction } from './quickActions'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
@@ -49,6 +52,7 @@ export function createChatStore(opts: {
   loadSettings: () => AppSettings
   getKey: () => string | null
   getSearchKey: () => string | null
+  getFirecrawlKey: () => string | null
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
   /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
@@ -177,7 +181,7 @@ export function createChatStore(opts: {
       const backend = settings.search.backend === 'tavily'
         ? createTavilyBackend(() => opts.getSearchKey())
         : createDuckDuckGoBackend()
-      const registry = createToolRegistry([
+      const tools = [
         createWebSearchTool(backend),
         createReadSkillTool(opts.skills),
         createSaveMemoryTool((t) => opts.memory.saveFact(t)),
@@ -185,7 +189,12 @@ export function createChatStore(opts: {
         createWriteClipboardTool({ writeText: (t) => opts.clipboard.writeText(t) }),
         ...createTodoTools({ store: opts.todoStore, now: () => Date.now() }),
         createWeatherTool(createOpenMeteoClient())
-      ])
+      ]
+      if (settings.firecrawl.enabled && opts.getFirecrawlKey()) {
+        const fc = createFirecrawlClient({ getKey: opts.getFirecrawlKey, baseURL: settings.firecrawl.baseURL })
+        tools.push(createReadUrlTool(fc), createExtractFromUrlTool(fc))
+      }
+      const registry = createToolRegistry(tools)
 
       const ctrl = new AbortController()
       inFlight = ctrl
