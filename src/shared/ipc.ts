@@ -27,6 +27,7 @@ export const IPC = {
   CHAT_STATUS: 'chat:status',
   SET_SEARCH_KEY: 'settings:set-search-key',
   SET_EMBEDDING_KEY: 'settings:set-embedding-key',
+  SET_FIRECRAWL_KEY: 'settings:set-firecrawl-key',
   OPEN_MEMORY_DIR: 'settings:open-memory-dir',
   MEDIA_PICK_IMAGE: 'media:pick-image',
   MEDIA_CAPTURE_REGION: 'media:capture-region',
@@ -101,7 +102,7 @@ export interface ChatApi {
   openSettings(): void
 }
 
-export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean }
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean }
 export interface TestResult { ok: boolean; error?: string }
 
 export interface PetSummary { id: string; displayName: string; description: string }
@@ -116,6 +117,7 @@ export interface SettingsApi {
   setApiKey(key: string): Promise<boolean>
   setSearchKey(key: string): Promise<boolean>
   setEmbeddingKey(key: string): Promise<boolean>
+  setFirecrawlKey(key: string): Promise<boolean>
   openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
   listPets(): Promise<PetSummary[]>
