@@ -101,7 +101,7 @@ describe('v2 -> v3 迁移(memory)', () => {
 })
 
 describe('MVP-08 textTools 迁移', () => {
-  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 5', () => {
+  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 6', () => {
     const out = normalizeSettings({
       schemaVersion: 4,
       activePetId: 'luluka',
