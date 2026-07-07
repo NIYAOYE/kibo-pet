@@ -17,6 +17,7 @@ export interface BubbleController {
   pushDone(): void
   pushError(message: string): void
   clear(): void
+  pushLine(text: string): void
   window(): BrowserWindow | null
 }
 
@@ -85,6 +86,7 @@ export function createBubbleController(opts: {
     pushStatus: (t) => win.webContents.send(IPC.BUBBLE_STATUS, t),
     pushDone: () => win.webContents.send(IPC.BUBBLE_DONE),
     pushError: (m) => win.webContents.send(IPC.BUBBLE_ERROR, m),
-    clear: () => win.webContents.send(IPC.BUBBLE_CLEAR)
+    clear: () => win.webContents.send(IPC.BUBBLE_CLEAR),
+    pushLine: (t) => win.webContents.send(IPC.BUBBLE_LINE, t)
   }
 }
