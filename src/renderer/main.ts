@@ -44,6 +44,9 @@ async function boot(): Promise<void> {
     if (dragging) {
       if (!moved && Math.abs(e.screenX - downX) + Math.abs(e.screenY - downY) > DRAG_THRESHOLD) {
         moved = true
+        if (clickTimer !== null) {
+          clearTimeout(clickTimer); clickTimer = null
+        }
         controller.send('pickup')
       }
       if (moved) {
