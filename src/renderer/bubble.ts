@@ -2,8 +2,21 @@ import { renderMarkdownSafe } from './markdown'
 
 const box = document.getElementById('box') as HTMLElement
 const tail = document.getElementById('tail') as HTMLElement
+const wrap = document.getElementById('wrap') as HTMLElement
 
 let streaming = '' // 流式累积的纯文本
+
+// 内容变化后测量 wrap(box+tail)的自然高度并上报主进程；rAF 合并高频调用(逐 token 流式输出时
+// 最多每帧上报一次)，主进程夹取范围后重新摆位，实现"跟手实时长高"且不打爆 IPC。
+let resizeScheduled = false
+function scheduleReportSize(): void {
+  if (resizeScheduled) return
+  resizeScheduled = true
+  requestAnimationFrame(() => {
+    resizeScheduled = false
+    window.bubbleApi.reportSize(wrap.scrollHeight)
+  })
+}
 
 function clear(): void {
   streaming = ''
@@ -18,6 +31,7 @@ window.bubbleApi.onClear(() => clear())
 window.bubbleApi.onLine((text) => {
   clear()
   box.textContent = text
+  scheduleReportSize()
 })
 
 window.bubbleApi.onStream((text) => {
@@ -25,6 +39,7 @@ window.bubbleApi.onStream((text) => {
   streaming += text
   box.textContent = streaming            // 流式期间纯文本,避免半截标签闪烁
   box.scrollTop = box.scrollHeight
+  scheduleReportSize()
 })
 
 window.bubbleApi.onStatus((text) => {
@@ -32,18 +47,21 @@ window.bubbleApi.onStatus((text) => {
   if (streaming) return
   box.classList.add('status')
   box.textContent = `🔍 ${text}`
+  scheduleReportSize()
 })
 
 window.bubbleApi.onDone(() => {
   // 完成:把累积纯文本定格为安全 Markdown 子集
   if (streaming) box.innerHTML = renderMarkdownSafe(streaming)
   box.scrollTop = box.scrollHeight
+  scheduleReportSize()
 })
 
 window.bubbleApi.onError((message) => {
   streaming = ''
   box.classList.remove('status')
   box.textContent = `⚠ ${message}`
+  scheduleReportSize()
 })
 
 window.bubbleApi.onPlace((p) => {
