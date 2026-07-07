@@ -1,9 +1,11 @@
 import { BrowserWindow } from 'electron'
 
+export const PET_WINDOW_SIZE = { width: 256, height: 288 } as const
+
 export function createPetWindow(opts: { preload: string; url: string | undefined; indexHtml: string }): BrowserWindow {
   const win = new BrowserWindow({
-    width: 256,
-    height: 288,
+    width: PET_WINDOW_SIZE.width,
+    height: PET_WINDOW_SIZE.height,
     transparent: true,
     frame: false,
     resizable: false,

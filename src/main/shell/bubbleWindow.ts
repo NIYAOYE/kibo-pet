@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { Bounds } from '@shared/petBrain'
 import { bubblePlacement } from '@shared/bubblePlacement'
+import { fixedWindowBounds } from '@shared/windowPlacement'
 
 // 气泡框 240×160 + 底部 12px 尾巴区 = 172;bubblePlacement 以此整体尺寸计算越界
 const SIZE = { width: 240, height: 172 }
@@ -64,10 +65,9 @@ export function createBubbleController(opts: {
 
   function place(pet: Bounds, workArea: Bounds): void {
     const p = bubblePlacement(pet, workArea, SIZE)
-    // 气泡窗尺寸恒定(只改 x/y),故只需移动、无需 setSize——不像对话框那样需要临时 setResizable。
-    // (曾用 setResizable(true)→setBounds→setResizable(false),快速拖动时反复切窗样式会把
-    //  win.isVisible() 打乱成 false,是"气泡越拖越远"的根因;这里只 setPosition。)
-    win.setPosition(p.x, p.y)
+    // 每次都重新声明固定宽高，避免 Windows 非整数 DPI 下 setPosition() 的坐标舍入
+    // 被累积成窗口尺寸增长；保持 resizable:false，不再高频切换原生窗口样式。
+    win.setBounds(fixedWindowBounds(p.x, p.y, SIZE))
     win.webContents.send(IPC.BUBBLE_PLACE, { tailSide: p.tailSide, tailOffsetX: p.tailOffsetX })
   }
 

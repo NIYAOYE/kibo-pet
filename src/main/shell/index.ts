@@ -10,7 +10,7 @@ import {
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
-import { createPetWindow } from './petWindow'
+import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
@@ -37,6 +37,7 @@ import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS
 } from '@shared/ipcValidation'
+import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -245,7 +246,7 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.MOVE_WINDOW, (_e, raw) => {
     const delta = validateMoveDelta(raw)
-    if (!delta) return
+    if (!delta || isZeroMove(delta)) return
     const [x, y] = petWin.getPosition()
     const nx = Math.round(x + delta.dx)
     const ny = Math.round(y + delta.dy)
@@ -254,14 +255,19 @@ export function startShell(): void {
       // the REAL position (the renderer's predicted X can drift), so the pet
       // never wanders off-screen. Manual drags are intentionally NOT clamped
       // (free movement, matching MVP-01) — clamping them felt "magnetized".
-      const [width, height] = petWin.getSize()
-      const { workArea } = screen.getDisplayMatching({ x, y, width, height })
-      petWin.setPosition(
-        Math.max(workArea.x, Math.min(nx, workArea.x + workArea.width - width)),
-        Math.max(workArea.y, Math.min(ny, workArea.y + workArea.height - height))
-      )
+      const { workArea } = screen.getDisplayMatching({
+        x,
+        y,
+        width: PET_WINDOW_SIZE.width,
+        height: PET_WINDOW_SIZE.height
+      })
+      petWin.setBounds(fixedWindowBounds(
+        Math.max(workArea.x, Math.min(nx, workArea.x + workArea.width - PET_WINDOW_SIZE.width)),
+        Math.max(workArea.y, Math.min(ny, workArea.y + workArea.height - PET_WINDOW_SIZE.height)),
+        PET_WINDOW_SIZE
+      ))
     } else {
-      petWin.setPosition(nx, ny)
+      petWin.setBounds(fixedWindowBounds(nx, ny, PET_WINDOW_SIZE))
     }
     if (bubble.isVisible()) bubble.reposition(petBoundsFull(), petWorkArea())
   })
