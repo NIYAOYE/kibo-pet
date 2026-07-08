@@ -1,6 +1,7 @@
 import { SpritePlayer } from './spritePlayer'
 import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@shared/petBrain'
 import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
+import type { ContextSignalKind } from '@shared/ipc'
 
 const TICK_MS = 33
 
@@ -15,6 +16,7 @@ export class PetController {
   private currentAnim = ''
   private reactionCtx: ReactionCtx = initReaction()
   private pendingReaction: ReactionTrigger | null = null
+  private pendingContextSignal: ContextSignalKind | null = null
 
   constructor(private player: SpritePlayer) {}
 
@@ -37,6 +39,9 @@ export class PetController {
   /** 双击=戳：下一 tick 喂给反应规划器 */
   poke(): void { this.pendingReaction = 'poke' }
 
+  /** 主进程情境信号(AFK 离开/久坐提醒)：下一 tick 消费 */
+  receiveContextSignal(kind: ContextSignalKind): void { this.pendingContextSignal = kind }
+
   async syncBounds(): Promise<void> {
     const b = await window.petApi.getWindowBounds()
     this.workArea = b.workArea
@@ -48,8 +53,16 @@ export class PetController {
     const now = performance.now()
     const dtMs = now - this.lastTs
     this.lastTs = now
-    const event = this.pending.shift()
+
+    const contextSignal = this.pendingContextSignal
+    this.pendingContextSignal = null
+
+    let event = this.pending.shift()
     if (event === 'pickup') this.pendingReaction = 'drag' // 拖起 → drag 台词
+    // 久坐提醒命中且宠物在睡：同一 tick 内强制叫醒，避免下一 tick 的 wokeUp 派生
+    // 把更具体的 break 台词覆盖成通用 wake 台词（见设计文档 §7 时序陷阱）。
+    if (contextSignal === 'break_reminder' && this.ctx.state === 'sleep') event = 'wake'
+
     const prevState = this.ctx.state
     const { ctx, effects } = step(this.ctx, {
       dtMs,
@@ -74,14 +87,20 @@ export class PetController {
       this.windowX += effects.move
     }
 
-    // 反应规划器:每 tick 一个触发,睡→醒(wake)优先于本 tick 的触碰
+    // 反应规划器:每 tick 一个触发。优先级:主进程情境信号 > 睡→醒(wake)派生 > 手势触发(poke/drag)。
     const wokeUp = prevState === 'sleep' && this.ctx.state !== 'sleep'
-    const trigger: ReactionTrigger | undefined = wokeUp ? 'wake' : (this.pendingReaction ?? undefined)
+    const trigger: ReactionTrigger | undefined =
+      contextSignal ?? (wokeUp ? 'wake' : (this.pendingReaction ?? undefined))
     this.pendingReaction = null
-    // 真正仍在睡眠中(非本 tick 刚醒)时闭嘴:this.ctx.state 已是 step() 之后的状态,
-    // wokeUp 的那一 tick state 已不是 'sleep',故 wake 台词不受此抑制。
     const sleeping = this.ctx.state === 'sleep'
-    const r = stepReaction(this.reactionCtx, { dtMs, trigger, paused: this.ctx.paused || sleeping, rng: Math.random })
+    const r = stepReaction(this.reactionCtx, {
+      dtMs,
+      trigger,
+      pausedByDialog: this.ctx.paused,
+      sleeping,
+      nowMs: Date.now(),
+      rng: Math.random
+    })
     this.reactionCtx = r.ctx
     if (r.output.speak) window.petApi.petSpeak(r.output.speak)
   }
