@@ -53,8 +53,12 @@ export const IPC = {
   BUBBLE_PLACE: 'bubble:place',
   BUBBLE_LINE: 'bubble:line',
   BUBBLE_RESIZE: 'bubble:resize',
-  PET_SPEAK: 'pet:speak'
+  PET_SPEAK: 'pet:speak',
+  CONTEXT_SIGNAL: 'context:signal'
 } as const
+
+/** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒，均为一次性边沿事件 */
+export type ContextSignalKind = 'afk_leave' | 'break_reminder'
 
 export interface LoadedPet {
   manifest: PetManifest
@@ -98,6 +102,8 @@ export interface PetApi {
   onPetEvent(cb: (event: PetEvent) => void): void
   /** 自主/触碰反应：请求主进程按 category 选一句台词，用瞬态气泡显示 */
   petSpeak(category: ReactionCategory): void
+  /** 主进程情境信号(AFK 离开/久坐提醒):main→renderer 推送 */
+  onContextSignal(cb: (kind: ContextSignalKind) => void): void
   quit(): void
 }
 

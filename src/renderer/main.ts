@@ -16,6 +16,7 @@ async function boot(): Promise<void> {
   const controller = new PetController(player)
   await controller.start()
   window.petApi.onPetEvent((event) => controller.send(event))
+  window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
 
   let dragging = false
   let moved = false

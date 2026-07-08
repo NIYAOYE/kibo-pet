@@ -4,7 +4,7 @@ import {
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
-  type BubbleApi, type BubblePlace
+  type BubbleApi, type BubblePlace, type ContextSignalKind
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -19,6 +19,10 @@ const petApi: PetApi = {
     ipcRenderer.on(IPC.PET_EVENT, (_e, event: PetEvent) => cb(event))
   },
   petSpeak: (category): void => ipcRenderer.send(IPC.PET_SPEAK, category),
+  onContextSignal: (cb: (kind: ContextSignalKind) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CONTEXT_SIGNAL)
+    ipcRenderer.on(IPC.CONTEXT_SIGNAL, (_e, kind: ContextSignalKind) => cb(kind))
+  },
   quit: (): void => ipcRenderer.send(IPC.QUIT)
 }
 
