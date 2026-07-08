@@ -12,6 +12,7 @@ import type { PetEvent, Bounds } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
+import { startIdleWatcher } from '../context/idleWatcher'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createBubbleController } from './bubbleWindow'
@@ -87,6 +88,7 @@ export function startShell(): void {
   const firecrawlSecrets = createSecretStore(join(userData, 'secrets-firecrawl.bin'), safeStorage)
 
   const petWin = createPetWindow({ preload, url: rendererUrl, indexHtml: petHtml })
+  const idleWatcher = startIdleWatcher(petWin)
 
   const bubble = createBubbleController({
     preload,
@@ -429,5 +431,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop() })
 }

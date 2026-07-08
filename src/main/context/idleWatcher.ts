@@ -1,3 +1,6 @@
+import { powerMonitor, type BrowserWindow } from 'electron'
+import { IPC } from '@shared/ipc'
+
 export interface IdleWatcherConfig {
   /** 轮询间隔 */
   pollIntervalMs: number
@@ -60,4 +63,29 @@ export function stepIdleWatcher(
   }
 
   return { state: next, events }
+}
+
+export interface IdleWatcherHandle { stop: () => void }
+
+/**
+ * 薄包装:每 pollIntervalMs 轮询一次真实 OS 闲置时间，把 stepIdleWatcher 判定的事件推给渲染进程。
+ * 核心判定逻辑（stepIdleWatcher）不依赖本函数，保持可单测。
+ */
+export function startIdleWatcher(
+  petWin: BrowserWindow,
+  opts: { config?: Partial<IdleWatcherConfig>; getIdleMs?: () => number } = {}
+): IdleWatcherHandle {
+  const cfg = { ...DEFAULT_IDLE_WATCHER_CONFIG, ...opts.config }
+  const getIdleMs = opts.getIdleMs ?? ((): number => powerMonitor.getSystemIdleTime() * 1000)
+  let state = initIdleWatcher()
+
+  const handle = setInterval(() => {
+    const r = stepIdleWatcher(state, getIdleMs(), cfg)
+    state = r.state
+    // IdleWatcherEvent('afk_leave'|'break_reminder')与 ContextSignalKind 结构相同,
+    // webContents.send 的 channel 参数外类型是 any,故无需在此转换类型。
+    for (const kind of r.events) petWin.webContents.send(IPC.CONTEXT_SIGNAL, kind)
+  }, cfg.pollIntervalMs)
+
+  return { stop: (): void => clearInterval(handle) }
 }
