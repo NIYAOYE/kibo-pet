@@ -25,7 +25,7 @@ export type StreamChunk =
 export type AgentMessage =
   | ChatTurn
   | { role: 'assistant_tool_use'; text?: string; toolUse: ToolUse }
-  | { role: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  | { role: 'tool_result'; toolUseId: string; content: string; isError?: boolean; images?: ImagePart[] }
 
 export interface ProviderSettings { kind: ProviderKind; baseURL?: string; model: string }
 

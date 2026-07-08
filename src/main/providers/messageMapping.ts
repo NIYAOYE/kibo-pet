@@ -27,7 +27,13 @@ export function toAnthropicMessages(messages: AgentMessage[]): AnthropicMessageL
       if (last && last.role === 'assistant' && Array.isArray(last.content)) last.content.push(...blocks)
       else out.push({ role: 'assistant', content: blocks })
     } else if (m.role === 'tool_result') {
-      const block: Record<string, unknown> = { type: 'tool_result', tool_use_id: m.toolUseId, content: m.content }
+      const contentBlocks: Array<Record<string, unknown>> = [{ type: 'text', text: m.content }]
+      if (m.images && m.images.length > 0) {
+        for (const img of m.images) contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.dataBase64 } })
+      }
+      const block: Record<string, unknown> = m.images && m.images.length > 0
+        ? { type: 'tool_result', tool_use_id: m.toolUseId, content: contentBlocks }
+        : { type: 'tool_result', tool_use_id: m.toolUseId, content: m.content }
       if (m.isError) block.is_error = true
       const last = out[out.length - 1]
       if (last && last.role === 'user' && Array.isArray(last.content)) last.content.push(block)
@@ -65,6 +71,12 @@ export function toOpenAiMessages(system: string, messages: AgentMessage[]): Open
     } else if (m.role === 'tool_result') {
       // openai 无 is_error 概念:错误信息就在 content 文本里,模型可读
       out.push({ role: 'tool', tool_call_id: m.toolUseId, content: m.content })
+      if (m.images && m.images.length > 0) {
+        out.push({
+          role: 'user',
+          content: m.images.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.dataBase64}` } }))
+        })
+      }
     } else if (m.role === 'user' && m.images && m.images.length > 0) {
       const content: Array<Record<string, unknown>> = []
       if (m.content) content.push({ type: 'text', text: m.content })
