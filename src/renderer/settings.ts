@@ -148,7 +148,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       firecrawl: {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
-      }
+      },
+      desktopControl: { enabled: false }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value

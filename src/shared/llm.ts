@@ -39,9 +39,11 @@ export interface TextToolsSettings { autoCopyResult: boolean }
 
 export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
-export const SETTINGS_SCHEMA_VERSION = 6
+export interface DesktopControlSettings { enabled: boolean }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings }
+export const SETTINGS_SCHEMA_VERSION = 7
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -50,7 +52,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
-  firecrawl: { enabled: false }
+  firecrawl: { enabled: false },
+  desktopControl: { enabled: false }
 }
 
 export interface Preset {

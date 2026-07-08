@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false } }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false } }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -61,8 +61,8 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 6', () => {
+  it('归一化后 schemaVersion 升为 7', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(6)
+    expect(loadSettings(f).schemaVersion).toBe(7)
   })
 })

@@ -16,7 +16,8 @@ const settings: AppSettings = {
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
-  firecrawl: { enabled: false }
+  firecrawl: { enabled: false },
+  desktopControl: { enabled: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
