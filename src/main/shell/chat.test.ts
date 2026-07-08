@@ -202,6 +202,27 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     expect(petMsgs[petMsgs.length - 1]?.text).toBe('看完了') // 未被"轮数上限"错误打断
     settings.desktopControl = { enabled: false } // 复位
   })
+
+  it('desktopControl 开启时 maxOutputTokens 提升,降低旁白+工具参数一起被截断的概率', async () => {
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')]
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBeGreaterThan(1024)
+    settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 关闭时 maxOutputTokens 保持默认 1024', async () => {
+    settings.desktopControl = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBe(1024)
+  })
 })
 
 describe('chat 图像', () => {
