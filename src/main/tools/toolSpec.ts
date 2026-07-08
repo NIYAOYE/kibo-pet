@@ -1,4 +1,4 @@
-import type { ToolDef } from '@shared/llm'
+import type { ToolDef, ImagePart } from '@shared/llm'
 
 export interface ToolContext {
   signal: AbortSignal
@@ -6,6 +6,8 @@ export interface ToolContext {
   onStatus?: (text: string) => void
 }
 
+export interface ToolRunOutput { content: string; images?: ImagePart[] }
+
 export interface ToolSpec extends ToolDef {
-  run(input: unknown, ctx: ToolContext): Promise<string>
+  run(input: unknown, ctx: ToolContext): Promise<string | ToolRunOutput>
 }

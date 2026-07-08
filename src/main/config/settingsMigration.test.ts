@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(6)
+    expect(s.schemaVersion).toBe(7)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(6)
+    expect(s.schemaVersion).toBe(7)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(6)
+    expect(s.schemaVersion).toBe(7)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')
@@ -101,7 +101,7 @@ describe('v2 -> v3 迁移(memory)', () => {
 })
 
 describe('MVP-08 textTools 迁移', () => {
-  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 6', () => {
+  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 7', () => {
     const out = normalizeSettings({
       schemaVersion: 4,
       activePetId: 'luluka',
@@ -109,7 +109,7 @@ describe('MVP-08 textTools 迁移', () => {
       search: { backend: 'duckduckgo' },
       memory: { embedding: null }
     })
-    expect(out.schemaVersion).toBe(6)
+    expect(out.schemaVersion).toBe(7)
     expect(out.textTools).toEqual({ autoCopyResult: false })
   })
 
@@ -125,7 +125,7 @@ describe('MVP-08 textTools 迁移', () => {
 })
 
 describe('MVP-12 firecrawl 迁移', () => {
-  it('缺失 firecrawl 时补默认 { enabled:false } 且 schemaVersion 升到 6', () => {
+  it('缺失 firecrawl 时补默认 { enabled:false } 且 schemaVersion 升到 7', () => {
     const out = normalizeSettings({
       schemaVersion: 5,
       activePetId: 'luluka',
@@ -134,7 +134,7 @@ describe('MVP-12 firecrawl 迁移', () => {
       memory: { embedding: null },
       textTools: { autoCopyResult: false }
     })
-    expect(out.schemaVersion).toBe(6)
+    expect(out.schemaVersion).toBe(7)
     expect(out.firecrawl).toEqual({ enabled: false, baseURL: undefined })
   })
 
@@ -148,5 +148,31 @@ describe('MVP-12 firecrawl 迁移', () => {
     const out = normalizeSettings({ firecrawl: { enabled: 'yes', baseURL: '   ' } })
     expect(out.firecrawl.enabled).toBe(false)
     expect(out.firecrawl.baseURL).toBeUndefined()
+  })
+})
+
+describe('desktopControl 迁移', () => {
+  it('缺失 desktopControl 时补默认 { enabled:false } 且 schemaVersion 升到 7', () => {
+    const out = normalizeSettings({
+      schemaVersion: 6,
+      activePetId: 'luluka',
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: null },
+      textTools: { autoCopyResult: false },
+      firecrawl: { enabled: false }
+    })
+    expect(out.schemaVersion).toBe(7)
+    expect(out.desktopControl).toEqual({ enabled: false })
+  })
+
+  it('保留已存的 enabled:true', () => {
+    const out = normalizeSettings({ desktopControl: { enabled: true } })
+    expect(out.desktopControl.enabled).toBe(true)
+  })
+
+  it('enabled 非布尔退化为 false', () => {
+    const out = normalizeSettings({ desktopControl: { enabled: 'yes' } })
+    expect(out.desktopControl.enabled).toBe(false)
   })
 })

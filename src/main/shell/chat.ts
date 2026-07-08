@@ -25,6 +25,12 @@ import type { TodoStore } from '../todos/todoStore'
 
 const TIMEOUT_MS = 60000
 const MAX_OUTPUT_TOKENS = 1024
+// 桌面控制开启时提高单轮输出 token 上限:宠物人设旁白 + 工具调用参数(尤其
+// take_screenshot 之后的分析文字、type_text 的长文本)容易一起挤爆默认的 1024,
+// 真机验证复现过:回复被截断导致工具调用的 JSON 参数不完整,模型"有输入的意图
+// 但从未真正调用成功"——见 messageMapping/agentLoop 对截断的兜底(该兜底防止静默
+// 失败,但更大的预算能从源头降低触发概率)。
+const DESKTOP_CONTROL_MAX_OUTPUT_TOKENS = 4096
 const UNCONFIGURED_REPLY = '(还没接上大脑)先在托盘「设置」里选好 Provider 并填 API Key 吧~我已帮你打开设置。'
 export const MAX_CLIPBOARD_CHARS = 8000
 const QUICK_ACTION_UNTRUSTED_HEADER =
@@ -53,6 +59,10 @@ export function createChatStore(opts: {
   getKey: () => string | null
   getSearchKey: () => string | null
   getFirecrawlKey: () => string | null
+  /** 桌面控制六个工具的真实构造器;未注入(如多数既有测试)则该能力永不出现,与 settings 开关无关 */
+  buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
+  /** 给桌面控制工具套上指示器显隐等生命周期钩子;省略则原样返回 */
+  wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
   /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
@@ -194,6 +204,10 @@ export function createChatStore(opts: {
         const fc = createFirecrawlClient({ getKey: opts.getFirecrawlKey, baseURL: settings.firecrawl.baseURL })
         tools.push(createReadUrlTool(fc), createExtractFromUrlTool(fc))
       }
+      if (settings.desktopControl.enabled && opts.buildDesktopTools) {
+        const wrap = opts.wrapDesktopTools ?? ((t: typeof tools) => t)
+        tools.push(...wrap(opts.buildDesktopTools()))
+      }
       const registry = createToolRegistry(tools)
 
       const ctrl = new AbortController()
@@ -212,7 +226,8 @@ export function createChatStore(opts: {
           system,
           messages,
           registry,
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          maxToolRounds: settings.desktopControl.enabled ? 20 : undefined,
+          maxOutputTokens: settings.desktopControl.enabled ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
           onText: (t) => { acc += t; opts.pushStream(t) },

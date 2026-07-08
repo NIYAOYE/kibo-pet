@@ -6,7 +6,7 @@ import { createChatStore, buildQuickActionPreview, MAX_CLIPBOARD_CHARS } from '.
 import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
-import type { AppSettings } from '@shared/llm'
+import type { AppSettings, StreamChunk } from '@shared/llm'
 import type { TodoStore } from '../todos/todoStore'
 
 const settings: AppSettings = {
@@ -16,7 +16,8 @@ const settings: AppSettings = {
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
-  firecrawl: { enabled: false }
+  firecrawl: { enabled: false },
+  desktopControl: { enabled: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
@@ -28,7 +29,12 @@ let firecrawlKey: string | null = null
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'chat-')); firecrawlKey = null })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { readText?: () => string; writeText?: (t: string) => void }) {
+function makeStore(
+  provider: LlmProvider,
+  seen: StreamChatRequest[],
+  clip?: { readText?: () => string; writeText?: (t: string) => void },
+  desktop?: { buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]; wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[] }
+) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
   const written: string[] = []
   let done: () => void = () => {}
@@ -49,6 +55,8 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { re
     getKey: () => 'k',
     getSearchKey: () => null,
     getFirecrawlKey: () => firecrawlKey,
+    buildDesktopTools: desktop?.buildDesktopTools,
+    wrapDesktopTools: desktop?.wrapDesktopTools,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
@@ -144,6 +152,76 @@ describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
     await first.finished
     const second = makeStore(createFakeProvider({ reply: '好' }), [])
     expect(second.store.messages().map((m) => m.text)).toEqual(['第一句', '好'])
+  })
+})
+
+describe('desktopControl 工具挂载与轮数上限', () => {
+  function fakeDesktopTool(name: string): import('../tools/toolSpec').ToolSpec {
+    return { name, description: 'd', inputSchema: { type: 'object', properties: {}, required: [] }, run: async () => 'ok' }
+  }
+
+  it('desktopControl 关闭时不挂载,即便注入了 buildDesktopTools', async () => {
+    settings.desktopControl = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')]
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].tools?.map((t) => t.name) ?? []).not.toContain('take_screenshot')
+  })
+
+  it('desktopControl 开启时挂载 buildDesktopTools 返回的工具,并经过 wrapDesktopTools', async () => {
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    let wrapped = false
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')],
+      wrapDesktopTools: (tools) => { wrapped = true; return tools }
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].tools?.map((t) => t.name) ?? []).toContain('take_screenshot')
+    expect(wrapped).toBe(true)
+    settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 开启时轮数上限提升到 20,超过 6 轮的工具循环仍能继续', async () => {
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const script: StreamChunk[][] = Array.from({ length: 10 }, (_, i) => [
+      { type: 'tool_use' as const, toolUse: { id: `t${i}`, name: 'take_screenshot', input: {} } }
+    ])
+    script.push([{ type: 'text' as const, text: '看完了' }, { type: 'done' as const }])
+    const { store, finished } = makeStore(createFakeProvider({ script }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')]
+    })
+    store.handleSend({ text: '帮我看看屏幕' })
+    await finished
+    const petMsgs = store.messages().filter((m) => m.role === 'pet')
+    expect(petMsgs[petMsgs.length - 1]?.text).toBe('看完了') // 未被"轮数上限"错误打断
+    settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 开启时 maxOutputTokens 提升,降低旁白+工具参数一起被截断的概率', async () => {
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')]
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBeGreaterThan(1024)
+    settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 关闭时 maxOutputTokens 保持默认 1024', async () => {
+    settings.desktopControl = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBe(1024)
   })
 })
 

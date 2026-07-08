@@ -56,4 +56,19 @@ describe('normalizeOpenAiChunks', () => {
     ])))
     expect(chunks[0]).toEqual({ type: 'tool_use', toolUse: { id: 'c', name: 'web_search', input: {} } })
   })
+
+  // 真机验证复现的真实 bug:回复因 max_tokens 被截断时 finish_reason 是 "length" 不是
+  // "tool_calls",原实现只在 finish_reason==='tool_calls' 时才吐出累积的工具调用——
+  // 截断场景下,已经聚合到的部分参数(哪怕不完整)被整个丢弃,agentLoop 那一轮直接
+  // 收尾成纯文本回复,模型的工具调用意图完全消失、用户毫无察觉。现在 finish_reason
+  // 是 "length" 时也要吐出(参数解析失败则回退 {},交给 registry 校验兜底报错,
+  // 模型能看到"缺少必填参数"从而在下一轮重试——总比整个调用凭空消失强)。
+  it('finish_reason=length 时仍吐出已聚合的 tool_calls(即便参数不完整)', async () => {
+    const chunks = await collect(normalizeOpenAiChunks(feed([
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'type_text', arguments: '{"text":"部分被截断的很长一段文' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'length' }] }
+    ])))
+    expect(chunks[0].type).toBe('tool_use')
+    expect((chunks[0] as { toolUse: { name: string } }).toolUse.name).toBe('type_text')
+  })
 })

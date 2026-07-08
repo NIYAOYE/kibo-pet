@@ -34,6 +34,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     enabled: fc.enabled === true,
     baseURL: typeof fc.baseURL === 'string' && fc.baseURL.trim().length > 0 ? fc.baseURL.trim() : undefined
   }
+  const dc = (r.desktopControl ?? {}) as Record<string, unknown>
+  const desktopControl = { enabled: dc.enabled === true }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
@@ -41,7 +43,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     search: { backend },
     memory: { embedding },
     textTools: { autoCopyResult },
-    firecrawl
+    firecrawl,
+    desktopControl
   }
 }
 

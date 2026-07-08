@@ -18,6 +18,7 @@ const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
 const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
 const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
 const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
+const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
@@ -72,6 +73,13 @@ function syncFirecrawlRows(): void {
   firecrawlBaseRow.style.display = show
 }
 firecrawlEnabled.addEventListener('change', syncFirecrawlRows)
+desktopControlEnabled.addEventListener('change', () => {
+  if (!desktopControlEnabled.checked) return
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmDesktopControl()
+    if (!confirmed) desktopControlEnabled.checked = false
+  })()
+})
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 async function refreshPets(selectId: string): Promise<void> {
@@ -148,7 +156,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       firecrawl: {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
-      }
+      },
+      desktopControl: { enabled: desktopControlEnabled.checked }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -184,6 +193,7 @@ void (async () => {
   if (snap.settings.firecrawl.baseURL) firecrawlBaseURL.value = snap.settings.firecrawl.baseURL
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
+  desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()

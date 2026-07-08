@@ -63,6 +63,7 @@ const settingsApi: SettingsApi = {
   setSearchKey: (key: string) => ipcRenderer.invoke(IPC.SET_SEARCH_KEY, key),
   setEmbeddingKey: (key: string) => ipcRenderer.invoke(IPC.SET_EMBEDDING_KEY, key),
   setFirecrawlKey: (key: string) => ipcRenderer.invoke(IPC.SET_FIRECRAWL_KEY, key),
+  confirmDesktopControl: (): Promise<boolean> => ipcRenderer.invoke(IPC.CONFIRM_DESKTOP_CONTROL),
   openMemoryDir: (): void => ipcRenderer.send(IPC.OPEN_MEMORY_DIR),
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key }),
   listPets: () => ipcRenderer.invoke(IPC.LIST_PETS),

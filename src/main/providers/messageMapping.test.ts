@@ -90,3 +90,71 @@ describe('图像序列化', () => {
     expect((out[0].content as unknown[]).length).toBe(1)
   })
 })
+
+describe('tool_result 带图像', () => {
+  const shotMsg: AgentMessage[] = [
+    { role: 'tool_result', toolUseId: 'tu_1', content: '已截屏', images: [{ mimeType: 'image/jpeg', dataBase64: 'QUJD' }] }
+  ]
+
+  it('anthropic:tool_result content 数组内追加 image 块', () => {
+    const out = toAnthropicMessages(shotMsg)
+    expect(out).toEqual([{
+      role: 'user',
+      content: [{
+        type: 'tool_result', tool_use_id: 'tu_1',
+        content: [
+          { type: 'text', text: '已截屏' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } }
+        ]
+      }]
+    }])
+  })
+
+  it('openai-compat:tool 消息纯文本,紧随一条合成的 user image 消息', () => {
+    const out = toOpenAiMessages('sys', shotMsg)
+    expect(out[1]).toEqual({ role: 'tool', tool_call_id: 'tu_1', content: '已截屏' })
+    expect(out[2]).toEqual({
+      role: 'user',
+      content: [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,QUJD' } }]
+    })
+  })
+
+  it('tool_result 无 images 时行为不变(content 仍是字符串)', () => {
+    const plain: AgentMessage[] = [{ role: 'tool_result', toolUseId: 'tu_1', content: '结果A' }]
+    expect(toAnthropicMessages(plain)[0]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: '结果A' }] })
+    expect(toOpenAiMessages('s', plain)[1]).toEqual({ role: 'tool', tool_call_id: 'tu_1', content: '结果A' })
+  })
+
+  it('并行工具调用:take_screenshot 非最后一个时,合成的 user image 消息不打断连续的 tool 消息(否则 OpenAI 400)', () => {
+    const parallel: AgentMessage[] = [
+      { role: 'assistant_tool_use', toolUse: { id: 't1', name: 'take_screenshot', input: {} } },
+      { role: 'assistant_tool_use', toolUse: { id: 't2', name: 'list_windows', input: {} } },
+      { role: 'tool_result', toolUseId: 't1', content: '已截屏', images: [{ mimeType: 'image/jpeg', dataBase64: 'QUJD' }] },
+      { role: 'tool_result', toolUseId: 't2', content: '窗口列表' }
+    ]
+    const out = toOpenAiMessages('sys', parallel)
+    expect(out).toHaveLength(5)
+    expect(out[2]).toEqual({ role: 'tool', tool_call_id: 't1', content: '已截屏' })
+    expect(out[3]).toEqual({ role: 'tool', tool_call_id: 't2', content: '窗口列表' })
+    expect(out[4]).toEqual({
+      role: 'user',
+      content: [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,QUJD' } }]
+    })
+  })
+
+  it('anthropic:tool_result content 为空字符串且带图像时,不产出空 text block(避免 Anthropic 400)', () => {
+    const emptyTextMsg: AgentMessage[] = [
+      { role: 'tool_result', toolUseId: 'tu_1', content: '', images: [{ mimeType: 'image/jpeg', dataBase64: 'QUJD' }] }
+    ]
+    const out = toAnthropicMessages(emptyTextMsg)
+    expect(out).toEqual([{
+      role: 'user',
+      content: [{
+        type: 'tool_result', tool_use_id: 'tu_1',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } }
+        ]
+      }]
+    }])
+  })
+})

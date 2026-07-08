@@ -33,7 +33,12 @@ export async function* normalizeOpenAiChunks(parts: AsyncIterable<OpenAiChunkLik
       if (tc.function?.arguments) slot.args += tc.function.arguments
       calls.set(tc.index, slot)
     }
-    if (choice.finish_reason === 'tool_calls') {
+    // "length" = 回复因达到 max_tokens 被截断(OpenAI 兼容端点的截断信号)。截断可能发生在
+    // 工具调用参数生成到一半的时候,此时也必须把已聚合到的部分吐出——不然模型的工具调用
+    // 意图会连同那部分参数一起被静默丢弃,agentLoop 那一轮直接收尾成纯文本回复,用户和
+    // 模型都不知道工具从未被调用过(真机验证复现的真实 bug)。参数解析失败就回退 {},
+    // 交给 registry 校验兜底报错,好过整个调用凭空消失。
+    if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'length') {
       for (const [, c] of [...calls.entries()].sort((a, b) => a[0] - b[0])) {
         let input: unknown = {}
         try { input = c.args ? JSON.parse(c.args) : {} } catch { input = {} }

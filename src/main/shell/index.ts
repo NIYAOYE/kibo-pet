@@ -1,7 +1,16 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { execFile as execFileCb } from 'node:child_process'
+import { promisify } from 'node:util'
+import { createAutomationControl } from '../automation/automationControl'
+import { createScreenshotState } from '../automation/screenshotState'
+import { captureFullScreen } from '../media/fullScreenCapture'
+import { createDesktopTools } from '../tools/desktopTools'
+import { createControlIndicator } from './controlIndicator'
+import { createIndicatorGate, wrapToolsWithGate } from '../automation/toolIndicatorGate'
+import { createLastAiPosTracker, startManualOverrideWatch } from '../automation/manualOverrideWatch'
 import {
   IPC,
   type WindowBounds,
@@ -176,6 +185,59 @@ export function startShell(): void {
   // 待办是用户的、非宠物皮肤的数据——全局存储,换宠物(petHome 会变)也不能丢/分叉待办
   const todoStore = createTodoStore({ file: join(userData, 'todos.json') })
 
+  const execFileP = promisify(execFileCb)
+  const automationControl = createAutomationControl({
+    // windowsHide:true 是防御性加固:Electron 主进程是 GUI 子系统、没有自己的控制台,
+    // spawn 一个控制台子系统程序(powershell.exe)理论上可能被 Windows 弹出一个可见的
+    // 控制台窗口、抢到前台焦点。真机诊断这次没有观察到这个现象(GetConsoleWindow 返回
+    // null,前台窗口全程未变),但保留这个选项零成本、能防住其他 Windows 版本/配置下的
+    // 潜在同类问题,不依赖"这次没测出来"就假设它不会发生。
+    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
+  })
+
+  // createControlIndicator bakes the display name into the window's HTML at construction
+  // time, so it must not be built until the real name is known — a placeholder assigned
+  // by-value here would never propagate into the already-created window. Deferred to the
+  // loadPet(...).then() callback; show()/hide() below no-op safely if called before it resolves.
+  let controlIndicator: ReturnType<typeof createControlIndicator> | null = null
+  void loadPet(petDir)
+    .then((p) => { controlIndicator = createControlIndicator(p.manifest.displayName) })
+    .catch(() => { controlIndicator = createControlIndicator('宠物') })
+
+  const lastAiPos = createLastAiPosTracker()
+  let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
+  const indicatorGate = createIndicatorGate(
+    () => {
+      // 每轮桌面控制开始时清空上一轮残留的 lastAiPos:否则 manualOverrideWatch 首个 tick 会拿
+      // 上一轮点击坐标去比对本轮真实光标——用户在两轮之间正常移动鼠标就会被误判为"人工接管",
+      // 提前 cancel() 本轮尚未开始点击的自动化(fail-safe 但会打断用户,见 review finding)。
+      lastAiPos.clear()
+      controlIndicator?.show()
+      manualOverrideWatch = startManualOverrideWatch({
+        getCursorPos: () => {
+          const p = screen.getCursorScreenPoint()
+          const d = screen.getDisplayNearestPoint(p)
+          return { x: Math.round(p.x * d.scaleFactor), y: Math.round(p.y * d.scaleFactor) }
+        },
+        getLastAiPos: () => lastAiPos.get(),
+        onOverride: () => { chat.cancel() }
+      })
+    },
+    () => {
+      controlIndicator?.hide()
+      manualOverrideWatch?.stop()
+      manualOverrideWatch = null
+    }
+  )
+
+  const automationWithTracking = {
+    ...automationControl,
+    click: async (input: Parameters<typeof automationControl.click>[0]) => {
+      lastAiPos.set({ x: input.x, y: input.y })
+      return automationControl.click(input)
+    }
+  }
+
   const chat = createChatStore({
     petDir,
     skills,
@@ -185,6 +247,13 @@ export function startShell(): void {
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
     getFirecrawlKey: () => firecrawlSecrets.getKey(),
+    buildDesktopTools: () => createDesktopTools({
+      platform: process.platform,
+      automation: automationWithTracking,
+      screenshotState: createScreenshotState(), // 每次 handleSend 都是全新一个 —— 每轮对话自然重置
+      captureScreen: () => captureFullScreen(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+    }),
+    wrapDesktopTools: (tools) => wrapToolsWithGate(tools, indicatorGate),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
@@ -435,6 +504,20 @@ export function startShell(): void {
   })
   ipcMain.handle(IPC.SET_FIRECRAWL_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : firecrawlSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.CONFIRM_DESKTOP_CONTROL, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认开启'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '开启桌面控制风险提示',
+      message: '开启后,AI 可以在对话中自主截屏(屏幕内容会发送给你配置的模型服务商)、控制鼠标点击与键盘输入。',
+      detail: '可能造成误操作或截取到敏感信息;开启后随时可在设置里再次关闭。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
   })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
     mkdirSync(memoryDir, { recursive: true })

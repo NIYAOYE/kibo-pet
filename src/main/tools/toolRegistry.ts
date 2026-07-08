@@ -1,7 +1,7 @@
-import type { ToolDef } from '@shared/llm'
+import type { ToolDef, ImagePart } from '@shared/llm'
 import type { ToolSpec, ToolContext } from './toolSpec'
 
-export interface ToolRunResult { content: string; isError?: boolean }
+export interface ToolRunResult { content: string; isError?: boolean; images?: ImagePart[] }
 
 export interface ToolRegistry {
   defs(): ToolDef[]
@@ -40,7 +40,8 @@ export function createToolRegistry(tools: ToolSpec[]): ToolRegistry {
       const err = validateInput(input, tool.inputSchema)
       if (err) return { isError: true, content: `参数不合法:${err}` }
       try {
-        return { content: await tool.run(input, ctx) }
+        const r = await tool.run(input, ctx)
+        return typeof r === 'string' ? { content: r } : { content: r.content, images: r.images }
       } catch (e) {
         return { isError: true, content: `工具执行失败:${String((e as Error)?.message ?? e)}` }
       }

@@ -14,6 +14,12 @@ const boom: ToolSpec = {
   inputSchema: { type: 'object', properties: {}, required: [] },
   run: async () => { throw new Error('炸了') }
 }
+const withImage: ToolSpec = {
+  name: 'shot',
+  description: '返回图片',
+  inputSchema: { type: 'object', properties: {}, required: [] },
+  run: async () => ({ content: '已截屏', images: [{ mimeType: 'image/jpeg', dataBase64: 'AAA' }] })
+}
 const ctx = { signal: new AbortController().signal }
 
 describe('validateInput', () => {
@@ -33,11 +39,11 @@ describe('validateInput', () => {
 })
 
 describe('createToolRegistry', () => {
-  const registry = createToolRegistry([echo, boom])
+  const registry = createToolRegistry([echo, boom, withImage])
 
   it('defs() 只暴露声明,不带 run', () => {
     const defs = registry.defs()
-    expect(defs).toHaveLength(2)
+    expect(defs).toHaveLength(3)
     expect(defs[0]).toEqual({ name: 'echo', description: '回声', inputSchema: echo.inputSchema })
     expect('run' in defs[0]).toBe(false)
   })
@@ -61,5 +67,10 @@ describe('createToolRegistry', () => {
     const r = await registry.run('boom', {}, ctx)
     expect(r.isError).toBe(true)
     expect(r.content).toContain('炸了')
+  })
+
+  it('工具返回 { content, images } 对象时原样透传 images', async () => {
+    const r = await registry.run('shot', {}, ctx)
+    expect(r).toEqual({ content: '已截屏', images: [{ mimeType: 'image/jpeg', dataBase64: 'AAA' }] })
   })
 })

@@ -143,4 +143,34 @@ describe('runAgent 多轮工具循环', () => {
     })
     expect(res.text).toBe('老样子')
   })
+
+  it('工具返回 images 时,下一轮 provider 收到的 tool_result 消息携带 images', async () => {
+    const imgTool: ToolSpec = {
+      name: 'shot',
+      description: '截图',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+      run: async () => ({ content: '已截屏', images: [{ mimeType: 'image/jpeg', dataBase64: 'AAA' }] })
+    }
+    const seen: unknown[] = []
+    const provider = {
+      async *streamChat(req: { messages: unknown[] }) {
+        seen.push(req.messages)
+        if (seen.length === 1) { yield { type: 'tool_use' as const, toolUse: { id: 't1', name: 'shot', input: {} } }; yield { type: 'done' as const } }
+        else { yield { type: 'text' as const, text: '看到了' }; yield { type: 'done' as const } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([imgTool]),
+      system: 'sys',
+      messages: [{ role: 'user', content: '截个屏' }],
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    const secondCallMessages = seen[1] as Array<{ role: string; images?: unknown }>
+    const toolResultMsg = secondCallMessages.find((m) => m.role === 'tool_result')
+    expect(toolResultMsg?.images).toEqual([{ mimeType: 'image/jpeg', dataBase64: 'AAA' }])
+  })
 })

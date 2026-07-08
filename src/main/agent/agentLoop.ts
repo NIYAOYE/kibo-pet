@@ -80,7 +80,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
       if (opts.signal.aborted) return { text, canceled: true }
       const r = await opts.registry.run(tu.name, tu.input, { signal: opts.signal, onStatus: opts.onStatus })
       if (opts.signal.aborted) return { text, canceled: true }
-      messages.push({ role: 'tool_result', toolUseId: tu.id, content: r.content, isError: r.isError })
+      messages.push({ role: 'tool_result', toolUseId: tu.id, content: r.content, isError: r.isError, images: r.images })
     }
   }
 

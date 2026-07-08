@@ -100,6 +100,16 @@
             <label id="firecrawlBaseRow" style="display:none">Firecrawl Base URL(可选 · 自托管才需改)
               <input id="firecrawlBaseURL" type="text" placeholder="https://api.firecrawl.dev" />
             </label>
+            <div style="margin-top:14px;padding:10px;border:1px solid rgba(255,140,140,0.5);border-radius:8px;background:rgba(255,80,80,0.08)">
+              <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+                <input id="desktopControlEnabled" type="checkbox" style="width:auto" />
+                <span>允许宠物自主截屏与控制鼠标/键盘(高风险)</span>
+              </label>
+              <div class="hint" style="margin-top:6px">
+                开启后 AI 可能在对话中截屏(屏幕内容会发给你配置的模型服务商)、控制鼠标点击与键盘输入,
+                可能造成误操作或截取到敏感信息。默认关闭,开启前会再次弹窗确认。
+              </div>
+            </div>
           </section>
 
           <section class="page" data-page="memory">
