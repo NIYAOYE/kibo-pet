@@ -52,6 +52,7 @@ export const IPC = {
   BUBBLE_CLEAR: 'bubble:clear',
   BUBBLE_PLACE: 'bubble:place',
   BUBBLE_LINE: 'bubble:line',
+  BUBBLE_RESIZE: 'bubble:resize',
   PET_SPEAK: 'pet:speak'
 } as const
 
@@ -156,6 +157,8 @@ export interface BubbleApi {
   onClear(cb: () => void): void
   onPlace(cb: (p: BubblePlace) => void): void
   onLine(cb: (text: string) => void): void
+  /** 渲染层测量到内容自然高度后上报，主进程据此夹取范围并重新摆位 */
+  reportSize(height: number): void
 }
 
 declare global {

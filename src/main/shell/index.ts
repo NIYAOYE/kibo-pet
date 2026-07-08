@@ -37,7 +37,7 @@ import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
-  validateReactionCategory
+  validateReactionCategory, validateBubbleHeight
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
@@ -310,6 +310,11 @@ export function startShell(): void {
     if (!line) return // lines.json 缺失或该 category 为空 → 静默降级
     lastLineText = line.text
     showAmbientLine(line.text)
+  })
+  ipcMain.on(IPC.BUBBLE_RESIZE, (_e, raw) => {
+    const height = validateBubbleHeight(raw)
+    if (height === null) return
+    bubble.resize(height, petBoundsFull(), petWorkArea())
   })
 
   function mimeFromPath(p: string): string {

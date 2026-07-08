@@ -122,7 +122,8 @@ const bubbleApi: BubbleApi = {
   onLine: (cb: (text: string) => void): void => {
     ipcRenderer.removeAllListeners(IPC.BUBBLE_LINE)
     ipcRenderer.on(IPC.BUBBLE_LINE, (_e, text: string) => cb(text))
-  }
+  },
+  reportSize: (height: number): void => ipcRenderer.send(IPC.BUBBLE_RESIZE, height)
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

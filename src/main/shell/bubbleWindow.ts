@@ -2,10 +2,12 @@ import { BrowserWindow, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { Bounds } from '@shared/petBrain'
 import { bubblePlacement } from '@shared/bubblePlacement'
-import { fixedWindowBounds } from '@shared/windowPlacement'
+import { fixedWindowBounds, clamp } from '@shared/windowPlacement'
 
-// 气泡框 240×160 + 底部 12px 尾巴区 = 172;bubblePlacement 以此整体尺寸计算越界
-const SIZE = { width: 240, height: 172 }
+// 宽度固定；高度自适应内容（渲染层测量上报，见 BUBBLE_RESIZE），box+12px 尾巴区的总高度
+const WIDTH = 240
+const MIN_TOTAL_HEIGHT = 56  // 约一行文字 + padding + 尾巴
+const MAX_TOTAL_HEIGHT = 320 // 超过则内容区 overflow-y:auto 内部滚动
 
 export interface BubbleController {
   show(pet: Bounds, workArea: Bounds): void
@@ -18,6 +20,8 @@ export interface BubbleController {
   pushError(message: string): void
   clear(): void
   pushLine(text: string): void
+  /** 渲染层上报的内容自然高度（未夹取）；夹到 [MIN_TOTAL_HEIGHT, MAX_TOTAL_HEIGHT] 后，若当前可见则重新摆位 */
+  resize(rawHeight: number, pet: Bounds, workArea: Bounds): void
   window(): BrowserWindow | null
 }
 
@@ -29,8 +33,8 @@ export function createBubbleController(opts: {
   // 眼急建窗并隐藏:流式回复是连续多帧,若懒建窗则首批 token 会在渲染层监听器就绪前
   // 被静默丢弃(丢开头)。启动即建好、监听器就绪,后续 show 只切换可见性。
   const win = new BrowserWindow({
-    width: SIZE.width,
-    height: SIZE.height,
+    width: WIDTH,
+    height: MIN_TOTAL_HEIGHT,
     transparent: true,
     frame: false,
     resizable: false,
@@ -63,12 +67,14 @@ export function createBubbleController(opts: {
   // 拖动宠物时 win.isVisible() 会被 Electron 误判为 false,导致跟随重定位被跳过、气泡卡住。
   // 用我们自己 show/hide 时设的布尔量作为唯一真源,重定位判据只看它。
   let shown = false
+  let currentHeight = MIN_TOTAL_HEIGHT
 
   function place(pet: Bounds, workArea: Bounds): void {
-    const p = bubblePlacement(pet, workArea, SIZE)
+    const size = { width: WIDTH, height: currentHeight }
+    const p = bubblePlacement(pet, workArea, size)
     // 每次都重新声明固定宽高，避免 Windows 非整数 DPI 下 setPosition() 的坐标舍入
     // 被累积成窗口尺寸增长；保持 resizable:false，不再高频切换原生窗口样式。
-    win.setBounds(fixedWindowBounds(p.x, p.y, SIZE))
+    win.setBounds(fixedWindowBounds(p.x, p.y, size))
     win.webContents.send(IPC.BUBBLE_PLACE, { tailSide: p.tailSide, tailOffsetX: p.tailOffsetX })
   }
 
@@ -86,7 +92,14 @@ export function createBubbleController(opts: {
     pushStatus: (t) => win.webContents.send(IPC.BUBBLE_STATUS, t),
     pushDone: () => win.webContents.send(IPC.BUBBLE_DONE),
     pushError: (m) => win.webContents.send(IPC.BUBBLE_ERROR, m),
-    clear: () => win.webContents.send(IPC.BUBBLE_CLEAR),
-    pushLine: (t) => win.webContents.send(IPC.BUBBLE_LINE, t)
+    clear: () => {
+      currentHeight = MIN_TOTAL_HEIGHT
+      win.webContents.send(IPC.BUBBLE_CLEAR)
+    },
+    pushLine: (t) => win.webContents.send(IPC.BUBBLE_LINE, t),
+    resize(rawHeight, pet, workArea): void {
+      currentHeight = clamp(rawHeight, MIN_TOTAL_HEIGHT, MAX_TOTAL_HEIGHT)
+      if (shown) place(pet, workArea)
+    }
   }
 }

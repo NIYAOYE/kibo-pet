@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg,
-  validateTodoAdd, validateTodoId, validateReactionCategory
+  validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -144,5 +144,20 @@ describe('validateReactionCategory', () => {
     expect(validateReactionCategory('nope')).toBeNull()
     expect(validateReactionCategory(123)).toBeNull()
     expect(validateReactionCategory(null)).toBeNull()
+  })
+})
+
+describe('validateBubbleHeight', () => {
+  it('接受合法有限非负数', () => {
+    expect(validateBubbleHeight(120)).toBe(120)
+    expect(validateBubbleHeight(0)).toBe(0)
+  })
+  it('拒绝负数/NaN/Infinity/超防御性上限/非数字', () => {
+    expect(validateBubbleHeight(-1)).toBeNull()
+    expect(validateBubbleHeight(NaN)).toBeNull()
+    expect(validateBubbleHeight(Infinity)).toBeNull()
+    expect(validateBubbleHeight(5001)).toBeNull()
+    expect(validateBubbleHeight('120')).toBeNull()
+    expect(validateBubbleHeight(null)).toBeNull()
   })
 })

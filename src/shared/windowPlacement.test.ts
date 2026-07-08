@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fixedWindowBounds, isZeroMove } from './windowPlacement'
+import { fixedWindowBounds, isZeroMove, clamp } from './windowPlacement'
 
 describe('fixedWindowBounds', () => {
   it('每次都返回整数坐标和调用方声明的固定尺寸', () => {
@@ -27,5 +27,21 @@ describe('isZeroMove', () => {
     expect(isZeroMove({ dx: 0, dy: 0 })).toBe(true)
     expect(isZeroMove({ dx: 1, dy: 0 })).toBe(false)
     expect(isZeroMove({ dx: 0, dy: -1 })).toBe(false)
+  })
+})
+
+describe('clamp', () => {
+  it('低于下限时夹到下限', () => {
+    expect(clamp(-10, 0, 100)).toBe(0)
+  })
+  it('高于上限时夹到上限', () => {
+    expect(clamp(200, 0, 100)).toBe(100)
+  })
+  it('区间内原样返回', () => {
+    expect(clamp(42, 0, 100)).toBe(42)
+  })
+  it('恰好等于边界值时原样返回', () => {
+    expect(clamp(0, 0, 100)).toBe(0)
+    expect(clamp(100, 0, 100)).toBe(100)
   })
 })
