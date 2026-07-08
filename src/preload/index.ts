@@ -10,7 +10,9 @@ import type { AppSettings, ProviderSettings } from '@shared/llm'
 
 const petApi: PetApi = {
   getPet: (): Promise<LoadedPet> => ipcRenderer.invoke(IPC.GET_PET),
-  moveWindow: (delta: MoveDelta): void => ipcRenderer.send(IPC.MOVE_WINDOW, delta),
+  moveWindow: (delta: MoveDelta): Promise<WindowBounds> => ipcRenderer.invoke(IPC.MOVE_WINDOW, delta),
+  dragStart: (): void => ipcRenderer.send(IPC.DRAG_START),
+  dragEnd: (): void => ipcRenderer.send(IPC.DRAG_END),
   setIgnoreMouseEvents: (ignore: boolean): void => ipcRenderer.send(IPC.SET_IGNORE_MOUSE, ignore),
   getWindowBounds: (): Promise<WindowBounds> => ipcRenderer.invoke(IPC.GET_WINDOW_BOUNDS),
   toggleDialog: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),

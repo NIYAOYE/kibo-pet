@@ -13,6 +13,8 @@ export class PetController {
   private workArea: Bounds = { x: 0, y: 0, width: 1920, height: 1080 }
   private windowX = 0
   private windowWidth = 256
+  private windowY = 0
+  private windowHeight = 288
   private currentAnim = ''
   private reactionCtx: ReactionCtx = initReaction()
   private pendingReaction: ReactionTrigger | null = null
@@ -47,6 +49,8 @@ export class PetController {
     this.workArea = b.workArea
     this.windowX = b.window.x
     this.windowWidth = b.window.width
+    this.windowY = b.window.y
+    this.windowHeight = b.window.height
   }
 
   private tick(): void {
@@ -70,6 +74,8 @@ export class PetController {
       bounds: this.workArea,
       windowX: this.windowX,
       windowWidth: this.windowWidth,
+      windowY: this.windowY,
+      windowHeight: this.windowHeight,
       rng: Math.random
     })
     this.ctx = ctx
@@ -81,10 +87,23 @@ export class PetController {
       this.currentAnim = effects.animation
       if (startedWalking) void this.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     }
-    if (effects.move !== 0) {
+    if (effects.moveX !== 0 || effects.moveY !== 0) {
       // clamp:true — autonomous walk stays on-screen (main enforces the edge).
-      window.petApi.moveWindow({ dx: effects.move, dy: 0, clamp: true })
-      this.windowX += effects.move
+      this.windowX += effects.moveX // optimistic; corrected below once main replies
+      this.windowY += effects.moveY
+      void window.petApi.moveWindow({ dx: effects.moveX, dy: effects.moveY, clamp: true }).then((result) => {
+        if (!result) return
+        // Main is authoritative (it clamps against the live, per-tick display
+        // work area). Re-sync every tick — not just at walk-start — so a
+        // boundary the renderer didn't know about (e.g. a neighboring monitor
+        // with a different work area) is caught within one tick instead of
+        // silently drifting for the rest of the walk.
+        this.windowX = result.window.x
+        this.windowY = result.window.y
+        this.workArea = result.workArea
+        this.windowWidth = result.window.width
+        this.windowHeight = result.window.height
+      })
     }
 
     // 反应规划器:每 tick 一个触发。优先级:主进程情境信号 > 睡→醒(wake)派生 > 手势触发(poke/drag)。

@@ -1,6 +1,8 @@
 export type PetLogicalState = 'idle' | 'walk' | 'drag' | 'sleep' | 'greet' | 'thinking' | 'talk'
 export type PetEvent = 'pickup' | 'drop' | 'wake' | 'dialogOpen' | 'dialogClose' | 'messageSent' | 'replyDone' | 'remind'
 export type Direction = 'left' | 'right'
+/** Vertical drift during a walk episode; 'none' keeps the walk purely horizontal (the classic behavior). */
+export type VerticalDirection = 'up' | 'down' | 'none'
 
 export interface Bounds { x: number; y: number; width: number; height: number }
 
@@ -14,6 +16,8 @@ export interface PetBrainConfig {
   sleepAfterIdleMs: number
   greetMs: number
   talkMs: number
+  /** Chance a walk also drifts vertically (split evenly between up/down); the rest stay purely horizontal. */
+  verticalWalkProbability: number
 }
 
 export const DEFAULT_BRAIN_CONFIG: PetBrainConfig = {
@@ -25,12 +29,14 @@ export const DEFAULT_BRAIN_CONFIG: PetBrainConfig = {
   walkMaxPx: 260,
   sleepAfterIdleMs: 45000,
   greetMs: 900,
-  talkMs: 1200
+  talkMs: 1200,
+  verticalWalkProbability: 0.4
 }
 
 export interface PetBrainCtx {
   state: PetLogicalState
   dir: Direction
+  dirY: VerticalDirection
   stateElapsedMs: number
   dwellMs: number
   idleAccumMs: number // 距上次"用户交互"的累计时长;自主游走不重置它(仅用户事件在 applyEvent 里重置),用于从 idle 漂移入睡
@@ -45,10 +51,12 @@ export interface StepInput {
   bounds: Bounds
   windowX: number
   windowWidth: number
+  windowY: number
+  windowHeight: number
   rng: () => number
 }
 
-export interface StepEffects { animation: string; move: number }
+export interface StepEffects { animation: string; moveX: number; moveY: number }
 
 export function animationFor(state: PetLogicalState, dir: Direction): string {
   if (state === 'walk') return dir === 'left' ? 'walk-left' : 'walk-right'
@@ -60,6 +68,7 @@ export function initBrain(config: Partial<PetBrainConfig> = {}): PetBrainCtx {
   return {
     state: 'idle',
     dir: 'right',
+    dirY: 'none',
     stateElapsedMs: 0,
     dwellMs: cfg.idleDwellMinMs,
     idleAccumMs: 0,
@@ -87,7 +96,11 @@ function enterWalk(ctx: PetBrainCtx, rng: () => number): PetBrainCtx {
   const cfg = ctx.config
   const dir: Direction = rng() < 0.5 ? 'left' : 'right'
   const dist = cfg.walkMinPx + rng() * (cfg.walkMaxPx - cfg.walkMinPx)
-  return { ...ctx, state: 'walk', dir, stateElapsedMs: 0, walkRemainingPx: dist }
+  const pNone = 1 - cfg.verticalWalkProbability
+  const pUpEnd = pNone + cfg.verticalWalkProbability / 2
+  const vRoll = rng()
+  const dirY: VerticalDirection = vRoll < pNone ? 'none' : vRoll < pUpEnd ? 'up' : 'down'
+  return { ...ctx, state: 'walk', dir, dirY, stateElapsedMs: 0, walkRemainingPx: dist }
 }
 
 function applyEvent(ctx: PetBrainCtx, event: PetEvent, rng: () => number): PetBrainCtx {
@@ -111,7 +124,8 @@ export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; ef
     stateElapsedMs: ctx.stateElapsedMs + input.dtMs,
     idleAccumMs: ctx.idleAccumMs + input.dtMs
   }
-  let move = 0
+  let moveX = 0
+  let moveY = 0
 
   if (input.event) next = applyEvent(next, input.event, input.rng)
 
@@ -127,15 +141,24 @@ export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; ef
     }
     case 'walk': {
       const stepPx = cfg.walkSpeedPxPerSec * (input.dtMs / 1000)
-      let dx = next.dir === 'left' ? -stepPx : stepPx
+      const diagonal = next.dirY !== 'none'
+      const norm = diagonal ? Math.SQRT1_2 : 1
+      let dx = (next.dir === 'left' ? -1 : 1) * stepPx * norm
+      let dy = diagonal ? (next.dirY === 'up' ? -1 : 1) * stepPx * norm : 0
       const minX = input.bounds.x
       const maxX = input.bounds.x + input.bounds.width - input.windowWidth
+      const minY = input.bounds.y
+      const maxY = input.bounds.y + input.bounds.height - input.windowHeight
       const targetX = input.windowX + dx
+      const targetY = input.windowY + dy
       let hitEdge = false
       if (targetX <= minX) { dx = minX - input.windowX; hitEdge = true }
       else if (targetX >= maxX) { dx = maxX - input.windowX; hitEdge = true }
-      move = dx
-      next = { ...next, walkRemainingPx: next.walkRemainingPx - Math.abs(dx) }
+      if (targetY <= minY) { dy = minY - input.windowY; hitEdge = true }
+      else if (targetY >= maxY) { dy = maxY - input.windowY; hitEdge = true }
+      moveX = dx
+      moveY = dy
+      next = { ...next, walkRemainingPx: next.walkRemainingPx - Math.hypot(dx, dy) }
       if (hitEdge || next.walkRemainingPx <= 0) next = enterIdle(next, input.rng)
       break
     }
@@ -150,5 +173,5 @@ export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; ef
     // 'drag' / 'thinking' / 'sleep' 持续,直到相应事件(Task 2)
   }
 
-  return { ctx: next, effects: { animation: animationFor(next.state, next.dir), move } }
+  return { ctx: next, effects: { animation: animationFor(next.state, next.dir), moveX, moveY } }
 }

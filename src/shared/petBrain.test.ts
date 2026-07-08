@@ -9,7 +9,16 @@ function rngSeq(values: number[]): () => number {
 }
 
 function input(partial: Partial<StepInput> = {}): StepInput {
-  return { dtMs: 100, bounds: BOUNDS, windowX: 500, windowWidth: 256, rng: () => 0, ...partial }
+  return {
+    dtMs: 100,
+    bounds: BOUNDS,
+    windowX: 500,
+    windowWidth: 256,
+    windowY: 300,
+    windowHeight: 288,
+    rng: () => 0,
+    ...partial
+  }
 }
 
 describe('petBrain autonomous', () => {
@@ -41,9 +50,11 @@ describe('petBrain autonomous', () => {
 
   it('emits directional movement while walking and returns to idle when distance consumed', () => {
     let ctx = initBrain()
-    ctx = step(ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.5]) })).ctx // walk right, dist 170
+    ctx = step(ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.5]) })).ctx // walk right, dist 170, dirY defaults to 'none'
+    expect(ctx.dirY).toBe('none')
     const res = step(ctx, input({ dtMs: 1000, windowX: 500, rng: () => 0.9 }))
-    expect(res.effects.move).toBeCloseTo(40) // 40px/s * 1s
+    expect(res.effects.moveX).toBeCloseTo(40) // 40px/s * 1s
+    expect(res.effects.moveY).toBe(0)
     expect(res.ctx.walkRemainingPx).toBeCloseTo(130)
     expect(res.ctx.state).toBe('walk')
   })
@@ -52,12 +63,35 @@ describe('petBrain autonomous', () => {
     let ctx = initBrain()
     ctx = step(ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.9]) })).ctx // walk right, dist ~242
     const res = step(ctx, input({ dtMs: 1000, windowX: 730, rng: () => 0 })) // maxX = 1000-256 = 744
-    expect(res.effects.move).toBeCloseTo(14)
+    expect(res.effects.moveX).toBeCloseTo(14)
+    expect(res.ctx.state).toBe('idle')
+  })
+
+  it('sometimes wanders vertically too, moving diagonally at the same overall speed', () => {
+    let ctx = initBrain()
+    // walkProbability roll, dir roll ('right'), dist roll, dirY roll (high → 'down')
+    ctx = step(ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.5, 0.99]) })).ctx
+    expect(ctx.dir).toBe('right')
+    expect(ctx.dirY).toBe('down')
+    const res = step(ctx, input({ dtMs: 1000, windowX: 500, windowY: 300, rng: () => 0.9 }))
+    // Diagonal: each axis gets speed/sqrt(2) so the combined vector magnitude stays 40px/s.
+    expect(res.effects.moveX).toBeCloseTo(40 * Math.SQRT1_2)
+    expect(res.effects.moveY).toBeCloseTo(40 * Math.SQRT1_2)
+    expect(res.ctx.walkRemainingPx).toBeCloseTo(170 - 40)
+  })
+
+  it('clamps at the vertical work-area edge and ends the walk', () => {
+    let ctx = initBrain()
+    ctx = step(ctx, input({ dtMs: 2100, rng: rngSeq([0.1, 0.9, 0.9, 0.99]) })).ctx // dirY='down'
+    expect(ctx.dirY).toBe('down')
+    // maxY = 800 - 288 = 512; starting at windowY=505 leaves only 7px of vertical room.
+    const res = step(ctx, input({ dtMs: 1000, windowX: 100, windowY: 505, rng: () => 0 }))
+    expect(res.effects.moveY).toBeCloseTo(7)
     expect(res.ctx.state).toBe('idle')
   })
 
   it('falls asleep after prolonged idle without interaction', () => {
-    let res = { ctx: initBrain(), effects: { animation: 'idle', move: 0 } }
+    let res = { ctx: initBrain(), effects: { animation: 'idle', moveX: 0, moveY: 0 } }
     let total = 0
     while (total < DEFAULT_BRAIN_CONFIG.sleepAfterIdleMs) {
       res = step(res.ctx, input({ dtMs: 5000, rng: () => 0.9 })) // always stay idle

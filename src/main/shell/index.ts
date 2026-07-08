@@ -258,6 +258,42 @@ export function startShell(): void {
   }
   function toggleDialog(): void { dialog.toggle(petBounds) }
 
+  // Manual drag anchors to a cursor position read from Electron's `screen`
+  // module (the same coordinate space as petWin's own position), instead of
+  // the renderer's MouseEvent.screenX/Y (Chromium's coordinate space). On a
+  // scaled/mixed-DPI multi-monitor setup those two spaces can disagree by a
+  // small amount per event; trusting the renderer's deltas compounds that
+  // mismatch linearly over the length of the drag (pet drifts from the
+  // cursor, further the longer you drag). Re-deriving the delta from a
+  // single fixed anchor each move eliminates the compounding.
+  let dragAnchor: { cursorX: number; cursorY: number; winX: number; winY: number } | null = null
+  // Autonomous walk's precise (unrounded) intended position. Seeded from
+  // petWin.getPosition() once, then advanced purely by adding each tick's
+  // delta in JS float math — never re-derived from a fresh getPosition()
+  // read. On this window (transparent/frameless/always-on-top/non-resizable,
+  // under fractional display scaling) getPosition() was observed to echo the
+  // PREVIOUS tick's position ~85% of the time when moving in the +X
+  // direction (0% moving -X) — a real async read-back lag, not a rounding
+  // artifact. Recomputing "start + dx" from that lagged read every tick
+  // wastes most rightward ticks re-requesting a target already in flight;
+  // accumulating independently of the read-back sidesteps the lag entirely.
+  // Invalidated (forces a fresh reseed) whenever a drag takes over the
+  // window's position, since that moves it outside this accumulator's view.
+  let walkPreciseX: number | null = null
+  let walkPreciseY: number | null = null
+  ipcMain.on(IPC.DRAG_START, () => {
+    const [winX, winY] = petWin.getPosition()
+    const { x: cursorX, y: cursorY } = screen.getCursorScreenPoint()
+    dragAnchor = { cursorX, cursorY, winX, winY }
+    walkPreciseX = null
+    walkPreciseY = null
+  })
+  ipcMain.on(IPC.DRAG_END, () => {
+    dragAnchor = null
+    walkPreciseX = null
+    walkPreciseY = null
+  })
+
   ipcMain.handle(IPC.GET_PET, async () => loadPet(petDir))
   ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
     const [x, y] = petWin.getPosition()
@@ -265,32 +301,59 @@ export function startShell(): void {
     const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
     return { workArea, window: { x, y, width, height } }
   })
-  ipcMain.on(IPC.MOVE_WINDOW, (_e, raw) => {
+  ipcMain.handle(IPC.MOVE_WINDOW, (_e, raw): WindowBounds | undefined => {
     const delta = validateMoveDelta(raw)
-    if (!delta || isZeroMove(delta)) return
+    if (!delta) return undefined
     const [x, y] = petWin.getPosition()
+    const [width, height] = petWin.getSize()
+    if (isZeroMove(delta)) {
+      const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
+      return { workArea, window: { x, y, width, height } }
+    }
     const nx = Math.round(x + delta.dx)
     const ny = Math.round(y + delta.dy)
+    let finalX: number
+    let finalY: number
+    let workArea: Bounds
     if (delta.clamp) {
-      // Autonomous walk: hard-limit to the current display's work area against
-      // the REAL position (the renderer's predicted X can drift), so the pet
-      // never wanders off-screen. Manual drags are intentionally NOT clamped
-      // (free movement, matching MVP-01) — clamping them felt "magnetized".
-      const { workArea } = screen.getDisplayMatching({
-        x,
-        y,
+      // Autonomous walk: advance a persistent float accumulator (never
+      // re-derived from getPosition(), see comment above walkPreciseX) and
+      // hard-limit it to the current display's work area, so the pet never
+      // wanders off-screen. Manual drags are intentionally NOT clamped (free
+      // movement, matching MVP-01) — clamping them felt "magnetized".
+      if (walkPreciseX === null || walkPreciseY === null) { walkPreciseX = x; walkPreciseY = y }
+      walkPreciseX += delta.dx
+      walkPreciseY += delta.dy
+      const roundedX = Math.round(walkPreciseX)
+      const roundedY = Math.round(walkPreciseY)
+      ;({ workArea } = screen.getDisplayMatching({
+        x: roundedX,
+        y: roundedY,
         width: PET_WINDOW_SIZE.width,
         height: PET_WINDOW_SIZE.height
-      })
-      petWin.setBounds(fixedWindowBounds(
-        Math.max(workArea.x, Math.min(nx, workArea.x + workArea.width - PET_WINDOW_SIZE.width)),
-        Math.max(workArea.y, Math.min(ny, workArea.y + workArea.height - PET_WINDOW_SIZE.height)),
-        PET_WINDOW_SIZE
-      ))
+      }))
+      finalX = Math.max(workArea.x, Math.min(roundedX, workArea.x + workArea.width - PET_WINDOW_SIZE.width))
+      finalY = Math.max(workArea.y, Math.min(roundedY, workArea.y + workArea.height - PET_WINDOW_SIZE.height))
+      // Keep the accumulator in sync with any clamping so it can't run past the edge.
+      walkPreciseX = finalX
+      walkPreciseY = finalY
+    } else if (dragAnchor) {
+      // Free drag: ignore the renderer-computed dx/dy and re-derive the delta
+      // from the same anchor, in `screen`-module coordinates throughout.
+      const cursor = screen.getCursorScreenPoint()
+      finalX = Math.round(dragAnchor.winX + (cursor.x - dragAnchor.cursorX))
+      finalY = Math.round(dragAnchor.winY + (cursor.y - dragAnchor.cursorY))
+      workArea = screen.getDisplayMatching({ x: finalX, y: finalY, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height }).workArea
     } else {
-      petWin.setBounds(fixedWindowBounds(nx, ny, PET_WINDOW_SIZE))
+      // Fallback if DRAG_START wasn't received for some reason — never let a
+      // drag silently stop tracking the cursor.
+      finalX = nx
+      finalY = ny
+      workArea = screen.getDisplayMatching({ x: nx, y: ny, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height }).workArea
     }
+    petWin.setBounds(fixedWindowBounds(finalX, finalY, PET_WINDOW_SIZE))
     if (bubble.isVisible()) bubble.reposition(petBoundsFull(), petWorkArea())
+    return { workArea, window: { x: finalX, y: finalY, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height } }
   })
   ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, raw) => {
     const ignore = validateBool(raw)

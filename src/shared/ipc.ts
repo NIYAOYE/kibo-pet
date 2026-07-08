@@ -7,6 +7,8 @@ import type { ReactionCategory } from './reactionPlanner'
 export const IPC = {
   GET_PET: 'pet:get',
   MOVE_WINDOW: 'window:move',
+  DRAG_START: 'window:drag-start',
+  DRAG_END: 'window:drag-end',
   SET_IGNORE_MOUSE: 'window:set-ignore-mouse',
   GET_WINDOW_BOUNDS: 'window:get-bounds',
   TOGGLE_DIALOG: 'dialog:toggle',
@@ -94,7 +96,17 @@ export interface OverlayApi {
 
 export interface PetApi {
   getPet(): Promise<LoadedPet>
-  moveWindow(delta: MoveDelta): void
+  /** Resolves with the real post-move window/workArea bounds, so callers that
+   *  track position (autonomous walk) can stay authoritative instead of
+   *  predicting — main always applies clamping against the live display. */
+  moveWindow(delta: MoveDelta): Promise<WindowBounds>
+  /** Manual drag lifecycle: lets main anchor the drag to a cursor position it
+   *  reads itself (via the `screen` module), instead of trusting the
+   *  renderer's `MouseEvent.screenX/Y` — those two coordinate spaces can
+   *  disagree on a scaled/mixed-DPI multi-monitor setup, and accumulating a
+   *  per-event mismatch compounds over the length of the drag. */
+  dragStart(): void
+  dragEnd(): void
   /** Toggle click-through: when true, mouse events pass through to windows below. */
   setIgnoreMouseEvents(ignore: boolean): void
   getWindowBounds(): Promise<WindowBounds>

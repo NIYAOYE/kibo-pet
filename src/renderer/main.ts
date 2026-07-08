@@ -48,10 +48,11 @@ async function boot(): Promise<void> {
         if (clickTimer !== null) {
           clearTimeout(clickTimer); clickTimer = null
         }
+        window.petApi.dragStart()
         controller.send('pickup')
       }
       if (moved) {
-        window.petApi.moveWindow({ dx: e.screenX - lastX, dy: e.screenY - lastY })
+        void window.petApi.moveWindow({ dx: e.screenX - lastX, dy: e.screenY - lastY })
         lastX = e.screenX; lastY = e.screenY
       }
       return
@@ -64,6 +65,7 @@ async function boot(): Promise<void> {
     dragging = false
     canvas.style.cursor = 'grab'
     if (moved) {
+      window.petApi.dragEnd()
       controller.send('drop')
       controller.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     } else {
