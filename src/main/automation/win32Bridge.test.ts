@@ -86,6 +86,16 @@ describe('focus_window 脚本与解析', () => {
     expect(s).toContain(Buffer.from("Notepad's window", 'utf16le').toString('base64'))
   })
 
+  it('找到窗口后先 ShowWindow(SW_RESTORE) 还原最小化状态,再 SetForegroundWindow(真机诊断实测:仅调 SetForegroundWindow 对已最小化窗口会返回 true 但 IsIconic 仍是 true,画面上看不到任何变化)', () => {
+    const s = buildFocusWindowScript('记事本')
+    const restoreIdx = s.indexOf('::ShowWindow(')
+    const foregroundIdx = s.indexOf('::SetForegroundWindow(')
+    expect(restoreIdx).toBeGreaterThan(-1)
+    expect(foregroundIdx).toBeGreaterThan(-1)
+    expect(restoreIdx).toBeLessThan(foregroundIdx)
+    expect(s).toContain('SW_RESTORE')
+  })
+
   it('parseFocusWindowOutput 解析 FOUND:<title>', () => {
     expect(parseFocusWindowOutput('FOUND:记事本')).toEqual({ found: true, title: '记事本' })
   })

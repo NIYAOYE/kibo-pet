@@ -18,6 +18,12 @@
  *    在被误读成别的编码后可能破坏后续脚本的解析(真机验证实测复现:仅仅加了一行中文
  *    注释就让本来能跑的脚本又开始报 "属性找不到")。凡是新增到脚本正文里的注释一律
  *    用英文,或者干脆不写——真正的解释放在这份 TS 源码的注释里就够了。
+ * 3. `buildFocusWindowScript` 只调 `SetForegroundWindow` 是不够的:真机诊断实测复现,
+ *    对一个已最小化的窗口,`SetForegroundWindow` 会返回 true 且确实让它成为
+ *    "前台窗口"(GetForegroundWindow 能读到目标句柄),但 `IsIconic` 仍然是 true——
+ *    窗口在 API 意义上"前台"了,画面上却仍然只是任务栏里的图标,用户完全看不到。
+ *    必须先 `ShowWindow(hwnd, SW_RESTORE)`(把窗口从最小化状态还原)再调
+ *    `SetForegroundWindow`,顺序不能反。
  */
 
 const NATIVE_HEADER = `
@@ -48,6 +54,7 @@ namespace PetAgentAutomation
         public const uint INPUT_KEYBOARD = 1;
         public const uint KEYEVENTF_UNICODE = 0x0004;
         public const uint KEYEVENTF_KEYUP = 0x0002;
+        public const int SW_RESTORE = 9;
 
         public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -57,6 +64,7 @@ namespace PetAgentAutomation
         [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
         [DllImport("user32.dll")] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -170,6 +178,7 @@ $callback = {
 }
 [PetAgentAutomation.Native]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
 if ($script:found) {
+  [PetAgentAutomation.Native]::ShowWindow($script:found.Handle, [PetAgentAutomation.Native]::SW_RESTORE) | Out-Null
   [PetAgentAutomation.Native]::SetForegroundWindow($script:found.Handle) | Out-Null
   Write-Output "FOUND:$($script:found.Title)"
 } else {

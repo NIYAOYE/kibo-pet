@@ -187,7 +187,12 @@ export function startShell(): void {
 
   const execFileP = promisify(execFileCb)
   const automationControl = createAutomationControl({
-    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
+    // windowsHide:true 是防御性加固:Electron 主进程是 GUI 子系统、没有自己的控制台,
+    // spawn 一个控制台子系统程序(powershell.exe)理论上可能被 Windows 弹出一个可见的
+    // 控制台窗口、抢到前台焦点。真机诊断这次没有观察到这个现象(GetConsoleWindow 返回
+    // null,前台窗口全程未变),但保留这个选项零成本、能防住其他 Windows 版本/配置下的
+    // 潜在同类问题,不依赖"这次没测出来"就假设它不会发生。
+    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
   })
 
   // createControlIndicator bakes the display name into the window's HTML at construction
