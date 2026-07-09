@@ -48,9 +48,13 @@ export type BrowserControlMode = 'isolated' | 'cdp'
  *  (只做存在性检查,不检查是否真的能启动)。留空则维持原有自动探测行为。 */
 export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode; chromePath?: string }
 
-export const SETTINGS_SCHEMA_VERSION = 8
+export type TtsLanguage = 'zh' | 'ja' | 'en'
+/** packagePath 留空时用约定默认路径(开发态 <repo>/minimal_tts,打包态 process.resourcesPath/minimal_tts) */
+export interface TtsSettings { enabled: boolean; language: TtsLanguage; packagePath?: string }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings }
+export const SETTINGS_SCHEMA_VERSION = 9
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; tts: TtsSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -61,7 +65,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
-  browserControl: { enabled: false, mode: 'isolated' }
+  browserControl: { enabled: false, mode: 'isolated' },
+  tts: { enabled: false, language: 'zh' }
 }
 
 export interface Preset {

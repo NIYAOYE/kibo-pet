@@ -22,6 +22,8 @@ import { findQuickAction } from './quickActions'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
 import type { TodoStore } from '../todos/todoStore'
+import type { TtsProvider } from '../providers/tts'
+import { translateText } from '../agent/translate'
 
 const TIMEOUT_MS = 60000
 const MAX_OUTPUT_TOKENS = 1024
@@ -79,12 +81,18 @@ export function createChatStore(opts: {
   pushDone: () => void
   pushError: (message: string) => void
   openSettings: () => void
+  /** TTS provider;未注入(多数既有测试)则全程安全 no-op,与 settings.tts 无关 */
+  tts?: TtsProvider
+  /** 测试注入缝;生产默认 translateText */
+  translate?: typeof translateText
 }): ChatStore {
   const make = opts.makeProvider ?? createProvider
+  const translate = opts.translate ?? translateText
   let inFlight: AbortController | null = null
 
   function cancel(): void {
     if (inFlight) { inFlight.abort(); inFlight = null }
+    opts.tts?.cancel()
   }
 
   return {
@@ -216,6 +224,10 @@ export function createChatStore(opts: {
       }
       const registry = createToolRegistry(tools)
 
+      const ttsEnabled = settings.tts.enabled
+      const ttsLanguage = settings.tts.language
+      const ttsId = `chat-${Date.now()}`
+
       const ctrl = new AbortController()
       inFlight = ctrl
       let acc = ''
@@ -251,20 +263,32 @@ export function createChatStore(opts: {
           onText: (t) => { acc += t; opts.pushStream(t) },
           onStatus: (t) => opts.pushStatus(t)
         })
-        if (inFlight === ctrl) inFlight = null
-        if (res.canceled) return // 静默丢弃
+        if (res.canceled) { if (inFlight === ctrl) inFlight = null; return } // 静默丢弃;cancel() 已经调过 tts.cancel()
         if (res.error) {
-          // 有部分文本(如轮数上限)时先落 transcript,再报错
           if (acc) opts.memory.appendMessage({ role: 'pet', text: acc })
           opts.pushUpdate(opts.memory.messages())
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
-        } else {
-          opts.memory.appendMessage({ role: 'pet', text: acc })
-          opts.pushUpdate(opts.memory.messages())
-          opts.pushDone()
-          opts.emitPetEvent('replyDone')
+          if (inFlight === ctrl) inFlight = null
+          return
         }
+        opts.memory.appendMessage({ role: 'pet', text: acc })
+        opts.pushUpdate(opts.memory.messages())
+        opts.pushDone()
+        opts.emitPetEvent('replyDone')
+        if (ttsEnabled && acc) {
+          // 所有朗读语言都不流式:逐 token 喂给 TTS 会让语音播放节奏被 LLM 生成节奏拖慢(真机验收
+          // 发现每个标点符号都要停顿数秒才继续说),改为等整句生成完毕后一次性合成播放。刻意不 null
+          // 掉 inFlight,让期间到来的新消息(handleSend/cancel)的 ctrl.abort() 也能中断非中文分支
+          // 里的翻译请求。
+          const textToSpeak = ttsLanguage === 'zh' ? acc : await translate({ provider, text: acc, targetLanguage: ttsLanguage, signal: ctrl.signal })
+          if (textToSpeak && !ctrl.signal.aborted) {
+            opts.tts?.begin(ttsId, ttsLanguage)
+            opts.tts?.pushToken(textToSpeak)
+            opts.tts?.finish()
+          }
+        }
+        if (inFlight === ctrl) inFlight = null
         // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
         opts.memory.maybeSummarize(() => {
           const k = opts.getKey()

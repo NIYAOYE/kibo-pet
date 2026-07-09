@@ -18,7 +18,8 @@ const settings: AppSettings = {
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
-  browserControl: { enabled: false, mode: 'isolated' }
+  browserControl: { enabled: false, mode: 'isolated' },
+  tts: { enabled: false, language: 'zh' }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
@@ -38,6 +39,11 @@ function makeStore(
     buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
     wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
     buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
+  },
+  ttsOpts?: {
+    tts?: import('../providers/tts').TtsProvider
+    translate?: typeof import('../agent/translate').translateText
+    settingsOverride?: AppSettings
   }
 ) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
@@ -56,7 +62,7 @@ function makeStore(
       markFired: () => {},
       onChange: () => () => {}
     } as TodoStore,
-    loadSettings: () => settings,
+    loadSettings: () => ttsOpts?.settingsOverride ?? settings,
     getKey: () => 'k',
     getSearchKey: () => null,
     getFirecrawlKey: () => firecrawlKey,
@@ -72,7 +78,9 @@ function makeStore(
     pushStatus: () => {},
     pushDone: () => done(),
     pushError: () => done(),
-    openSettings: () => {}
+    openSettings: () => {},
+    tts: ttsOpts?.tts,
+    translate: ttsOpts?.translate
   })
   return { store, memory, finished, written }
 }
@@ -374,5 +382,86 @@ describe('MVP-08 runQuickAction', () => {
     store.runQuickAction('summarize')
     await finished
     expect(seen[0].tools).toBeUndefined()
+  })
+})
+
+describe('TTS 接线', () => {
+  function fakeTts() {
+    const calls: string[] = []
+    return {
+      calls,
+      tts: {
+        start: async () => true,
+        begin: (id: string, lang: string) => calls.push(`begin:${id}:${lang}`),
+        pushToken: (t: string) => calls.push(`pushToken:${t}`),
+        finish: () => calls.push('finish'),
+        cancel: () => calls.push('cancel'),
+        close: async () => {}
+      }
+    }
+  }
+
+  const ttsSettingsZh: AppSettings = { ...settings, tts: { enabled: true, language: 'zh' } }
+  const ttsSettingsJa: AppSettings = { ...settings, tts: { enabled: true, language: 'ja' } }
+
+  it('zh:不流式(生成阶段绝不调用 pushToken),等回复完毕后一次性 begin/pushToken(完整原文)/finish,不经过 translate', async () => {
+    const seen: StreamChatRequest[] = []
+    const { calls, tts } = fakeTts()
+    let translateCalled = false
+    const translate = async (): Promise<string> => { translateCalled = true; return 'unused' }
+    const { store, finished } = makeStore(createFakeProvider({ reply: '你好呀' }), seen, undefined, undefined, { tts, translate: translate as unknown as typeof import('../agent/translate').translateText, settingsOverride: ttsSettingsZh })
+    store.handleSend({ text: '嗨' })
+    await finished
+    await new Promise((r) => setTimeout(r, 0)) // 保险起见让所有微任务/宏任务跑完
+    // calls[0] 固定是 'cancel':handleSend 开头无条件调用 cancel()(哪怕没有在途请求),
+    // 这样才能打断"发新消息前宠物正在念 lines.json 台词"这种与 chat.ts 自身 inFlight 无关的语音。
+    // 流式生成阶段(fakeProvider 默认按 chunkSize=2 分块调用 onText)绝不应出现 pushToken 调用——
+    // 真机验收发现:逐 token 流式喂给 TTS 会让语音播放跟着 LLM 生成节奏卡顿(每个标点符号停顿数秒
+    // 才继续),根因是 TTS 合成节奏被 LLM 生成节奏拖慢;改为等整句生成完毕后一次性合成解决卡顿。
+    expect(calls).toEqual(['cancel', expect.stringMatching(/^begin:chat-\d+:zh$/), 'pushToken:你好呀', 'finish'])
+    expect(translateCalled).toBe(false) // zh 不需要翻译
+  })
+
+  it('ja:不流式,回复完毕后翻译整句,再一次性 begin/pushToken/finish', async () => {
+    const seen: StreamChatRequest[] = []
+    const { calls, tts } = fakeTts()
+    const translate = async () => 'おはよう'
+    const { store, finished } = makeStore(createFakeProvider({ reply: '早安' }), seen, undefined, undefined, { tts, translate, settingsOverride: ttsSettingsJa })
+    store.handleSend({ text: '嗨' })
+    await finished
+    // pushDone() 在翻译发起之前就已同步调用,finished 在此刻已经 resolve,翻译分支还没跑
+    expect(calls.filter((c) => c.startsWith('pushToken')).length).toBe(0)
+    await new Promise((r) => setTimeout(r, 0)) // 让翻译分支的微任务/宏任务跑完
+    expect(calls).toEqual(expect.arrayContaining([expect.stringMatching(/^begin:chat-\d+:ja$/), 'pushToken:おはよう', 'finish']))
+  })
+
+  it('ja:翻译失败(返回 null)→ 静默不朗读,不抛错、不影响文字回复', async () => {
+    const seen: StreamChatRequest[] = []
+    const { calls, tts } = fakeTts()
+    const translate = async () => null
+    const { store, memory, finished } = makeStore(createFakeProvider({ reply: '早安' }), seen, undefined, undefined, { tts, translate, settingsOverride: ttsSettingsJa })
+    store.handleSend({ text: '嗨' })
+    await finished
+    await new Promise((r) => setTimeout(r, 0)) // 让翻译分支的微任务跑完
+    expect(calls.some((c) => c.startsWith('begin'))).toBe(false)
+    expect(memory.messages().map((m) => m.text)).toEqual(['嗨', '早安']) // 文字回复不受影响
+  })
+
+  it('tts.enabled:false → 不调用 begin/pushToken/finish(cancel() 仍会被调,但那是无条件的兜底,真实 ttsProvider 在禁用态下会安全吸收它)', async () => {
+    const seen: StreamChatRequest[] = []
+    const { calls, tts } = fakeTts()
+    const { store, finished } = makeStore(createFakeProvider({ reply: '你好' }), seen, undefined, undefined, { tts, settingsOverride: settings })
+    store.handleSend({ text: '嗨' })
+    await finished
+    expect(calls.some((c) => c.startsWith('begin') || c.startsWith('pushToken') || c === 'finish')).toBe(false)
+  })
+
+  it('新消息打断:cancel() 会调用 tts.cancel()', async () => {
+    const seen: StreamChatRequest[] = []
+    const { calls, tts } = fakeTts()
+    const { store } = makeStore(createFakeProvider({ reply: '你好' }), seen, undefined, undefined, { tts, settingsOverride: ttsSettingsZh })
+    store.handleSend({ text: '第一句' })
+    store.cancel()
+    expect(calls).toContain('cancel')
   })
 })
