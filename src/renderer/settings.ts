@@ -84,6 +84,8 @@ desktopControlEnabled.addEventListener('change', () => {
 const browserControlEnabled = $<HTMLInputElement>('browserControlEnabled')
 const browserControlMode = $<HTMLSelectElement>('browserControlMode')
 const browserControlModeRow = $<HTMLLabelElement>('browserControlModeRow')
+// CDP 模式的强确认是否已在"本次渲染进程会话"内出现过——见 Save 处的兜底守卫注释。
+let cdpModeConfirmedThisSession = false
 
 function syncBrowserControlModeRow(): void {
   browserControlModeRow.style.display = browserControlEnabled.checked ? '' : 'none'
@@ -97,10 +99,11 @@ browserControlEnabled.addEventListener('change', () => {
   })()
 })
 browserControlMode.addEventListener('change', () => {
-  if (browserControlMode.value !== 'cdp') return
+  if (browserControlMode.value !== 'cdp') { cdpModeConfirmedThisSession = false; return }
   void (async () => {
     const confirmed = await window.settingsApi.confirmCdpMode()
-    if (!confirmed) browserControlMode.value = 'isolated'
+    if (!confirmed) { browserControlMode.value = 'isolated'; return }
+    cdpModeConfirmedThisSession = true
   })()
 })
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
@@ -149,6 +152,14 @@ $<HTMLButtonElement>('test').addEventListener('click', async () => {
 $<HTMLButtonElement>('save').addEventListener('click', async () => {
   const provider = currentProvider()
   try {
+    // 兜底:某次会话内曾经"设置开关关闭时把 mode 之前存的 cdp 原样带回来又直接重新勾选主开关"
+    // 这类路径能跳过上面 change 事件里的 CDP 强确认(见分支最终审查发现)——保存前按"即将写入
+    // 的最终状态"重新判定一次,而不是只信任事件历史。
+    if (browserControlEnabled.checked && browserControlMode.value === 'cdp' && !cdpModeConfirmedThisSession) {
+      const confirmed = await window.settingsApi.confirmCdpMode()
+      if (!confirmed) { status.textContent = '✗ 已取消保存(未确认接管真实浏览器风险)'; return }
+      cdpModeConfirmedThisSession = true
+    }
     if (key.value) {
       const ok = await window.settingsApi.setApiKey(key.value)
       if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Key'; return }
@@ -220,6 +231,7 @@ void (async () => {
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   browserControlEnabled.checked = snap.settings.browserControl.enabled
   browserControlMode.value = snap.settings.browserControl.mode
+  cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
   syncBrowserControlModeRow()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API

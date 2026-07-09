@@ -502,7 +502,12 @@ export function startShell(): void {
     hasEmbeddingKey: embeddingSecrets.hasKey(),
     hasFirecrawlKey: firecrawlSecrets.hasKey()
   }))
-  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => { saveSettings(settingsFile, normalizeSettings(raw)) })
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
+    const prev = loadSettings(settingsFile)
+    const next = normalizeSettings(raw)
+    saveSettings(settingsFile, next)
+    if (prev.browserControl.enabled && !next.browserControl.enabled) void browserControl.close()
+  })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
   })
