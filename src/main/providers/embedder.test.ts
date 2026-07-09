@@ -61,7 +61,8 @@ describe('resolveEmbeddingKey', () => {
     textTools: { autoCopyResult: false },
     firecrawl: { enabled: false },
     desktopControl: { enabled: false },
-    browserControl: { enabled: false, mode: 'isolated' }
+    browserControl: { enabled: false, mode: 'isolated' },
+    tts: { enabled: false, language: 'zh' }
   })
   it('有独立 key 优先用', () => {
     expect(resolveEmbeddingKey(base('https://a/v1', 'https://a/v1'), 'ek', 'ck')).toBe('ek')

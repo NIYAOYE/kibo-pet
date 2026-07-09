@@ -18,7 +18,8 @@ const settings: AppSettings = {
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
-  browserControl: { enabled: false, mode: 'isolated' }
+  browserControl: { enabled: false, mode: 'isolated' },
+  tts: { enabled: false, language: 'zh' }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

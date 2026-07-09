@@ -202,7 +202,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: browserControlEnabled.checked,
         mode: browserControlMode.value as 'isolated' | 'cdp',
         chromePath: browserControlChromePath.value.trim() || undefined
-      }
+      },
+      tts: { enabled: false, language: 'zh' }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
