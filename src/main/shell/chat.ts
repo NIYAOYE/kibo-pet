@@ -64,6 +64,8 @@ export function createChatStore(opts: {
   buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
   /** 给桌面控制工具套上指示器显隐等生命周期钩子;省略则原样返回 */
   wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
+  /** 浏览器自动化工具的真实构造器;未注入则该能力永不出现,与 settings 开关无关 */
+  buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
   /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
@@ -209,6 +211,9 @@ export function createChatStore(opts: {
         const wrap = opts.wrapDesktopTools ?? ((t: typeof tools) => t)
         tools.push(...wrap(opts.buildDesktopTools()))
       }
+      if (settings.browserControl.enabled && opts.buildBrowserTools) {
+        tools.push(...opts.buildBrowserTools())
+      }
       const registry = createToolRegistry(tools)
 
       const ctrl = new AbortController()
@@ -229,13 +234,18 @@ export function createChatStore(opts: {
         // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
         const lastUser = messages[messages.length - 1]
         if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
+        const needsBiggerBudget = settings.desktopControl.enabled || settings.browserControl.enabled
+        // 浏览器任务比桌面点击任务更容易多耗轮次(每次页面跳转/被弹窗挡住都要多试几次才能
+        // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
+        // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
+        const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
         const res = await runAgent({
           provider,
           system,
           messages,
           registry,
-          maxToolRounds: settings.desktopControl.enabled ? 20 : undefined,
-          maxOutputTokens: settings.desktopControl.enabled ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
+          maxToolRounds,
+          maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
           onText: (t) => { acc += t; opts.pushStream(t) },

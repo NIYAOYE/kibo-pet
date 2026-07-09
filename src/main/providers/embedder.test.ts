@@ -60,7 +60,8 @@ describe('resolveEmbeddingKey', () => {
     memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null },
     textTools: { autoCopyResult: false },
     firecrawl: { enabled: false },
-    desktopControl: { enabled: false }
+    desktopControl: { enabled: false },
+    browserControl: { enabled: false, mode: 'isolated' }
   })
   it('有独立 key 优先用', () => {
     expect(resolveEmbeddingKey(base('https://a/v1', 'https://a/v1'), 'ek', 'ck')).toBe('ek')

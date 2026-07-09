@@ -118,6 +118,11 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
       if (opts.signal.aborted) return { text, canceled: true }
       const r = await opts.registry.run(tu.name, tu.input, { signal: opts.signal, onStatus: opts.onStatus })
       if (opts.signal.aborted) return { text, canceled: true }
+      // 工具的"软失败"(比如 browser_click 点击失败)不会走 registry 的 isError/抛异常路径——
+      // 它们是工具自己把失败原因包成普通文本回灌给模型的,agentLoop 之前完全看不到,只能靠
+      // 模型自己的转述猜是什么问题。这里把每次工具调用的原始结果打出来,方便下次真机复现时
+      // 直接查日志,而不是从对话里的转述反推。
+      console.log(`[tool] ${tu.name} isError=${r.isError ?? false} content=${r.content.slice(0, 200)}`)
       messages.push({ role: 'tool_result', toolUseId: tu.id, content: r.content, isError: r.isError, images: r.images })
     }
   }

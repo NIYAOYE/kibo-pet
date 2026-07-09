@@ -110,6 +110,29 @@
                 可能造成误操作或截取到敏感信息。默认关闭,开启前会再次弹窗确认。
               </div>
             </div>
+            <div style="margin-top:14px;padding:10px;border:1px solid rgba(255,140,140,0.5);border-radius:8px;background:rgba(255,80,80,0.08)">
+              <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+                <input id="browserControlEnabled" type="checkbox" style="width:auto" />
+                <span>允许宠物自主浏览/操作网页(高风险)</span>
+              </label>
+              <div class="hint" style="margin-top:6px">
+                开启后 AI 可能自主打开浏览器窗口浏览网页、点击、填表。默认使用隔离的临时浏览器环境,
+                不影响你日常浏览器的登录状态。默认关闭,开启前会再次弹窗确认。
+              </div>
+              <label id="browserControlModeRow" style="display:none;margin-top:8px">浏览器接管方式
+                <select id="browserControlMode">
+                  <option value="isolated">独立隔离浏览器(推荐,不影响你的真实浏览器)</option>
+                  <option value="cdp">接管我正在用的真实浏览器(高风险,能用到已登录账号)</option>
+                </select>
+              </label>
+              <label id="browserControlChromePathRow" style="display:none;margin-top:8px">自定义 Chrome 路径(可选 · 仅独立隔离模式生效)
+                <input id="browserControlChromePath" type="text" placeholder="留空则自动探测,例如 C:\Program Files\Google\Chrome\Application\chrome.exe" />
+              </label>
+              <div id="browserControlChromePathHint" class="hint" style="display:none;margin-top:2px">
+                如果宠物打开浏览器一直失败(常见于同一台电脑装了两个 Chrome,坏掉的那个被自动选中),
+                把能正常打开的那个 chrome.exe 完整路径填在这里。
+              </div>
+            </div>
           </section>
 
           <section class="page" data-page="memory">

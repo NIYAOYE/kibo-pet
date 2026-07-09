@@ -80,6 +80,38 @@ desktopControlEnabled.addEventListener('change', () => {
     if (!confirmed) desktopControlEnabled.checked = false
   })()
 })
+
+const browserControlEnabled = $<HTMLInputElement>('browserControlEnabled')
+const browserControlMode = $<HTMLSelectElement>('browserControlMode')
+const browserControlModeRow = $<HTMLLabelElement>('browserControlModeRow')
+const browserControlChromePath = $<HTMLInputElement>('browserControlChromePath')
+const browserControlChromePathRow = $<HTMLLabelElement>('browserControlChromePathRow')
+const browserControlChromePathHint = $<HTMLDivElement>('browserControlChromePathHint')
+// CDP 模式的强确认是否已在"本次渲染进程会话"内出现过——见 Save 处的兜底守卫注释。
+let cdpModeConfirmedThisSession = false
+
+function syncBrowserControlModeRow(): void {
+  const show = browserControlEnabled.checked ? '' : 'none'
+  browserControlModeRow.style.display = show
+  browserControlChromePathRow.style.display = show
+  browserControlChromePathHint.style.display = show
+}
+browserControlEnabled.addEventListener('change', () => {
+  syncBrowserControlModeRow()
+  if (!browserControlEnabled.checked) return
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmBrowserControl()
+    if (!confirmed) { browserControlEnabled.checked = false; syncBrowserControlModeRow(); return }
+  })()
+})
+browserControlMode.addEventListener('change', () => {
+  if (browserControlMode.value !== 'cdp') { cdpModeConfirmedThisSession = false; return }
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmCdpMode()
+    if (!confirmed) { browserControlMode.value = 'isolated'; return }
+    cdpModeConfirmedThisSession = true
+  })()
+})
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 async function refreshPets(selectId: string): Promise<void> {
@@ -126,6 +158,14 @@ $<HTMLButtonElement>('test').addEventListener('click', async () => {
 $<HTMLButtonElement>('save').addEventListener('click', async () => {
   const provider = currentProvider()
   try {
+    // 兜底:某次会话内曾经"设置开关关闭时把 mode 之前存的 cdp 原样带回来又直接重新勾选主开关"
+    // 这类路径能跳过上面 change 事件里的 CDP 强确认(见分支最终审查发现)——保存前按"即将写入
+    // 的最终状态"重新判定一次,而不是只信任事件历史。
+    if (browserControlEnabled.checked && browserControlMode.value === 'cdp' && !cdpModeConfirmedThisSession) {
+      const confirmed = await window.settingsApi.confirmCdpMode()
+      if (!confirmed) { status.textContent = '✗ 已取消保存(未确认接管真实浏览器风险)'; return }
+      cdpModeConfirmedThisSession = true
+    }
     if (key.value) {
       const ok = await window.settingsApi.setApiKey(key.value)
       if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Key'; return }
@@ -157,7 +197,12 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
-      desktopControl: { enabled: desktopControlEnabled.checked }
+      desktopControl: { enabled: desktopControlEnabled.checked },
+      browserControl: {
+        enabled: browserControlEnabled.checked,
+        mode: browserControlMode.value as 'isolated' | 'cdp',
+        chromePath: browserControlChromePath.value.trim() || undefined
+      }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -194,6 +239,11 @@ void (async () => {
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
+  browserControlEnabled.checked = snap.settings.browserControl.enabled
+  browserControlMode.value = snap.settings.browserControl.mode
+  browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''
+  cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
+  syncBrowserControlModeRow()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()

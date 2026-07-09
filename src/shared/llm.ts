@@ -41,9 +41,16 @@ export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
 export interface DesktopControlSettings { enabled: boolean }
 
-export const SETTINGS_SCHEMA_VERSION = 7
+export type BrowserControlMode = 'isolated' | 'cdp'
+/** chromePath:独立实例模式下可选的自定义 Chrome 可执行文件路径,绕开 Playwright 的
+ *  channel:'chrome' 自动探测——该探测在 Windows 上优先检查 %LOCALAPPDATA%,若用户机器上
+ *  同时存在一个损坏的 per-user 安装和一个能用的系统级安装,会优先选中坏的那个且无法察觉
+ *  (只做存在性检查,不检查是否真的能启动)。留空则维持原有自动探测行为。 */
+export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode; chromePath?: string }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings }
+export const SETTINGS_SCHEMA_VERSION = 8
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -53,7 +60,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
-  desktopControl: { enabled: false }
+  desktopControl: { enabled: false },
+  browserControl: { enabled: false, mode: 'isolated' }
 }
 
 export interface Preset {

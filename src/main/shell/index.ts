@@ -11,6 +11,9 @@ import { createDesktopTools } from '../tools/desktopTools'
 import { createControlIndicator } from './controlIndicator'
 import { createIndicatorGate, wrapToolsWithGate } from '../automation/toolIndicatorGate'
 import { createLastAiPosTracker, startManualOverrideWatch } from '../automation/manualOverrideWatch'
+import { createBrowserControl } from '../browserAutomation/browserControl'
+import { createPlaywrightDriverFactory } from '../browserAutomation/playwrightDriver'
+import { createBrowserTools } from '../tools/browserTools'
 import {
   IPC,
   type WindowBounds,
@@ -195,6 +198,12 @@ export function startShell(): void {
     execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
   })
 
+  const browserControl = createBrowserControl({
+    driverFactory: createPlaywrightDriverFactory(),
+    getSettings: () => loadSettings(settingsFile).browserControl
+    // CDP 端口固定用默认值(9222),与设置 UI 上给用户的操作指引一致;不做成可配置项(YAGNI)
+  })
+
   // createControlIndicator bakes the display name into the window's HTML at construction
   // time, so it must not be built until the real name is known — a placeholder assigned
   // by-value here would never propagate into the already-created window. Deferred to the
@@ -254,6 +263,7 @@ export function startShell(): void {
       captureScreen: () => captureFullScreen(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
     }),
     wrapDesktopTools: (tools) => wrapToolsWithGate(tools, indicatorGate),
+    buildBrowserTools: () => createBrowserTools({ control: browserControl }),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
@@ -492,7 +502,12 @@ export function startShell(): void {
     hasEmbeddingKey: embeddingSecrets.hasKey(),
     hasFirecrawlKey: firecrawlSecrets.hasKey()
   }))
-  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => { saveSettings(settingsFile, normalizeSettings(raw)) })
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
+    const prev = loadSettings(settingsFile)
+    const next = normalizeSettings(raw)
+    saveSettings(settingsFile, next)
+    if (prev.browserControl.enabled && !next.browserControl.enabled) void browserControl.close()
+  })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
   })
@@ -515,6 +530,34 @@ export function startShell(): void {
       title: '开启桌面控制风险提示',
       message: '开启后,AI 可以在对话中自主截屏(屏幕内容会发送给你配置的模型服务商)、控制鼠标点击与键盘输入。',
       detail: '可能造成误操作或截取到敏感信息;开启后随时可在设置里再次关闭。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
+  })
+  ipcMain.handle(IPC.CONFIRM_BROWSER_CONTROL, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认开启'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '开启浏览器自动化风险提示',
+      message: '开启后,AI 可以在对话中自主打开独立浏览器窗口浏览/操作网页(点击、填表、翻页)。',
+      detail: '默认使用隔离的临时浏览器环境,不会用到你日常浏览器的登录状态;开启后随时可在设置里再次关闭。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
+  })
+  ipcMain.handle(IPC.CONFIRM_CDP_MODE, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认切换'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '切换到「接管真实浏览器」风险提示',
+      message: '这个模式会操作你已登录的真实浏览器账号与会话,风险高于默认的隔离浏览器模式。',
+      detail: '需要目标浏览器已用调试参数启动;确认前请确保你了解这一模式的操作对象是你的真实浏览器。'
     }
     const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
     return result.response === 1
@@ -577,5 +620,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close() })
 }
