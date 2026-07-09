@@ -571,11 +571,13 @@ export function createBrowserControl(opts: {
       return r.ok ? { ok: true } : { ok: false, error: r.error }
     },
     async switchTab(input) {
-      const b = await ensureBrowser()
-      const pages = b.pages()
-      if (input.index < 0 || input.index >= pages.length) return { ok: false, error: `标签页序号越界:${input.index}(当前共 ${pages.length} 个)` }
-      activeIndex = input.index
-      return { ok: true }
+      const r = await guard(async () => {
+        const b = await ensureBrowser()
+        const pages = b.pages()
+        if (input.index < 0 || input.index >= pages.length) throw new Error(`标签页序号越界:${input.index}(当前共 ${pages.length} 个)`)
+        activeIndex = input.index
+      })
+      return r.ok ? { ok: true } : { ok: false, error: r.error }
     },
     async close() {
       const r = await guard(async () => { if (browser) await browser.close() })
