@@ -76,6 +76,17 @@ describe('createBrowserControl', () => {
     expect(r).toEqual({ ok: false, error: '未找到元素' })
   })
 
+  it('click 触发页面跳转导致 "Execution context was destroyed"(Playwright 已知误报)→ 当成成功,不是失败', async () => {
+    // 真机复现:点一个搜索结果链接,点击本身触发了跳转,但 Playwright 的 click() 因为
+    // 执行上下文在跳转过程中被销毁而报错——这基本总是意味着点击其实生效了(跳转发生了),
+    // 不应该当成真失败让模型误以为点击没生效,浪费一轮去"换路线重试"。
+    const page = fakePage({ clickByText: vi.fn(async () => { throw new Error('Execution context was destroyed, most likely because of a navigation.') }) })
+    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([page])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    await control.navigate('https://a.com')
+    const r = await control.click({ text: '第一条搜索结果' })
+    expect(r).toEqual({ ok: true })
+  })
+
   it('还没 navigate 过就调用 click:自动懒启动浏览器(空白页)而不是报错', async () => {
     const page = fakePage()
     const factory = fakeFactory(fakeBrowser([page]))

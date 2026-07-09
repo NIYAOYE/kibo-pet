@@ -92,6 +92,11 @@ export function createBrowserControl(opts: {
         if (input.selector) return p.clickBySelector(input.selector)
         return p.clickByText(input.text)
       })
+      // "Execution context was destroyed, most likely because of a navigation." 是 Playwright
+      // 点击触发页面跳转时的已知误报:执行上下文在跳转过程中被销毁导致 click() 本身报错,
+      // 但这基本总是意味着点击其实生效了(跳转确实发生了)。当成失败会让模型误以为没点中,
+      // 浪费一整轮去"换个地方重试",真机验收复现过这个浪费轮次的模式。
+      if (!r.ok && r.error.includes('Execution context was destroyed')) return { ok: true }
       return r.ok ? { ok: true } : { ok: false, error: r.error }
     },
     async fillText(input) {
