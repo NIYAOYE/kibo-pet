@@ -235,12 +235,16 @@ export function createChatStore(opts: {
         const lastUser = messages[messages.length - 1]
         if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
         const needsBiggerBudget = settings.desktopControl.enabled || settings.browserControl.enabled
+        // 浏览器任务比桌面点击任务更容易多耗轮次(每次页面跳转/被弹窗挡住都要多试几次才能
+        // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
+        // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
+        const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
         const res = await runAgent({
           provider,
           system,
           messages,
           registry,
-          maxToolRounds: needsBiggerBudget ? 20 : undefined,
+          maxToolRounds,
           maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,

@@ -253,10 +253,12 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     settings.browserControl = { enabled: false, mode: 'isolated' } // 复位
   })
 
-  it('browserControl 开启时(即便 desktopControl 关闭)轮数上限也提升到 20,超过 6 轮的工具循环仍能继续', async () => {
+  it('browserControl 开启时(即便 desktopControl 关闭)轮数上限提升到 40——超过旧的 20 上限、但在新上限内的循环仍能继续', async () => {
     settings.browserControl = { enabled: true, mode: 'isolated' }
     const seen: StreamChatRequest[] = []
-    const script: StreamChunk[][] = Array.from({ length: 10 }, (_, i) => [
+    // 30 轮:超过旧的 desktopControl 共用上限(20),证明浏览器任务确实拿到了独立的更大预算,
+    // 不是恰好卡在两个上限都满足的区间(之前 10 轮的写法在 20/40 任一上限下都会通过,没有区分度)。
+    const script: StreamChunk[][] = Array.from({ length: 30 }, (_, i) => [
       { type: 'tool_use' as const, toolUse: { id: `t${i}`, name: 'browser_navigate', input: {} } }
     ])
     script.push([{ type: 'text' as const, text: '看完了' }, { type: 'done' as const }])
@@ -268,6 +270,23 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     const petMsgs = store.messages().filter((m) => m.role === 'pet')
     expect(petMsgs[petMsgs.length - 1]?.text).toBe('看完了') // 未被"轮数上限"错误打断
     settings.browserControl = { enabled: false, mode: 'isolated' } // 复位
+  })
+
+  it('desktopControl 单独开启时轮数上限仍是 20,没有被浏览器任务的调整误伤', async () => {
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    // 25 轮的脚本,若上限被误伤成 40 会全部跑完(seen.length===25);若仍是 20,provider
+    // 只会被调用 20 次就因"轮数上限"停止,不会消费脚本剩下的 5 轮。
+    const script: StreamChunk[][] = Array.from({ length: 25 }, (_, i) => [
+      { type: 'tool_use' as const, toolUse: { id: `t${i}`, name: 'take_screenshot', input: {} } }
+    ])
+    const { store, finished } = makeStore(createFakeProvider({ script }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')]
+    })
+    store.handleSend({ text: '帮我看看屏幕' })
+    await finished
+    expect(seen.length).toBe(20)
+    settings.desktopControl = { enabled: false } // 复位
   })
 })
 
