@@ -11,6 +11,9 @@ import { createDesktopTools } from '../tools/desktopTools'
 import { createControlIndicator } from './controlIndicator'
 import { createIndicatorGate, wrapToolsWithGate } from '../automation/toolIndicatorGate'
 import { createLastAiPosTracker, startManualOverrideWatch } from '../automation/manualOverrideWatch'
+import { createBrowserControl } from '../browserAutomation/browserControl'
+import { createPlaywrightDriverFactory } from '../browserAutomation/playwrightDriver'
+import { createBrowserTools } from '../tools/browserTools'
 import {
   IPC,
   type WindowBounds,
@@ -195,6 +198,12 @@ export function startShell(): void {
     execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
   })
 
+  const browserControl = createBrowserControl({
+    driverFactory: createPlaywrightDriverFactory(),
+    getSettings: () => loadSettings(settingsFile).browserControl
+    // CDP 端口固定用默认值(9222),与设置 UI 上给用户的操作指引一致;不做成可配置项(YAGNI)
+  })
+
   // createControlIndicator bakes the display name into the window's HTML at construction
   // time, so it must not be built until the real name is known — a placeholder assigned
   // by-value here would never propagate into the already-created window. Deferred to the
@@ -254,6 +263,7 @@ export function startShell(): void {
       captureScreen: () => captureFullScreen(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
     }),
     wrapDesktopTools: (tools) => wrapToolsWithGate(tools, indicatorGate),
+    buildBrowserTools: () => createBrowserTools({ control: browserControl }),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
@@ -605,5 +615,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close() })
 }

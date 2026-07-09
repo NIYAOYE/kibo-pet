@@ -34,7 +34,11 @@ function makeStore(
   provider: LlmProvider,
   seen: StreamChatRequest[],
   clip?: { readText?: () => string; writeText?: (t: string) => void },
-  desktop?: { buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]; wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[] }
+  desktop?: {
+    buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
+    wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
+    buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
+  }
 ) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
   const written: string[] = []
@@ -58,6 +62,7 @@ function makeStore(
     getFirecrawlKey: () => firecrawlKey,
     buildDesktopTools: desktop?.buildDesktopTools,
     wrapDesktopTools: desktop?.wrapDesktopTools,
+    buildBrowserTools: desktop?.buildBrowserTools,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
@@ -223,6 +228,46 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     store.handleSend({ text: 'hi' })
     await finished
     expect(seen[0].maxOutputTokens).toBe(1024)
+  })
+
+  it('browserControl 关闭时不挂载,即便注入了 buildBrowserTools', async () => {
+    settings.browserControl = { enabled: false, mode: 'isolated' }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildBrowserTools: () => [fakeDesktopTool('browser_navigate')]
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].tools?.map((t) => t.name) ?? []).not.toContain('browser_navigate')
+  })
+
+  it('browserControl 开启时挂载 buildBrowserTools 返回的工具', async () => {
+    settings.browserControl = { enabled: true, mode: 'isolated' }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildBrowserTools: () => [fakeDesktopTool('browser_navigate')]
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].tools?.map((t) => t.name) ?? []).toContain('browser_navigate')
+    settings.browserControl = { enabled: false, mode: 'isolated' } // 复位
+  })
+
+  it('browserControl 开启时(即便 desktopControl 关闭)轮数上限也提升到 20,超过 6 轮的工具循环仍能继续', async () => {
+    settings.browserControl = { enabled: true, mode: 'isolated' }
+    const seen: StreamChatRequest[] = []
+    const script: StreamChunk[][] = Array.from({ length: 10 }, (_, i) => [
+      { type: 'tool_use' as const, toolUse: { id: `t${i}`, name: 'browser_navigate', input: {} } }
+    ])
+    script.push([{ type: 'text' as const, text: '看完了' }, { type: 'done' as const }])
+    const { store, finished } = makeStore(createFakeProvider({ script }), seen, undefined, {
+      buildBrowserTools: () => [fakeDesktopTool('browser_navigate')]
+    })
+    store.handleSend({ text: '帮我搜一下' })
+    await finished
+    const petMsgs = store.messages().filter((m) => m.role === 'pet')
+    expect(petMsgs[petMsgs.length - 1]?.text).toBe('看完了') // 未被"轮数上限"错误打断
+    settings.browserControl = { enabled: false, mode: 'isolated' } // 复位
   })
 })
 
