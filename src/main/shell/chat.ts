@@ -22,6 +22,8 @@ import { findQuickAction } from './quickActions'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
 import type { TodoStore } from '../todos/todoStore'
+import type { TtsProvider } from '../providers/tts'
+import { translateText } from '../agent/translate'
 
 const TIMEOUT_MS = 60000
 const MAX_OUTPUT_TOKENS = 1024
@@ -79,12 +81,18 @@ export function createChatStore(opts: {
   pushDone: () => void
   pushError: (message: string) => void
   openSettings: () => void
+  /** TTS provider;未注入(多数既有测试)则全程安全 no-op,与 settings.tts 无关 */
+  tts?: TtsProvider
+  /** 测试注入缝;生产默认 translateText */
+  translate?: typeof translateText
 }): ChatStore {
   const make = opts.makeProvider ?? createProvider
+  const translate = opts.translate ?? translateText
   let inFlight: AbortController | null = null
 
   function cancel(): void {
     if (inFlight) { inFlight.abort(); inFlight = null }
+    opts.tts?.cancel()
   }
 
   return {
@@ -216,6 +224,10 @@ export function createChatStore(opts: {
       }
       const registry = createToolRegistry(tools)
 
+      const ttsEnabled = settings.tts.enabled
+      const ttsLanguage = settings.tts.language
+      const ttsId = `chat-${Date.now()}`
+
       const ctrl = new AbortController()
       inFlight = ctrl
       let acc = ''
@@ -239,6 +251,7 @@ export function createChatStore(opts: {
         // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
         // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
         const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
+        if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.begin(ttsId, 'zh')
         const res = await runAgent({
           provider,
           system,
@@ -248,23 +261,40 @@ export function createChatStore(opts: {
           maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
-          onText: (t) => { acc += t; opts.pushStream(t) },
+          onText: (t) => {
+            acc += t
+            opts.pushStream(t)
+            if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.pushToken(t)
+          },
           onStatus: (t) => opts.pushStatus(t)
         })
-        if (inFlight === ctrl) inFlight = null
-        if (res.canceled) return // 静默丢弃
+        if (res.canceled) { if (inFlight === ctrl) inFlight = null; return } // 静默丢弃;cancel() 已经调过 tts.cancel()
         if (res.error) {
-          // 有部分文本(如轮数上限)时先落 transcript,再报错
           if (acc) opts.memory.appendMessage({ role: 'pet', text: acc })
           opts.pushUpdate(opts.memory.messages())
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
-        } else {
-          opts.memory.appendMessage({ role: 'pet', text: acc })
-          opts.pushUpdate(opts.memory.messages())
-          opts.pushDone()
-          opts.emitPetEvent('replyDone')
+          if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.finish()
+          if (inFlight === ctrl) inFlight = null
+          return
         }
+        opts.memory.appendMessage({ role: 'pet', text: acc })
+        opts.pushUpdate(opts.memory.messages())
+        opts.pushDone()
+        opts.emitPetEvent('replyDone')
+        if (ttsEnabled && ttsLanguage === 'zh') {
+          opts.tts?.finish()
+        } else if (ttsEnabled && ttsLanguage !== 'zh' && acc) {
+          // 非中文:不流式,等整句生成完毕后翻译再一次性合成。刻意不 null 掉 inFlight,让
+          // 期间到来的新消息(handleSend/cancel)的 ctrl.abort() 也能中断这次翻译请求。
+          const translated = await translate({ provider, text: acc, targetLanguage: ttsLanguage, signal: ctrl.signal })
+          if (translated && !ctrl.signal.aborted) {
+            opts.tts?.begin(ttsId, ttsLanguage)
+            opts.tts?.pushToken(translated)
+            opts.tts?.finish()
+          }
+        }
+        if (inFlight === ctrl) inFlight = null
         // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
         opts.memory.maybeSummarize(() => {
           const k = opts.getKey()
