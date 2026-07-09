@@ -1,6 +1,5 @@
 import { SpritePlayer } from './spritePlayer'
 import { PetController } from './petController'
-import { createPcmPlayer } from './voice/pcmPlayer'
 
 const DRAG_THRESHOLD = 4
 const DBLCLICK_MS = 280
@@ -18,11 +17,6 @@ async function boot(): Promise<void> {
   await controller.start()
   window.petApi.onPetEvent((event) => controller.send(event))
   window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
-
-  const pcmPlayer = createPcmPlayer()
-  window.voiceApi.onAudioStart(({ id, sampleRate }) => pcmPlayer.start(id, sampleRate))
-  window.voiceApi.onAudioChunk(({ id, pcm }) => pcmPlayer.enqueue(id, pcm))
-  window.voiceApi.onAudioCancelled((id) => pcmPlayer.cancel(id))
 
   let dragging = false
   let moved = false

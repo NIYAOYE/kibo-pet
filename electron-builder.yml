@@ -29,10 +29,6 @@ extraResources:
     to: skills
   - from: resources
     to: resources
-# minimal_tts 是可选的、不随源码分发的外部 TTS 引擎(见 .gitignore),electron-builder 静态
-# extraResources 在 from 路径不存在时会直接中止整个 pnpm dist;afterPack 钩子改为运行时探测,
-# 缺失时优雅跳过而不阻塞打包(见 build/afterPack.js)。
-afterPack: build/afterPack.js
 win:
   target: nsis
   icon: build/icon.ico

@@ -59,12 +59,7 @@ export const IPC = {
   BUBBLE_LINE: 'bubble:line',
   BUBBLE_RESIZE: 'bubble:resize',
   PET_SPEAK: 'pet:speak',
-  CONTEXT_SIGNAL: 'context:signal',
-  TTS_AUDIO_START: 'tts:audio-start',
-  TTS_AUDIO_CHUNK: 'tts:audio-chunk',
-  TTS_AUDIO_DONE: 'tts:audio-done',
-  TTS_AUDIO_CANCELLED: 'tts:audio-cancelled',
-  TTS_CHECK_PACKAGE: 'tts:check-package'
+  CONTEXT_SIGNAL: 'context:signal'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒，均为一次性边沿事件 */
@@ -91,16 +86,6 @@ export interface ChatSendPayload { text: string; attachments?: ChatSendAttachmen
 
 export interface OverlayInit { screenshotDataUrl: string; width: number; height: number }
 export interface OverlayRect { x: number; y: number; width: number; height: number }
-
-export interface TtsAudioStart { id: string; sampleRate: number }
-export interface TtsAudioChunk { id: string; pcm: ArrayBuffer }
-
-export interface VoiceApi {
-  onAudioStart(cb: (d: TtsAudioStart) => void): void
-  onAudioChunk(cb: (d: TtsAudioChunk) => void): void
-  onAudioDone(cb: (id: string) => void): void
-  onAudioCancelled(cb: (id: string) => void): void
-}
 
 export interface MediaApi {
   pickImage(): Promise<ChatSendAttachment[]>
@@ -174,8 +159,6 @@ export interface SettingsApi {
   listPets(): Promise<PetSummary[]>
   importPet(): Promise<ImportResult | null>
   relaunch(): void
-  /** 检测某路径(留空则用约定默认路径)下是否存在可用的 minimal_tts 包,供设置页"检测"按钮用 */
-  checkTtsPackage(packagePath?: string): Promise<boolean>
 }
 
 export interface TodoApi {
@@ -203,7 +186,7 @@ export interface BubbleApi {
 }
 
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi }
 }
 
 export type { PetEvent, Bounds }

@@ -14,7 +14,6 @@
     "dist": "pnpm build && electron-builder --win"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1",
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
@@ -31,7 +30,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
     "openai": "^6.45.0",
-    "playwright-core": "^1.61.1",
-    "ws": "^8.21.0"
+    "playwright-core": "^1.61.1"
   }
 }

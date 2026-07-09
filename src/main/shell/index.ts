@@ -14,16 +14,6 @@ import { createLastAiPosTracker, startManualOverrideWatch } from '../automation/
 import { createBrowserControl } from '../browserAutomation/browserControl'
 import { createPlaywrightDriverFactory } from '../browserAutomation/playwrightDriver'
 import { createBrowserTools } from '../tools/browserTools'
-import { readFileSync as readFileSyncTts, copyFileSync, existsSync as existsSyncTts, writeFileSync as writeFileSyncTts, mkdirSync as mkdirSyncTts } from 'node:fs'
-import { spawn } from 'node:child_process'
-import WebSocket from 'ws'
-import { createTtsClient } from '../providers/tts/ttsClient'
-import { createTtsProvider } from '../providers/tts'
-import {
-  hasPetVoice, readVoiceMeta, planVoiceSwitch, applyVoiceCopyPlan,
-  planBackupDefaultVoice, defaultVoiceBackupDir, type AliceConfig
-} from '../providers/tts/voiceModelSwitch'
-import { resolveLineText } from '../lines/linesLoader'
 import {
   IPC,
   type WindowBounds,
@@ -257,75 +247,6 @@ export function startShell(): void {
     }
   }
 
-  // ---- TTS(minimal_tts sidecar,见设计文档 2026-07-09-tts-voice-minimal-tts-design.md) ----
-  function resolveTtsPackageRoot(configuredPath: string | undefined): string {
-    return configuredPath && configuredPath.trim() ? configuredPath.trim() : join(appRoot, 'minimal_tts')
-  }
-  function readAliceConfig(configPath: string): AliceConfig {
-    return JSON.parse(readFileSyncTts(configPath, 'utf-8')) as AliceConfig
-  }
-  function petVoiceDirFor(dir: string): string {
-    return join(dir, 'voice', 'tts')
-  }
-
-  const initialSettings = loadSettings(settingsFile)
-  let ttsClientInstance: ReturnType<typeof createTtsClient> | undefined
-  if (initialSettings.tts.enabled) {
-    const ttsPackageRoot = resolveTtsPackageRoot(initialSettings.tts.packagePath)
-    const configPath = join(ttsPackageRoot, 'config', 'alice.json')
-    try {
-      const currentConfig = readAliceConfig(configPath)
-      const backupDir = defaultVoiceBackupDir(ttsPackageRoot)
-      const backupMetaPath = join(backupDir, 'meta.json')
-      if (!existsSyncTts(backupMetaPath)) {
-        const backupPlan = planBackupDefaultVoice(ttsPackageRoot, currentConfig)
-        mkdirSyncTts(backupDir, { recursive: true })
-        for (const c of backupPlan.copies) copyFileSync(c.from, c.to)
-        writeFileSyncTts(backupPlan.metaPath, backupPlan.metaJson)
-      }
-      const backupMeta = JSON.parse(readFileSyncTts(backupMetaPath, 'utf-8')) as { promptText: string; promptLanguage: 'zh' | 'ja' | 'en' }
-      const petVoiceDir = petVoiceDirFor(petDir)
-      const hasVoice = hasPetVoice(existsSyncTts, petVoiceDir)
-      const petMeta = hasVoice ? readVoiceMeta((p) => readFileSyncTts(p, 'utf-8'), petVoiceDir) : null
-      const plan = planVoiceSwitch({
-        packageRoot: ttsPackageRoot,
-        currentConfig,
-        petVoiceDir: hasVoice ? petVoiceDir : null,
-        petMeta,
-        backupMeta
-      })
-      applyVoiceCopyPlan(plan, { copyFileSync, writeFileSync: writeFileSyncTts }, configPath)
-
-      ttsClientInstance = createTtsClient({
-        pythonExe: join(ttsPackageRoot, 'python', 'python.exe'),
-        packageRoot: ttsPackageRoot,
-        spawn: (exe, args, o) => spawn(exe, args, { ...o, windowsHide: true }) as unknown as import('../providers/tts/ttsClient').SpawnedProcess,
-        createWebSocket: (url) => {
-          // ws 默认 binaryType='nodebuffer',会把二进制帧交付成 Node Buffer 而非
-          // ArrayBuffer,导致 protocol.ts 的 isBinaryMessage(instanceof ArrayBuffer)
-          // 对真实音频帧永远判 false、音频被静默丢弃。显式设为 'arraybuffer' 让 ws
-          // 端到端交付真正的 ArrayBuffer。
-          const socket = new WebSocket(url)
-          socket.binaryType = 'arraybuffer'
-          return socket as unknown as import('../providers/tts/ttsClient').MinimalWebSocket
-        },
-        onEvent: (event) => {
-          if (event.type === 'audio_start') petWin.webContents.send(IPC.TTS_AUDIO_START, { id: event.id, sampleRate: event.sampleRate })
-          else if (event.type === 'done') petWin.webContents.send(IPC.TTS_AUDIO_DONE, event.id)
-          else if (event.type === 'cancelled') petWin.webContents.send(IPC.TTS_AUDIO_CANCELLED, event.id)
-          else if (event.type === 'error') console.warn('[tts] 合成错误', event.code, event.message)
-        },
-        // sampleRate 已经在 audio_start(TTS_AUDIO_START)里给过一次,TtsAudioChunk payload
-        // 不重复带(renderer 的 pcmPlayer.enqueue(id, pcm) 也只要这两个字段)。
-        onAudio: (id, pcm, _sampleRate) => petWin.webContents.send(IPC.TTS_AUDIO_CHUNK, { id, pcm })
-      })
-    } catch (e) {
-      console.warn('[tts] 初始化失败(minimal_tts 包缺失或损坏),本次会话不提供语音', e)
-    }
-  }
-  const ttsProvider = createTtsProvider({ enabled: initialSettings.tts.enabled, client: ttsClientInstance })
-  void ttsProvider.start()
-
   const chat = createChatStore({
     petDir,
     skills,
@@ -363,8 +284,7 @@ export function startShell(): void {
       dialog.window()?.webContents.send(IPC.CHAT_ERROR, m)
       bubbleHasContent = true; refreshBubble(); bubble.pushError(m)
     },
-    openSettings: () => openSettings(),
-    tts: ttsProvider
+    openSettings: () => openSettings()
   })
 
   const todoPanelHtml = join(dirname, '../renderer/todoPanel.html')
@@ -534,13 +454,6 @@ export function startShell(): void {
     if (!line) return // lines.json 缺失或该 category 为空 → 静默降级
     lastLineText = line.text
     showAmbientLine(line.text)
-    const ttsSettings = loadSettings(settingsFile).tts
-    if (ttsSettings.enabled) {
-      const spoken = resolveLineText(line, ttsSettings.language)
-      ttsProvider.begin(`line-${Date.now()}`, ttsSettings.language)
-      ttsProvider.pushToken(spoken)
-      ttsProvider.finish()
-    }
   })
   ipcMain.on(IPC.BUBBLE_RESIZE, (_e, raw) => {
     const height = validateBubbleHeight(raw)
@@ -594,7 +507,6 @@ export function startShell(): void {
     const next = normalizeSettings(raw)
     saveSettings(settingsFile, next)
     if (prev.browserControl.enabled && !next.browserControl.enabled) void browserControl.close()
-    if (prev.tts.enabled && !next.tts.enabled) void ttsProvider.close()
   })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
@@ -659,10 +571,6 @@ export function startShell(): void {
     if (!arg) return { ok: false, error: 'invalid request' }
     return testConnection(arg.provider, arg.key)
   })
-  ipcMain.handle(IPC.TTS_CHECK_PACKAGE, async (_e, raw): Promise<boolean> => {
-    const p = resolveTtsPackageRoot(typeof raw === 'string' ? raw : undefined)
-    return existsSyncTts(join(p, 'python', 'python.exe')) && existsSyncTts(join(p, 'service', '__main__.py'))
-  })
   const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
   ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
   ipcMain.handle(IPC.IMPORT_PET, async () => {
@@ -712,5 +620,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close(); void ttsProvider.close() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close() })
 }

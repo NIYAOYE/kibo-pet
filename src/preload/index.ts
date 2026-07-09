@@ -4,8 +4,7 @@ import {
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
-  type BubbleApi, type BubblePlace, type ContextSignalKind,
-  type VoiceApi, type TtsAudioStart, type TtsAudioChunk
+  type BubbleApi, type BubblePlace, type ContextSignalKind
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -71,8 +70,7 @@ const settingsApi: SettingsApi = {
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key }),
   listPets: () => ipcRenderer.invoke(IPC.LIST_PETS),
   importPet: () => ipcRenderer.invoke(IPC.IMPORT_PET),
-  relaunch: (): void => ipcRenderer.send(IPC.RELAUNCH_APP),
-  checkTtsPackage: (packagePath?: string): Promise<boolean> => ipcRenderer.invoke(IPC.TTS_CHECK_PACKAGE, packagePath)
+  relaunch: (): void => ipcRenderer.send(IPC.RELAUNCH_APP)
 }
 
 const mediaApi: MediaApi = {
@@ -137,25 +135,6 @@ const bubbleApi: BubbleApi = {
   reportSize: (height: number): void => ipcRenderer.send(IPC.BUBBLE_RESIZE, height)
 }
 
-const voiceApi: VoiceApi = {
-  onAudioStart: (cb: (d: TtsAudioStart) => void): void => {
-    ipcRenderer.removeAllListeners(IPC.TTS_AUDIO_START)
-    ipcRenderer.on(IPC.TTS_AUDIO_START, (_e, d: TtsAudioStart) => cb(d))
-  },
-  onAudioChunk: (cb: (d: TtsAudioChunk) => void): void => {
-    ipcRenderer.removeAllListeners(IPC.TTS_AUDIO_CHUNK)
-    ipcRenderer.on(IPC.TTS_AUDIO_CHUNK, (_e, d: TtsAudioChunk) => cb(d))
-  },
-  onAudioDone: (cb: (id: string) => void): void => {
-    ipcRenderer.removeAllListeners(IPC.TTS_AUDIO_DONE)
-    ipcRenderer.on(IPC.TTS_AUDIO_DONE, (_e, id: string) => cb(id))
-  },
-  onAudioCancelled: (cb: (id: string) => void): void => {
-    ipcRenderer.removeAllListeners(IPC.TTS_AUDIO_CANCELLED)
-    ipcRenderer.on(IPC.TTS_AUDIO_CANCELLED, (_e, id: string) => cb(id))
-  }
-}
-
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
@@ -163,4 +142,3 @@ contextBridge.exposeInMainWorld('mediaApi', mediaApi)
 contextBridge.exposeInMainWorld('overlayApi', overlayApi)
 contextBridge.exposeInMainWorld('todoApi', todoApi)
 contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)
-contextBridge.exposeInMainWorld('voiceApi', voiceApi)

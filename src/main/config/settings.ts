@@ -1,10 +1,9 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsLanguage, type TtsSettings } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
-const TTS_LANGUAGES: TtsLanguage[] = ['zh', 'ja', 'en']
 
 /** 合法宠物 id:仅字母数字下划线连字符,拒绝路径分隔/穿越(activePetId 会拼进文件路径)。 */
 function normalizePetId(v: unknown): string {
@@ -43,12 +42,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
     mode: bc.mode === 'cdp' ? 'cdp' as const : 'isolated' as const,
     chromePath: typeof bc.chromePath === 'string' && bc.chromePath.trim().length > 0 ? bc.chromePath.trim() : undefined
   }
-  const ts = (r.tts ?? {}) as Record<string, unknown>
-  const tts: TtsSettings = {
-    enabled: ts.enabled === true,
-    language: TTS_LANGUAGES.includes(ts.language as TtsLanguage) ? (ts.language as TtsLanguage) : DEFAULT_SETTINGS.tts.language,
-    packagePath: typeof ts.packagePath === 'string' && ts.packagePath.trim().length > 0 ? ts.packagePath.trim() : undefined
-  }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
@@ -58,8 +51,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     textTools: { autoCopyResult },
     firecrawl,
     desktopControl,
-    browserControl,
-    tts
+    browserControl
   }
 }
 

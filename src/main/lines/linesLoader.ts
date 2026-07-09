@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ReactionCategory } from '@shared/reactionPlanner'
-import type { TtsLanguage } from '@shared/llm'
 
-export interface Line { text: string; text_ja?: string; text_en?: string; audio?: string }
+export interface Line { text: string; audio?: string }
 export type LinesTable = Partial<Record<ReactionCategory, Line[]>> & { greet?: Line[] }
 
 export function parseLines(raw: string): LinesTable {
@@ -20,8 +19,6 @@ export function parseLines(raw: string): LinesTable {
       const rec = item as Record<string, unknown>
       if (typeof rec.text !== 'string') continue
       const line: Line = { text: rec.text }
-      if (typeof rec.text_ja === 'string') line.text_ja = rec.text_ja
-      if (typeof rec.text_en === 'string') line.text_en = rec.text_en
       if (typeof rec.audio === 'string') line.audio = rec.audio
       lines.push(line)
     }
@@ -53,11 +50,4 @@ export function pickLine(
   const pool = lines.length > 1 && avoidText ? lines.filter((l) => l.text !== avoidText) : lines
   const candidates = pool.length > 0 ? pool : lines
   return candidates[Math.floor(rng() * candidates.length)] ?? null
-}
-
-/** 按朗读语言取台词文案;缺对应语言字段时回退中文原文(硬读,不现场翻译)。 */
-export function resolveLineText(line: Line, language: TtsLanguage): string {
-  if (language === 'ja' && line.text_ja) return line.text_ja
-  if (language === 'en' && line.text_en) return line.text_en
-  return line.text
 }

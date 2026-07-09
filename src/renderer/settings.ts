@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsLanguage } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind } from '@shared/llm'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -22,11 +22,6 @@ const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
-const ttsEnabled = $<HTMLInputElement>('ttsEnabled')
-const ttsLanguage = $<HTMLSelectElement>('ttsLanguage')
-const ttsPackagePath = $<HTMLInputElement>('ttsPackagePath')
-const ttsCheckBtn = $<HTMLButtonElement>('ttsCheckPackage')
-const ttsCheckStatus = $<HTMLElement>('ttsCheckStatus')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
@@ -119,12 +114,6 @@ browserControlMode.addEventListener('change', () => {
 })
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
-ttsCheckBtn.addEventListener('click', async () => {
-  ttsCheckStatus.textContent = '检测中…'
-  const ok = await window.settingsApi.checkTtsPackage(ttsPackagePath.value.trim() || undefined)
-  ttsCheckStatus.textContent = ok ? '✓ 检测到可用的 minimal_tts 包' : '✗ 未检测到,请检查路径'
-})
-
 async function refreshPets(selectId: string): Promise<void> {
   const pets = await window.settingsApi.listPets()
   petSelect.innerHTML = ''
@@ -213,11 +202,6 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: browserControlEnabled.checked,
         mode: browserControlMode.value as 'isolated' | 'cdp',
         chromePath: browserControlChromePath.value.trim() || undefined
-      },
-      tts: {
-        enabled: ttsEnabled.checked,
-        language: ttsLanguage.value as TtsLanguage,
-        packagePath: ttsPackagePath.value.trim() || undefined
       }
     })
     if (petSelect.value !== savedActivePetId) {
@@ -260,9 +244,6 @@ void (async () => {
   browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''
   cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
   syncBrowserControlModeRow()
-  ttsEnabled.checked = snap.settings.tts.enabled
-  ttsLanguage.value = snap.settings.tts.language
-  ttsPackagePath.value = snap.settings.tts.packagePath ?? ''
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()
