@@ -251,7 +251,6 @@ export function createChatStore(opts: {
         // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
         // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
         const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
-        if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.begin(ttsId, 'zh')
         const res = await runAgent({
           provider,
           system,
@@ -261,11 +260,7 @@ export function createChatStore(opts: {
           maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
-          onText: (t) => {
-            acc += t
-            opts.pushStream(t)
-            if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.pushToken(t)
-          },
+          onText: (t) => { acc += t; opts.pushStream(t) },
           onStatus: (t) => opts.pushStatus(t)
         })
         if (res.canceled) { if (inFlight === ctrl) inFlight = null; return } // 静默丢弃;cancel() 已经调过 tts.cancel()
@@ -274,7 +269,6 @@ export function createChatStore(opts: {
           opts.pushUpdate(opts.memory.messages())
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
-          if (ttsEnabled && ttsLanguage === 'zh') opts.tts?.finish()
           if (inFlight === ctrl) inFlight = null
           return
         }
@@ -282,15 +276,15 @@ export function createChatStore(opts: {
         opts.pushUpdate(opts.memory.messages())
         opts.pushDone()
         opts.emitPetEvent('replyDone')
-        if (ttsEnabled && ttsLanguage === 'zh') {
-          opts.tts?.finish()
-        } else if (ttsEnabled && ttsLanguage !== 'zh' && acc) {
-          // 非中文:不流式,等整句生成完毕后翻译再一次性合成。刻意不 null 掉 inFlight,让
-          // 期间到来的新消息(handleSend/cancel)的 ctrl.abort() 也能中断这次翻译请求。
-          const translated = await translate({ provider, text: acc, targetLanguage: ttsLanguage, signal: ctrl.signal })
-          if (translated && !ctrl.signal.aborted) {
+        if (ttsEnabled && acc) {
+          // 所有朗读语言都不流式:逐 token 喂给 TTS 会让语音播放节奏被 LLM 生成节奏拖慢(真机验收
+          // 发现每个标点符号都要停顿数秒才继续说),改为等整句生成完毕后一次性合成播放。刻意不 null
+          // 掉 inFlight,让期间到来的新消息(handleSend/cancel)的 ctrl.abort() 也能中断非中文分支
+          // 里的翻译请求。
+          const textToSpeak = ttsLanguage === 'zh' ? acc : await translate({ provider, text: acc, targetLanguage: ttsLanguage, signal: ctrl.signal })
+          if (textToSpeak && !ctrl.signal.aborted) {
             opts.tts?.begin(ttsId, ttsLanguage)
-            opts.tts?.pushToken(translated)
+            opts.tts?.pushToken(textToSpeak)
             opts.tts?.finish()
           }
         }

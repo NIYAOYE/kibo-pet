@@ -404,24 +404,25 @@ describe('TTS 接线', () => {
   const ttsSettingsZh: AppSettings = { ...settings, tts: { enabled: true, language: 'zh' } }
   const ttsSettingsJa: AppSettings = { ...settings, tts: { enabled: true, language: 'ja' } }
 
-  it('zh:流式 token 边生成边 pushToken,结束调 finish', async () => {
+  it('zh:不流式(生成阶段绝不调用 pushToken),等回复完毕后一次性 begin/pushToken(完整原文)/finish,不经过 translate', async () => {
     const seen: StreamChatRequest[] = []
     const { calls, tts } = fakeTts()
-    const { store, finished } = makeStore(createFakeProvider({ reply: '你好呀' }), seen, undefined, undefined, { tts, settingsOverride: ttsSettingsZh })
+    let translateCalled = false
+    const translate = async (): Promise<string> => { translateCalled = true; return 'unused' }
+    const { store, finished } = makeStore(createFakeProvider({ reply: '你好呀' }), seen, undefined, undefined, { tts, translate: translate as unknown as typeof import('../agent/translate').translateText, settingsOverride: ttsSettingsZh })
     store.handleSend({ text: '嗨' })
     await finished
+    await new Promise((r) => setTimeout(r, 0)) // 保险起见让所有微任务/宏任务跑完
     // calls[0] 固定是 'cancel':handleSend 开头无条件调用 cancel()(哪怕没有在途请求),
     // 这样才能打断"发新消息前宠物正在念 lines.json 台词"这种与 chat.ts 自身 inFlight 无关的语音。
-    expect(calls[0]).toBe('cancel')
-    expect(calls[1]).toMatch(/^begin:chat-\d+:zh$/)
-    // fakeProvider 默认按 chunkSize=2 分块调用 onText('你好呀' → '你好'+'呀' 两次),
-    // 故按拼接后的整体校验"流式 token 边生成边 pushToken"这一意图,而非单次调用的字面值。
-    const pushed = calls.filter((c) => c.startsWith('pushToken:')).map((c) => c.slice('pushToken:'.length)).join('')
-    expect(pushed).toBe('你好呀')
-    expect(calls[calls.length - 1]).toBe('finish')
+    // 流式生成阶段(fakeProvider 默认按 chunkSize=2 分块调用 onText)绝不应出现 pushToken 调用——
+    // 真机验收发现:逐 token 流式喂给 TTS 会让语音播放跟着 LLM 生成节奏卡顿(每个标点符号停顿数秒
+    // 才继续),根因是 TTS 合成节奏被 LLM 生成节奏拖慢;改为等整句生成完毕后一次性合成解决卡顿。
+    expect(calls).toEqual(['cancel', expect.stringMatching(/^begin:chat-\d+:zh$/), 'pushToken:你好呀', 'finish'])
+    expect(translateCalled).toBe(false) // zh 不需要翻译
   })
 
-  it('ja:回复生成阶段不调用 pushToken(zh 专属流式分支不触发);回复完毕后翻译整句,再一次性 begin/pushToken/finish', async () => {
+  it('ja:不流式,回复完毕后翻译整句,再一次性 begin/pushToken/finish', async () => {
     const seen: StreamChatRequest[] = []
     const { calls, tts } = fakeTts()
     const translate = async () => 'おはよう'
