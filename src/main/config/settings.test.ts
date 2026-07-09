@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false } }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const } }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -61,8 +61,27 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 7', () => {
+  it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(7)
+    expect(loadSettings(f).schemaVersion).toBe(8)
+  })
+})
+
+describe('browserControl', () => {
+  it('缺省 browserControl → 默认 enabled:false, mode:isolated', () => {
+    const f = tmpSettingsFile({ schemaVersion: 7, provider: { kind: 'anthropic', model: 'x' } })
+    expect(loadSettings(f).browserControl).toEqual({ enabled: false, mode: 'isolated' })
+  })
+  it('mode 值非法(不是 isolated/cdp)→ 回退 isolated', () => {
+    const f = tmpSettingsFile({ browserControl: { enabled: true, mode: 'weird' } })
+    expect(loadSettings(f).browserControl).toEqual({ enabled: true, mode: 'isolated' })
+  })
+  it('保留合法的 cdp 模式', () => {
+    const f = tmpSettingsFile({ browserControl: { enabled: true, mode: 'cdp' } })
+    expect(loadSettings(f).browserControl).toEqual({ enabled: true, mode: 'cdp' })
+  })
+  it('归一化后 schemaVersion 升为 8', () => {
+    const f = tmpSettingsFile({ schemaVersion: 3 })
+    expect(loadSettings(f).schemaVersion).toBe(8)
   })
 })

@@ -36,6 +36,11 @@ export function normalizeSettings(raw: unknown): AppSettings {
   }
   const dc = (r.desktopControl ?? {}) as Record<string, unknown>
   const desktopControl = { enabled: dc.enabled === true }
+  const bc = (r.browserControl ?? {}) as Record<string, unknown>
+  const browserControl = {
+    enabled: bc.enabled === true,
+    mode: bc.mode === 'cdp' ? 'cdp' as const : 'isolated' as const
+  }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
@@ -44,7 +49,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     memory: { embedding },
     textTools: { autoCopyResult },
     firecrawl,
-    desktopControl
+    desktopControl,
+    browserControl
   }
 }
 

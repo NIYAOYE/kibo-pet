@@ -17,7 +17,8 @@ const settings: AppSettings = {
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
-  desktopControl: { enabled: false }
+  desktopControl: { enabled: false },
+  browserControl: { enabled: false, mode: 'isolated' }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

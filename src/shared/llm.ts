@@ -41,9 +41,12 @@ export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
 export interface DesktopControlSettings { enabled: boolean }
 
-export const SETTINGS_SCHEMA_VERSION = 7
+export type BrowserControlMode = 'isolated' | 'cdp'
+export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings }
+export const SETTINGS_SCHEMA_VERSION = 8
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -53,7 +56,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   memory: { embedding: null },
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
-  desktopControl: { enabled: false }
+  desktopControl: { enabled: false },
+  browserControl: { enabled: false, mode: 'isolated' }
 }
 
 export interface Preset {
