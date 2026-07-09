@@ -80,6 +80,29 @@ desktopControlEnabled.addEventListener('change', () => {
     if (!confirmed) desktopControlEnabled.checked = false
   })()
 })
+
+const browserControlEnabled = $<HTMLInputElement>('browserControlEnabled')
+const browserControlMode = $<HTMLSelectElement>('browserControlMode')
+const browserControlModeRow = $<HTMLLabelElement>('browserControlModeRow')
+
+function syncBrowserControlModeRow(): void {
+  browserControlModeRow.style.display = browserControlEnabled.checked ? '' : 'none'
+}
+browserControlEnabled.addEventListener('change', () => {
+  syncBrowserControlModeRow()
+  if (!browserControlEnabled.checked) return
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmBrowserControl()
+    if (!confirmed) { browserControlEnabled.checked = false; syncBrowserControlModeRow(); return }
+  })()
+})
+browserControlMode.addEventListener('change', () => {
+  if (browserControlMode.value !== 'cdp') return
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmCdpMode()
+    if (!confirmed) browserControlMode.value = 'isolated'
+  })()
+})
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 async function refreshPets(selectId: string): Promise<void> {
@@ -158,7 +181,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
       desktopControl: { enabled: desktopControlEnabled.checked },
-      browserControl: { enabled: false, mode: 'isolated' }
+      browserControl: { enabled: browserControlEnabled.checked, mode: browserControlMode.value as 'isolated' | 'cdp' }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -195,6 +218,9 @@ void (async () => {
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
+  browserControlEnabled.checked = snap.settings.browserControl.enabled
+  browserControlMode.value = snap.settings.browserControl.mode
+  syncBrowserControlModeRow()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()

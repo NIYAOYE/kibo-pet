@@ -32,6 +32,8 @@ export const IPC = {
   SET_EMBEDDING_KEY: 'settings:set-embedding-key',
   SET_FIRECRAWL_KEY: 'settings:set-firecrawl-key',
   CONFIRM_DESKTOP_CONTROL: 'settings:confirm-desktop-control',
+  CONFIRM_BROWSER_CONTROL: 'settings:confirm-browser-control',
+  CONFIRM_CDP_MODE: 'settings:confirm-cdp-mode',
   OPEN_MEMORY_DIR: 'settings:open-memory-dir',
   MEDIA_PICK_IMAGE: 'media:pick-image',
   MEDIA_CAPTURE_REGION: 'media:capture-region',
@@ -150,6 +152,8 @@ export interface SettingsApi {
   setEmbeddingKey(key: string): Promise<boolean>
   setFirecrawlKey(key: string): Promise<boolean>
   confirmDesktopControl(): Promise<boolean>
+  confirmBrowserControl(): Promise<boolean>
+  confirmCdpMode(): Promise<boolean>
   openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
   listPets(): Promise<PetSummary[]>

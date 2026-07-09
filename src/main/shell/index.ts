@@ -519,6 +519,34 @@ export function startShell(): void {
     const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
     return result.response === 1
   })
+  ipcMain.handle(IPC.CONFIRM_BROWSER_CONTROL, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认开启'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '开启浏览器自动化风险提示',
+      message: '开启后,AI 可以在对话中自主打开独立浏览器窗口浏览/操作网页(点击、填表、翻页)。',
+      detail: '默认使用隔离的临时浏览器环境,不会用到你日常浏览器的登录状态;开启后随时可在设置里再次关闭。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
+  })
+  ipcMain.handle(IPC.CONFIRM_CDP_MODE, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认切换'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '切换到「接管真实浏览器」风险提示',
+      message: '这个模式会操作你已登录的真实浏览器账号与会话,风险高于默认的隔离浏览器模式。',
+      detail: '需要目标浏览器已用调试参数启动;确认前请确保你了解这一模式的操作对象是你的真实浏览器。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
+  })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
     mkdirSync(memoryDir, { recursive: true })
     void electronShell.openPath(memoryDir)
