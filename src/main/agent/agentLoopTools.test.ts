@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runAgent, MAX_TOOL_ROUNDS } from './agentLoop'
+import { runAgent, MAX_TOOL_ROUNDS, MAX_TRUNCATED_RETRIES } from './agentLoop'
 import { createFakeProvider } from '../providers/fakeProvider'
 import { createToolRegistry } from '../tools/toolRegistry'
 import type { ToolSpec } from '../tools/toolSpec'
@@ -90,6 +90,60 @@ describe('runAgent 多轮工具循环', () => {
     const res = await runAgent({ ...base(script, spec), onText: () => {} })
     expect(res.error).toContain('上限')
     expect(calls).toHaveLength(MAX_TOOL_ROUNDS)
+  })
+
+  it('本轮无输出且 finishReason=length(被截断):自动重试而非静默收尾', async () => {
+    const { spec, calls } = searchTool()
+    const res = await runAgent({
+      ...base([
+        [{ type: 'done', finishReason: 'length' }],
+        [tu('t1', 'AI'), done],
+        [text('查到了'), done]
+      ], spec),
+      onText: () => {}
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.text).toBe('查到了')
+    expect(calls).toEqual([{ query: 'AI' }])
+  })
+
+  it('截断重试次数耗尽后:不再无限重试,按空文本正常收尾', async () => {
+    const { spec, calls } = searchTool()
+    const truncatedRounds = Array.from(
+      { length: MAX_TRUNCATED_RETRIES + 2 },
+      () => [{ type: 'done', finishReason: 'length' } as StreamChunk]
+    )
+    const res = await runAgent({ ...base(truncatedRounds, spec), maxToolRounds: 20, onText: () => {} })
+    expect(res.error).toBeUndefined()
+    expect(res.text).toBe('')
+    expect(calls).toEqual([])
+  })
+
+  it('临近轮数上限时,发给 provider 的 system 里追加轮次预算提醒(不写入 messages 历史)', async () => {
+    const { spec } = searchTool()
+    const seenSystems: string[] = []
+    const provider = {
+      async *streamChat(req: { system: string }): AsyncIterable<StreamChunk> {
+        seenSystems.push(req.system)
+        yield { type: 'tool_use', toolUse: { id: `t${seenSystems.length}`, name: 'search', input: { query: 'q' } } }
+        yield { type: 'done' }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([spec]),
+      system: 'BASE',
+      messages: [{ role: 'user', content: 'hi' }],
+      maxToolRounds: 3,
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    expect(seenSystems[0]).toBe('BASE')
+    expect(seenSystems[1]).not.toBe('BASE')
+    expect(seenSystems[1]).toContain('轮')
+    expect(seenSystems[2]).toContain('轮')
   })
 
   it('工具报错回灌(isError)不终止:模型下一轮正常收场', async () => {
