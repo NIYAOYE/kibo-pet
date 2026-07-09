@@ -55,4 +55,38 @@ describe('normalizeAnthropicEvents', () => {
     ])))
     expect(chunks[0]).toEqual({ type: 'tool_use', toolUse: { id: 'tu_3', name: 'read_skill', input: {} } })
   })
+
+  it('message_delta 的 stop_reason 透传到 done(max_tokens 归一为 length)', async () => {
+    const chunks = await collect(normalizeAnthropicEvents(feed([
+      { type: 'content_block_delta', delta: { type: 'text_delta', text: '嗯' } },
+      { type: 'message_delta', delta: { stop_reason: 'max_tokens' } }
+    ])))
+    expect(chunks).toEqual([
+      { type: 'text', text: '嗯' },
+      { type: 'done', finishReason: 'length' }
+    ])
+  })
+
+  it('正常结束(end_turn)时 finishReason 原样透传,不归一', async () => {
+    const chunks = await collect(normalizeAnthropicEvents(feed([
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } }
+    ])))
+    expect(chunks).toEqual([{ type: 'done', finishReason: 'end_turn' }])
+  })
+
+  it('tool_use 块中途因 max_tokens 截断(content_block_stop 未到达):流结束时兜底 flush 出已聚合的部分', async () => {
+    const chunks = await collect(normalizeAnthropicEvents(feed([
+      { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tu_9', name: 'type_text' } },
+      { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{"text":"被截断的很长一段文' } },
+      { type: 'message_delta', delta: { stop_reason: 'max_tokens' } }
+      // 注意:没有 content_block_stop 事件——真实截断场景下它不会到来
+    ])))
+    expect(chunks[0].type).toBe('tool_use')
+    expect((chunks[0] as { toolUse: { name: string; id: string; input: unknown } }).toolUse).toEqual({
+      name: 'type_text',
+      id: 'tu_9',
+      input: {} // JSON 不完整(截断在字符串中间),解析失败回退 {},交给 registry 校验兜底报错
+    })
+    expect(chunks[chunks.length - 1]).toEqual({ type: 'done', finishReason: 'length' })
+  })
 })
