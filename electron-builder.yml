@@ -13,6 +13,8 @@ files:
   - '!{tsconfig.json,tsconfig.node.json}'
   - '!{README.md,PROGRESS.md,CLAUDE.md,pnpm-lock.yaml}'
   - '!**/*.test.*'
+asarUnpack:
+  - '**/node_modules/playwright-core/**'
 # 运行时资源:主进程用 process.resourcesPath/<name> 读取。
 # - pets: 全部磁盘宠物(luluka/youka...),activePetId 可选任意一只,首启播种到 userData。
 # - skills: 产品运行时技能(全局只读)。
