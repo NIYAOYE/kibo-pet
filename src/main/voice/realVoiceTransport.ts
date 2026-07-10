@@ -90,8 +90,10 @@ export async function realDetectGpu(): Promise<boolean> {
 }
 
 export interface PipInstallOptions {
-  /** 传入时通过 `-i <url>` 指定镜像索引,并加 `--timeout 20 --retries 1` 快速判定失败;不传则用 pip 默认(官方源),不加这些 flag。 */
+  /** 传入时通过 `-i <url>` 指定镜像索引;不传则用 pip 默认(官方 PyPI 索引)。 */
   indexUrl?: string
+  /** 是否加 `--timeout 20 --retries 1` 快速判定失败;镜像源应为 true,官方/最后兜底源应为 false(即便该兜底源仍需显式 indexUrl,如 CUDA 官方 wheel 源)。 */
+  fastFail?: boolean
   /** 收到 pip 的实时输出行(已按 1 秒节流)或心跳提示("仍在安装中…")。 */
   onOutput?: (line: string) => void
 }
@@ -99,7 +101,8 @@ export interface PipInstallOptions {
 export function realPipInstall(pythonDir: string, args: string[], opts: PipInstallOptions = {}): Promise<void> {
   const pythonExe = join(pythonDir, 'python.exe')
   const fullArgs = ['-m', 'pip', 'install', ...args]
-  if (opts.indexUrl) fullArgs.push('-i', opts.indexUrl, '--timeout', '20', '--retries', '1')
+  if (opts.indexUrl) fullArgs.push('-i', opts.indexUrl)
+  if (opts.fastFail) fullArgs.push('--timeout', '20', '--retries', '1')
 
   const onOutput = opts.onOutput ?? ((): void => {})
   const startedAt = Date.now()

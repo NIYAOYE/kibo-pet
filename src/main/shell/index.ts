@@ -697,12 +697,12 @@ export function startShell(): void {
         downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
         enablePip: async (dir, onProgress) => {
           const candidates: MirrorCandidate[] = [
-            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源' },
-            { indexUrl: undefined, label: '官方源' }
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
           ]
           await installWithMirrorFallback(
             candidates,
-            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, onOutput: onProgress }),
+            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
             onProgress
           )
         },
@@ -710,27 +710,27 @@ export function startShell(): void {
         installTorch: async (dir, useCuda, onProgress) => {
           const candidates: MirrorCandidate[] = useCuda
             ? [
-                { indexUrl: PYTORCH_CUDA_MIRROR_ALIYUN, label: '阿里云镜像' },
-                { indexUrl: PYTORCH_CUDA_OFFICIAL, label: '官方源' }
+                { indexUrl: PYTORCH_CUDA_MIRROR_ALIYUN, label: '阿里云镜像', fastFail: true },
+                { indexUrl: PYTORCH_CUDA_OFFICIAL, label: '官方源', fastFail: false }
               ]
             : [
-                { indexUrl: PYPI_MIRROR_TUNA, label: '清华源' },
-                { indexUrl: undefined, label: '官方源' }
+                { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+                { indexUrl: undefined, label: '官方源', fastFail: false }
               ]
           await installWithMirrorFallback(
             candidates,
-            (c) => realPipInstall(dir, ['torch', 'torchvision', 'torchaudio'], { indexUrl: c.indexUrl, onOutput: onProgress }),
+            (c) => realPipInstall(dir, ['torch', 'torchvision', 'torchaudio'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
             onProgress
           )
         },
         installGsvTtsLite: async (dir, onProgress) => {
           const candidates: MirrorCandidate[] = [
-            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源' },
-            { indexUrl: undefined, label: '官方源' }
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
           ]
           await installWithMirrorFallback(
             candidates,
-            (c) => realPipInstall(dir, ['gsv-tts-lite'], { indexUrl: c.indexUrl, onOutput: onProgress }),
+            (c) => realPipInstall(dir, ['gsv-tts-lite'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
             onProgress
           )
         },
@@ -752,6 +752,10 @@ export function startShell(): void {
       if (r.ok) {
         mkdirSync(destDir, { recursive: true })
         writeFileSync(voiceMarkerFile(destDir), serializeRuntimeMarker({ markerVersion: VOICE_RUNTIME_MARKER_VERSION, gsvTtsLiteVersion: '0.4.6', device: s.tts.device === 'cpu' ? 'cpu' : 'cuda' }))
+      } else {
+        const p = { stage: r.stage, message: `安装失败:${r.error}` }
+        win?.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
+        petWin.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
       }
     })
   })

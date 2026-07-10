@@ -1,6 +1,8 @@
 export interface MirrorCandidate {
   indexUrl?: string
   label: string
+  /** 是否对本候选源附加快速失败参数(--timeout/--retries);由调用方设置并透传给 pip 调用,本函数不读取。 */
+  fastFail?: boolean
 }
 
 export async function installWithMirrorFallback(
