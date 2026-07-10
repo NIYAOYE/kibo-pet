@@ -41,10 +41,12 @@ Thumbs.db
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 AGENTS.md
 ROADMAP.md
+Reference
 build
 pets/luluka
 pets/youka
 pets/shiraishi-mio
 pets/juwang
+pets/alice
 # 子代理开发用隔离工作区(手动 git worktree,非 EnterWorktree,见会话记录)
 .worktrees/
