@@ -469,7 +469,7 @@ describe('语音接线', () => {
       openSettings: () => {},
       voice: { getSettings: () => settings.tts, speak: () => {}, stop: () => stopped.push(true) }
     })
-    store.handleSend({ text: '你好' })
+    // 不预先调用 handleSend:cancel() 应无条件停止朗读,无论是否有请求在途(设计文档 §6)
     store.cancel()
     expect(stopped).toEqual([true])
   })

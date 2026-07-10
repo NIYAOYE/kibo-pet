@@ -87,7 +87,8 @@ export function createChatStore(opts: {
   let inFlight: AbortController | null = null
 
   function cancel(): void {
-    if (inFlight) { inFlight.abort(); inFlight = null; opts.voice?.stop() }
+    if (inFlight) { inFlight.abort(); inFlight = null }
+    opts.voice?.stop()
   }
 
   return {
