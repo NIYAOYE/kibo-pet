@@ -535,7 +535,10 @@ export function startShell(): void {
     if (!payload) return
     chat.handleSend(payload)
   })
-  ipcMain.on(IPC.CANCEL_CHAT, () => chat.cancel())
+  ipcMain.on(IPC.CANCEL_CHAT, () => {
+    chat.cancel()
+    petWin.webContents.send(IPC.VOICE_PLAYBACK_STOP)
+  })
   ipcMain.on(IPC.PET_SPEAK, (_e, raw) => {
     const category = validateReactionCategory(raw)
     if (!category) return

@@ -69,7 +69,8 @@ export const IPC = {
   VOICE_AUDIO_CHUNK: 'voice:audio-chunk',
   VOICE_AUDIO_DONE: 'voice:audio-done',
   VOICE_AUDIO_ERROR: 'voice:audio-error',
-  VOICE_STOP: 'voice:stop'
+  VOICE_STOP: 'voice:stop',
+  VOICE_PLAYBACK_STOP: 'voice:playback-stop'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒，均为一次性边沿事件 */
@@ -210,6 +211,9 @@ export interface VoiceApi {
   onAudioChunk(cb: (c: VoicePcmChunk) => void): void
   onAudioDone(cb: () => void): void
   onAudioError(cb: (message: string) => void): void
+  /** main→renderer 推送:立即停止渲染层已在播放的语音(用户显式取消/发送新消息触发),
+   *  不携带任何 petBrain 状态含义——与 onAudioDone(正常播放完毕)、onAudioError(出错)语义不同 */
+  onPlaybackStop(cb: () => void): void
   stop(): void
 }
 

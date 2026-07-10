@@ -25,6 +25,7 @@ async function boot(): Promise<void> {
   window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
   window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
+  window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())
 
   let dragging = false
   let moved = false

@@ -158,6 +158,10 @@ const voiceApi = {
     ipcRenderer.removeAllListeners(IPC.VOICE_AUDIO_ERROR)
     ipcRenderer.on(IPC.VOICE_AUDIO_ERROR, (_e, m) => cb(m))
   },
+  onPlaybackStop: (cb: () => void) => {
+    ipcRenderer.removeAllListeners(IPC.VOICE_PLAYBACK_STOP)
+    ipcRenderer.on(IPC.VOICE_PLAYBACK_STOP, () => cb())
+  },
   stop: () => ipcRenderer.send(IPC.VOICE_STOP)
 } satisfies VoiceApi
 
