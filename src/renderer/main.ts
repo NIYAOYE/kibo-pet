@@ -1,5 +1,6 @@
 import { SpritePlayer } from './spritePlayer'
 import { PetController } from './petController'
+import { createPcmPlayer } from './voice/pcmPlayer'
 
 const DRAG_THRESHOLD = 4
 const DBLCLICK_MS = 280
@@ -15,8 +16,15 @@ async function boot(): Promise<void> {
   const player = new SpritePlayer(canvas, sheet, manifest)
   const controller = new PetController(player)
   await controller.start()
-  window.petApi.onPetEvent((event) => controller.send(event))
+  const pcmPlayer = createPcmPlayer()
+  window.petApi.onPetEvent((event) => {
+    controller.send(event)
+    // 新消息发送即打断正在朗读的语音(参照 opts.emitPetEvent('messageSent') 的既有约定)。
+    if (event === 'messageSent') pcmPlayer.stop()
+  })
   window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
+  window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
+  window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
 
   let dragging = false
   let moved = false
