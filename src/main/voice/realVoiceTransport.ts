@@ -89,7 +89,58 @@ export async function realDetectGpu(): Promise<boolean> {
   }
 }
 
-export async function realPipInstall(pythonDir: string, args: string[]): Promise<void> {
+export interface PipInstallOptions {
+  /** 传入时通过 `-i <url>` 指定镜像索引,并加 `--timeout 20 --retries 1` 快速判定失败;不传则用 pip 默认(官方源),不加这些 flag。 */
+  indexUrl?: string
+  /** 收到 pip 的实时输出行(已按 1 秒节流)或心跳提示("仍在安装中…")。 */
+  onOutput?: (line: string) => void
+}
+
+export function realPipInstall(pythonDir: string, args: string[], opts: PipInstallOptions = {}): Promise<void> {
   const pythonExe = join(pythonDir, 'python.exe')
-  await execFileP(pythonExe, ['-m', 'pip', 'install', ...args], { maxBuffer: 1024 * 1024 * 64 })
+  const fullArgs = ['-m', 'pip', 'install', ...args]
+  if (opts.indexUrl) fullArgs.push('-i', opts.indexUrl, '--timeout', '20', '--retries', '1')
+
+  const onOutput = opts.onOutput ?? ((): void => {})
+  const startedAt = Date.now()
+  let lastForwardedAt = 0
+  let lastLine = ''
+  let stderrTail = ''
+  let sawOutputSinceHeartbeat = false
+
+  const handleChunk = (raw: string, isStderr: boolean): void => {
+    if (isStderr) stderrTail = (stderrTail + raw).slice(-2000)
+    const lines = raw.split(/\r\n|\r|\n/).map((l) => l.trim()).filter((l) => l.length > 0)
+    if (lines.length === 0) return
+    lastLine = lines[lines.length - 1]
+    sawOutputSinceHeartbeat = true
+    const now = Date.now()
+    if (now - lastForwardedAt >= 1000) {
+      lastForwardedAt = now
+      onOutput(lastLine)
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(pythonExe, fullArgs, { windowsHide: true })
+    child.stdout?.on('data', (buf: Buffer) => handleChunk(buf.toString('utf-8'), false))
+    child.stderr?.on('data', (buf: Buffer) => handleChunk(buf.toString('utf-8'), true))
+
+    const heartbeat = setInterval(() => {
+      if (!sawOutputSinceHeartbeat) {
+        onOutput(`仍在安装中(已等待 ${Math.round((Date.now() - startedAt) / 1000)}s,暂无新输出)…`)
+      }
+      sawOutputSinceHeartbeat = false
+    }, 5000)
+
+    child.once('exit', (code) => {
+      clearInterval(heartbeat)
+      if (code === 0) resolve()
+      else reject(new Error(`pip install 失败(code=${code}): ${stderrTail.trim().slice(-500) || lastLine}`))
+    })
+    child.once('error', (err) => {
+      clearInterval(heartbeat)
+      reject(err)
+    })
+  })
 }
