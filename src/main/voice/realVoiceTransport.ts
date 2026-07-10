@@ -2,8 +2,9 @@ import { spawn, execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
-import { createWriteStream, mkdirSync } from 'node:fs'
+import { createWriteStream, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
+import AdmZip from 'adm-zip'
 import { createSseParser, type SseFrame } from './sseParser'
 
 const execFileP = promisify(execFileCb)
@@ -70,14 +71,37 @@ export function realPostSse(port: number, path: string, body: unknown, onFrame: 
   })
 }
 
+const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py'
+
+/** Node 18+ 的 fetch body 是 web ReadableStream,转成 node stream 落盘到 destPath;非 2xx 抛错。 */
+async function downloadToFile(url: string, destPath: string, fetchImpl: typeof fetch): Promise<void> {
+  const res = await fetchImpl(url)
+  if (!res.ok || !res.body) throw new Error(`下载失败(${url}):HTTP ${res.status}`)
+  const { Readable } = await import('node:stream')
+  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(destPath))
+}
+
 export async function realDownloadEmbeddablePython(destDir: string, downloadUrl: string, fetchImpl: typeof fetch = fetch): Promise<void> {
   mkdirSync(destDir, { recursive: true })
-  const res = await fetchImpl(downloadUrl)
-  if (!res.ok || !res.body) throw new Error(`下载失败:HTTP ${res.status}`)
+
   const zipPath = join(destDir, 'python-embed.zip')
-  // Node 18+ 的 fetch body 是 web ReadableStream,转成 node stream 再落盘
-  const { Readable } = await import('node:stream')
-  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(zipPath))
+  await downloadToFile(downloadUrl, zipPath, fetchImpl)
+  new AdmZip(zipPath).extractAllTo(destDir, true)
+  rmSync(zipPath)
+
+  // 内嵌(embeddable)发行版默认注释掉了 `import site`,关闭了 site-packages 查找,
+  // 关掉的话装好 pip 也 import 不到——必须先打开它,pip 才可能被找到。
+  const pthFile = readdirSync(destDir).find((f) => f.endsWith('._pth'))
+  if (pthFile) {
+    const pthPath = join(destDir, pthFile)
+    const content = readFileSync(pthPath, 'utf-8').replace(/^#\s*import site\s*$/m, 'import site')
+    writeFileSync(pthPath, content)
+  }
+
+  // 内嵌发行版不带 ensurepip,也没有 pip——用官方的 get-pip.py 引导安装。
+  const getPipPath = join(destDir, 'get-pip.py')
+  await downloadToFile(GET_PIP_URL, getPipPath, fetchImpl)
+  await execFileP(join(destDir, 'python.exe'), [getPipPath], { maxBuffer: 1024 * 1024 * 64 })
 }
 
 export async function realDetectGpu(): Promise<boolean> {
