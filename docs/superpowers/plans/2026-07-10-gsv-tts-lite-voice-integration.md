@@ -2721,12 +2721,33 @@ node -e "const {parsePetManifest}=require('./src/shared/petPackage.ts'); console
 [GSV-TTS-Lite](https://github.com/chinokikiss/GSV-TTS-Lite)。
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 核对 `.gitignore` 是否已把 `pets/alice` 整个目录当作磁盘化宠物包处理**
+
+**执行期间发现的计划纠错**(原计划这一步曾写"commit pet.json/README.md",是错的):`pets/alice` 与
+`pets/luluka`/`youka`/`shiraishi-mio`/`juwang` 同等对待——整个宠物包目录磁盘化、不入库(见
+`.gitignore` 里那几行既有条目),`pet.json`/`README.md` 也不例外,不要单独把它们从整包忽略规则里
+摘出来 commit。
+
+检查 `.gitignore` 是否已有 `pets/alice` 一行(以及 `Reference` 一行,因为参考音频/文本的暂存副本
+`Reference/` 也不该入库)。如果没有,补上:
+
+```gitignore
+Reference
+pets/alice
+```
+
+`git status --short` 确认此时 `pets/alice/*`(含刚编辑的 `pet.json`/`README.md` 与刚拷入的模型文件)
+不再出现在待暂存列表里,只有 `.gitignore` 自身显示为改动。
+
+- [ ] **Step 6: Commit(仅 `.gitignore`)**
 
 ```bash
-git add pets/alice/pet.json pets/alice/README.md
-git commit -m "feat(voice): alice 宠物包接入 GSV-TTS-Lite 语音模型"
+git add .gitignore
+git commit -m "chore(voice): .gitignore 补 Reference/ 与 pets/alice(随宠物包磁盘化处理)"
 ```
+
+`pets/alice/pet.json`/`README.md`/`voice/*` 均不进这次或任何一次 commit——它们是磁盘化宠物包的一部分,
+与 `pets/luluka` 的处理方式完全一致。
 
 ---
 
