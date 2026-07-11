@@ -78,6 +78,9 @@ async function boot(): Promise<void> {
       controller.send('drop')
       controller.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     } else {
+      // 点击(单击/双击均可)先打断正在播放的语音——pcmPlayer.stop() 在没有音频播放时
+      // 本身就是空操作,不需要额外判断"是否正在说话"。
+      pcmPlayer.stop()
       // 单击 → 开/关对话框;双击 → 戳(poke)。用短延时判别,双击时撤销开框
       if (clickTimer !== null) {
         clearTimeout(clickTimer); clickTimer = null
