@@ -1,0 +1,24 @@
+:root {
+  --surface-grad: linear-gradient(160deg, #efe3ff, #f7ecff);
+  --tail-color: #f2e8ff;
+  --app-bg: #f9f4ff;
+  --card-bg: #ffffff;
+  --pet-bubble-bg: #fffdf7;
+  --text-primary: #4a3a63;
+  --text-secondary: rgba(74, 58, 99, 0.65);
+  --accent: #6a4fb3;
+  --accent-strong: #5a3f9e;
+  --accent-soft: rgba(106, 79, 179, 0.14);
+  --border: rgba(106, 79, 179, 0.18);
+  --outline: #2b2140;
+  --code-tint: rgba(74, 58, 99, 0.10);
+  --danger-bg: rgba(214, 90, 90, 0.08);
+  --danger-border: rgba(214, 90, 90, 0.4);
+  --danger-text: #8a3f3f;
+  --shadow-bubble: 0 4px 14px rgba(150, 120, 220, 0.28);
+  --shadow-float: 0 10px 26px rgba(150, 120, 220, 0.32);
+  --radius-window: 20px;
+  --radius-panel: 12px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+}

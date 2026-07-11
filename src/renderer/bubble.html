@@ -3,9 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" />
+    <link rel="stylesheet" href="./theme.css" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
-                   font-family: system-ui, sans-serif; font-size: 13px; color: #4a3a63; }
+                   font-family: system-ui, sans-serif; font-size: 13px; color: var(--text-primary); }
       /* 竖直栈:气泡框 + 尾巴区。尾巴在底/顶由 body 的 tail-bottom/tail-top 类切换。 */
       #wrap { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; }
       body.tail-top #wrap { flex-direction: column-reverse; }
@@ -13,8 +14,8 @@
       /* 气泡框:占据除尾巴外的全部高度,内部滚动(超过 MAX_TOTAL_HEIGHT 才会触发) */
       #box { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
              box-sizing: border-box; padding: 10px 14px; border-radius: 22px;
-             background: linear-gradient(160deg, #efe3ff, #f7ecff);
-             box-shadow: 0 4px 14px rgba(150,120,220,0.28);
+             background: var(--surface-grad);
+             box-shadow: var(--shadow-bubble);
              word-break: break-word; line-height: 1.5; }
       #box:empty { display: none; }
 
@@ -23,15 +24,15 @@
       #tail::before { content: ''; position: absolute; left: var(--tail-x, 120px);
                       transform: translateX(-50%); width: 0; height: 0;
                       border-left: 9px solid transparent; border-right: 9px solid transparent; }
-      body.tail-bottom #tail::before { top: 0; border-top: 12px solid #f2e8ff; }
-      body.tail-top    #tail::before { bottom: 0; border-bottom: 12px solid #f2e8ff; }
+      body.tail-bottom #tail::before { top: 0; border-top: 12px solid var(--tail-color); }
+      body.tail-top    #tail::before { bottom: 0; border-bottom: 12px solid var(--tail-color); }
 
       /* pet 回复内渲染的 Markdown 子集样式(与对话框保持一致,配色适配浅色底) */
       #box ul { margin: 4px 0; padding-left: 18px; }
       #box li { margin: 1px 0; }
       #box strong { font-weight: 600; }
-      #box code { background: rgba(74,58,99,0.10); border-radius: 4px; padding: 0 3px; font-size: 12px; }
-      #box a.md-link { color: #6a4fb3; text-decoration: underline; word-break: break-all; }
+      #box code { background: var(--code-tint); border-radius: 4px; padding: 0 3px; font-size: 12px; }
+      #box a.md-link { color: var(--accent); text-decoration: underline; word-break: break-all; }
       #box.status { opacity: 0.75; font-style: italic; }
     </style>
   </head>
