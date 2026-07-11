@@ -61,7 +61,8 @@ export function createMemoryManager(opts: {
     messages: () => transcript.messages,
 
     appendMessage(msg) {
-      transcript = appendToTranscript(transcript, msg)
+      const stamped: ChatMessage = { ...msg, timestamp: msg.timestamp ?? now().getTime() }
+      transcript = appendToTranscript(transcript, stamped)
       try { saveTranscript(transcriptFile, transcript) } catch (e) { console.warn('[memory] transcript 写盘失败', e) }
     },
 

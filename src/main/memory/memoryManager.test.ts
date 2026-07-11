@@ -22,14 +22,28 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('saveFact / messages / appendMessage 持久化', () => {
   it('saveFact 落盘 facts.json;appendMessage 落盘 transcript.json;重建 manager 后仍在', () => {
-    const m1 = createMemoryManager({ dir, getEmbedder: () => null })
+    const fixedNow = () => new Date(2026, 0, 1, 12, 0, 0)
+    const m1 = createMemoryManager({ dir, getEmbedder: () => null, now: fixedNow })
     m1.saveFact('用户叫小星')
     m1.appendMessage({ role: 'user', text: '你好' })
     expect(existsSync(join(dir, 'facts.json'))).toBe(true)
     const m2 = createMemoryManager({ dir, getEmbedder: () => null })
-    expect(m2.messages()).toEqual([{ role: 'user', text: '你好' }])
+    expect(m2.messages()).toEqual([{ role: 'user', text: '你好', timestamp: fixedNow().getTime() }])
     const facts = JSON.parse(readFileSync(join(dir, 'facts.json'), 'utf-8'))
     expect(facts.facts[0].text).toBe('用户叫小星')
+  })
+})
+
+describe('appendMessage 补时间戳', () => {
+  it('未传 timestamp 时用注入的 now() 补上', () => {
+    const m = createMemoryManager({ dir, getEmbedder: () => null, now: () => new Date(2026, 0, 2, 8, 30, 0) })
+    m.appendMessage({ role: 'pet', text: '早呀' })
+    expect(m.messages()[0].timestamp).toBe(new Date(2026, 0, 2, 8, 30, 0).getTime())
+  })
+  it('已带 timestamp 时不覆盖', () => {
+    const m = createMemoryManager({ dir, getEmbedder: () => null, now: () => new Date(2026, 0, 2, 8, 30, 0) })
+    m.appendMessage({ role: 'user', text: '嗨', timestamp: 42 })
+    expect(m.messages()[0].timestamp).toBe(42)
   })
 })
 
