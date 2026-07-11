@@ -3,7 +3,7 @@ import { createVoiceSidecar, type SpeakRequest } from './voiceSidecar'
 import type { SseFrame } from './sseParser'
 
 const req: SpeakRequest = {
-  text: '你好', isCutText: true, cutMinLen: 10, cutMute: 0.3,
+  text: '你好', language: 'auto', isCutText: true, cutMinLen: 10, cutMute: 0.3,
   synthesisChunking: 'sentence', speed: 1, noiseScale: 0.5, temperature: 1,
   topK: 15, topP: 1, repetitionPenalty: 1.35
 }

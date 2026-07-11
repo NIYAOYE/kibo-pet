@@ -1,7 +1,10 @@
 import type { SseFrame } from './sseParser'
+import type { TtsTargetLanguage } from '@shared/llm'
 
 export interface SpeakRequest {
   text: string
+  /** 发音语言:zh/ja 时 sidecar 强制整段按该语言发音(纯汉字的日语行会被自动检测误判成中文);auto/en 保持自动检测。 */
+  language: TtsTargetLanguage
   isCutText: boolean; cutMinLen: number; cutMute: number
   synthesisChunking: 'token' | 'sentence'
   speed: number; noiseScale: number; temperature: number

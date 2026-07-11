@@ -115,6 +115,28 @@ describe('createVoiceProvider', () => {
     expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ text: '今天20摄氏度' }), expect.any(Function), expect.any(Object))
   })
 
+  it('合成请求携带 language=targetLanguage(ja),让 sidecar 强制日语发音', async () => {
+    const sidecar = fakeSidecar()
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn(async () => 'こんにちは') },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
+      onError: () => {}
+    })
+    await vp.speak('你好', () => {})
+    expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ language: 'ja' }), expect.any(Function), expect.any(Object))
+  })
+
+  it('targetLanguage=auto → 合成请求 language=auto(保持自动检测)', async () => {
+    const sidecar = fakeSidecar()
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'auto' }),
+      onError: () => {}
+    })
+    await vp.speak('你好', () => {})
+    expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ language: 'auto' }), expect.any(Function), expect.any(Object))
+  })
+
   it('stop() 让正在进行的 speak() 的 signal 被 abort', async () => {
     let capturedSignal: AbortSignal | null = null
     const sidecar = fakeSidecar({

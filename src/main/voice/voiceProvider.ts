@@ -40,6 +40,7 @@ export function createVoiceProvider(opts: {
         try {
           await opts.sidecar.speak({
             text: toSpeak,
+            language: settings.targetLanguage,
             isCutText: settings.isCutText,
             cutMinLen: settings.cutMinLen,
             cutMute: settings.cutMute,

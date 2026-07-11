@@ -16,11 +16,32 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from gsv_tts import TTS
+from gsv_tts.LangSegment import LangSegment
 
 tts: "TTS | None" = None
 REF_AUDIO = ""
 REF_TEXT = ""
 _infer_lock = threading.Lock()
+
+_AUTO_GET_TEXTS = LangSegment.getTexts
+
+
+def _apply_language(lang):
+    """按请求指定发音语言;必须在持有 _infer_lock 时调用。
+
+    gsv_tts 的 infer_stream 没有语言参数,内部用 LangSegment.getTexts 逐段自动
+    检测语言——纯汉字+数字、不含假名的日语行(如翻译后的天气数据"降水確率86%")
+    会被误判成中文、用中文发音读出,造成一条回复里中日发音混杂。zh/ja 时把
+    getTexts 替换成"整段固定语言",等价于 GPT-SoVITS 的 all_zh/all_ja 强制语言
+    模式(日语 G2P 自带数字/汉字的日语读法)。en/auto 保持自动检测:英文 G2P
+    遇到 CJK 字符行为未知,不强制。
+    """
+    if lang in ("zh", "ja"):
+        LangSegment.getTexts = lambda text, _lang=lang: (
+            [] if text is None or len(text.strip()) == 0 else [{"lang": _lang, "text": text}]
+        )
+    else:
+        LangSegment.getTexts = _AUTO_GET_TEXTS
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,6 +71,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             stream_mode = "sentence" if body.get("synthesisChunking") == "sentence" else "token"
             with _infer_lock:
+                _apply_language(body.get("language", "auto"))
                 for clip in tts.infer_stream(
                     spk_audio_path=REF_AUDIO,
                     prompt_audio_path=REF_AUDIO,
