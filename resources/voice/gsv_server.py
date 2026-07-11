@@ -119,6 +119,32 @@ def main():
     tts.load_gpt_model(args.gpt_model)
     tts.load_sovits_model(args.sovits_model)
 
+    # 首次真实推理会触发 CUDA kernel 编译/cuDNN 算法选择,耗时明显长于后续调用。
+    # 在这里用参考音频/文本跑一次丢弃结果的预热推理,把这个成本移到启动阶段
+    # (本来就是一个有加载等待的阶段),而不是让用户等第一句真实回复。
+    try:
+        for _ in tts.infer_stream(
+            spk_audio_path=REF_AUDIO,
+            prompt_audio_path=REF_AUDIO,
+            prompt_audio_text=REF_TEXT,
+            text=REF_TEXT,
+            is_cut_text=True,
+            cut_minlen=10,
+            cut_mute=0.3,
+            stream_mode="token",
+            top_k=15,
+            top_p=1.0,
+            temperature=1.0,
+            repetition_penalty=1.35,
+            noise_scale=0.5,
+            speed=1.0,
+            debug=False,
+        ):
+            pass
+    except Exception as e:
+        sys.stderr.write("[voice] 预热推理失败,不影响正常启动:%s\n" % e)
+        sys.stderr.flush()
+
     print("READY", flush=True)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.serve_forever()
