@@ -15,7 +15,9 @@ pets/<pet-id>/
 
 ## 第一步：生成美术（`pet.json` + `spritesheet.webp`）
 
-美术这一步由 [`tools/hatch-desktop-pet`](../tools/hatch-desktop-pet) 这个 Codex skill 负责，它把一张参考图变成一张 **8 列 × 13 行、192×208 像素/格、1536×2704 总尺寸** 的透明背景精灵图集（idle/walk-right/walk-left/drag/sleep/greet/thinking/talk 8 个 MVP 动作 + happy/sad/cry/surprised/love 5 个情绪动作），并同步生成描述该图集的 `pet.json`。完整规则见该目录的 [`SKILL.md`](../tools/hatch-desktop-pet/SKILL.md)，这里只摘要实际会跑的流程：
+美术这一步由 [`tools/hatch-desktop-pet`](../tools/hatch-desktop-pet) 这个 Codex skill 负责。它**魔改自 Codex 内置的 `hatch-pet` skill**——沿用了同一套"参考图 → 分镜提示词 → `$imagegen` 出图 → 校验 → 拼图集"的流程骨架和脚本命名，但把上游默认的 8 行动作布局改成了本项目专用的 **13 行**布局（新增 happy/sad/cry/surprised/love 5 个情绪动作行）、把 `pet.json` 扩成含 `sheet`+`animations` 块的完整清单、把产物目录从上游默认的 `${CODEX_HOME:-$HOME/.codex}/pets/<pet-name>/` 改写到了本仓库的 `pets/<pet-id>/`。`agents/openai.yaml` 里的 `default_prompt` 至今还留着上游的输出路径写法，就是这层魔改关系的痕迹。
+
+这个 skill 把一张参考图变成一张 **8 列 × 13 行、192×208 像素/格、1536×2704 总尺寸** 的透明背景精灵图集（idle/walk-right/walk-left/drag/sleep/greet/thinking/talk 8 个 MVP 动作 + happy/sad/cry/surprised/love 5 个情绪动作），并同步生成描述该图集的 `pet.json`。完整规则见该目录的 [`SKILL.md`](../tools/hatch-desktop-pet/SKILL.md)，这里只摘要实际会跑的流程：
 
 1. **把这个 skill 交给 Codex（或其他支持本地 Skill 机制的 agent）**：`tools/hatch-desktop-pet/SKILL.md` 的 frontmatter 定义了 skill 名字 `hatch-desktop-pet` 和触发场景。具体“导入”方式取决于你用的客户端版本（例如把该目录复制/软链接到 Codex 的 skills 目录下），以 `SKILL.md` 自身的说明为准。
 2. Skill 会调用它自带的脚本跑完整流程（都在 `tools/hatch-desktop-pet/scripts/`）：
