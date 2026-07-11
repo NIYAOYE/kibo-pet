@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import { createAutomationControl } from '../automation/automationControl'
 import { createVoiceSidecar } from '../voice/voiceSidecar'
 import { createVoiceProvider } from '../voice/voiceProvider'
+import { createSpeechSequencer } from '../voice/speechSequencer'
 import { createLlmTranslator } from '../voice/translate'
 import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
 import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
@@ -364,6 +365,7 @@ export function startShell(): void {
   }
 
   let voiceProviderInstance: ReturnType<typeof createVoiceProvider> | null = null
+  let speechSequencerInstance: ReturnType<typeof createSpeechSequencer> | null = null
   let voiceSidecarInstance: ReturnType<typeof createVoiceSidecar> | null = null
 
   async function startVoiceIfConfigured(): Promise<void> {
@@ -410,8 +412,14 @@ export function startShell(): void {
       sidecar,
       translator: createLlmTranslator(translatorProvider),
       getSettings: () => loadSettings(settingsFile).tts,
-      onChunk: (c: VoicePcmChunk) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
       onError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
+    })
+    const vp = voiceProviderInstance
+    speechSequencerInstance = createSpeechSequencer({
+      speakOne: (text, onChunk) => vp.speak(text, onChunk),
+      onChunk: (c: VoicePcmChunk) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
+      getSettings: () => loadSettings(settingsFile).tts,
+      stopUnderlying: () => vp.stop()
     })
   }
 
@@ -463,8 +471,8 @@ export function startShell(): void {
     openSettings: () => openSettings(),
     voice: {
       getSettings: () => loadSettings(settingsFile).tts,
-      speak: (text) => voiceProviderInstance?.speak(text),
-      stop: () => voiceProviderInstance?.stop()
+      speak: (text) => speechSequencerInstance?.speak(text),
+      stop: () => speechSequencerInstance?.stop()
     }
   })
 
@@ -867,7 +875,7 @@ export function startShell(): void {
     return exportVoiceRuntimeArchive({ srcDir: s.tts.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
   })
 
-  ipcMain.on(IPC.VOICE_STOP, () => voiceProviderInstance?.stop())
+  ipcMain.on(IPC.VOICE_STOP, () => speechSequencerInstance?.stop())
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
     const collapsed = validateBool(raw)
     if (collapsed === null) return
