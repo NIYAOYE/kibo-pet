@@ -39,6 +39,17 @@ export function loadLines(petDir: string): LinesTable {
   return table
 }
 
+export function pickFromPool(
+  lines: Line[],
+  avoidText?: string,
+  rng: () => number = Math.random
+): Line | null {
+  if (lines.length === 0) return null
+  const pool = lines.length > 1 && avoidText ? lines.filter((l) => l.text !== avoidText) : lines
+  const candidates = pool.length > 0 ? pool : lines
+  return candidates[Math.floor(rng() * candidates.length)] ?? null
+}
+
 export function pickLine(
   table: LinesTable,
   category: ReactionCategory,
@@ -46,8 +57,6 @@ export function pickLine(
   rng: () => number = Math.random
 ): Line | null {
   const lines = table[category]
-  if (!lines || lines.length === 0) return null
-  const pool = lines.length > 1 && avoidText ? lines.filter((l) => l.text !== avoidText) : lines
-  const candidates = pool.length > 0 ? pool : lines
-  return candidates[Math.floor(rng() * candidates.length)] ?? null
+  if (!lines) return null
+  return pickFromPool(lines, avoidText, rng)
 }
