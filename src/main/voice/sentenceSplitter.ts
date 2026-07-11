@@ -7,9 +7,17 @@ export interface SentenceSplitter {
   flush(): string | null
 }
 
+const DIGIT = /[0-9]/
+
 function findBoundary(s: string, from: number): number {
   for (let i = from; i < s.length; i++) {
-    if (SENTENCE_END.test(s[i])) return i
+    const ch = s[i]
+    if (!SENTENCE_END.test(ch)) continue
+    if (ch === '.' && DIGIT.test(s[i - 1] ?? '')) {
+      if (i + 1 >= s.length) continue // 后面还没到,可能是小数点,等更多文本到达再判断
+      if (DIGIT.test(s[i + 1])) continue // 前后都是数字 → 小数点,不是句子边界
+    }
+    return i
   }
   return -1
 }

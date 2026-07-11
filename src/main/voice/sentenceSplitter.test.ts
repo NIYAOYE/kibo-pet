@@ -37,4 +37,20 @@ describe('createSentenceSplitter', () => {
     s.flush()
     expect(s.push('新内容。')).toEqual(['新内容。'])
   })
+
+  it('数字前后的小数点不当作句子边界(如 32.3℃ 不应被切开)', () => {
+    const s = createSentenceSplitter()
+    expect(s.push('现在32.3摄氏度,明天24.2到33.8摄氏度。')).toEqual(['现在32.3摄氏度,明天24.2到33.8摄氏度。'])
+  })
+
+  it('小数点跨多次 push 到达(先收到"32."再收到"3摄氏度。")仍不会提前切分', () => {
+    const s = createSentenceSplitter()
+    expect(s.push('现在32.')).toEqual([])
+    expect(s.push('3摄氏度。')).toEqual(['现在32.3摄氏度。'])
+  })
+
+  it('数字后面紧跟句点、但下一个字符不是数字 → 仍视为正常句子边界', () => {
+    const s = createSentenceSplitter()
+    expect(s.push('结果是5.他很高兴')).toEqual(['结果是5.'])
+  })
 })
