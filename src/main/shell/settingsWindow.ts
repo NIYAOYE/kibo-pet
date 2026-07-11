@@ -13,7 +13,7 @@ export function createSettingsWindow(opts: {
     const w = new BrowserWindow({
       width: 560,
       height: 520,
-      title: '设置',
+      title: 'Kibo 设置',
       resizable: false,
       skipTaskbar: false,
       webPreferences: {

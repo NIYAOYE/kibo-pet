@@ -1,5 +1,5 @@
-appId: com.petagent.app
-productName: Pet-Agent
+appId: com.kibo.pet
+productName: Kibo
 directories:
   buildResources: build
   output: dist

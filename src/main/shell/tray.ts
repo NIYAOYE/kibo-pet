@@ -7,7 +7,7 @@ export function createTray(
 ): Tray {
   const icon = nativeImage.createFromPath(iconPath)
   const tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
-  tray.setToolTip('Pet Agent')
+  tray.setToolTip('Kibo')
   tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: '快捷加工',

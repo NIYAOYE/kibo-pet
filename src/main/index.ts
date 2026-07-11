@@ -14,7 +14,7 @@ function logDiag(tag: string, detail: unknown): void {
   const line = `[${new Date().toISOString()}] ${tag}: ${msg}\n`
   const targets: string[] = []
   try { targets.push(join(app.getPath('userData'), 'startup-crash.log')) } catch { /* userData 未就绪 */ }
-  try { targets.push(join(tmpdir(), 'pet-agent-startup.log')) } catch { /* ignore */ }
+  try { targets.push(join(tmpdir(), 'kibo-startup.log')) } catch { /* ignore */ }
   for (const p of targets) {
     try { writeFileSync(p, line, { flag: 'a' }) } catch { /* 写不了也不能崩 */ }
   }
@@ -40,7 +40,7 @@ app.whenReady()
   .catch((e) => {
     logDiag('startShell threw', e)
     try {
-      dialog.showErrorBox('Pet-Agent 启动失败', String(e instanceof Error ? (e.stack ?? e.message) : e))
+      dialog.showErrorBox('Kibo 启动失败', String(e instanceof Error ? (e.stack ?? e.message) : e))
     } catch {
       /* dialog 不可用也不能再崩 */
     }
