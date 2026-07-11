@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(9)
+    expect(s.schemaVersion).toBe(10)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(9)
+    expect(s.schemaVersion).toBe(10)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(9)
+    expect(s.schemaVersion).toBe(10)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')
@@ -109,7 +109,7 @@ describe('MVP-08 textTools 迁移', () => {
       search: { backend: 'duckduckgo' },
       memory: { embedding: null }
     })
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
     expect(out.textTools).toEqual({ autoCopyResult: false })
   })
 
@@ -134,7 +134,7 @@ describe('MVP-12 firecrawl 迁移', () => {
       memory: { embedding: null },
       textTools: { autoCopyResult: false }
     })
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
     expect(out.firecrawl).toEqual({ enabled: false, baseURL: undefined })
   })
 
@@ -162,7 +162,7 @@ describe('desktopControl 迁移', () => {
       textTools: { autoCopyResult: false },
       firecrawl: { enabled: false }
     })
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
     expect(out.desktopControl).toEqual({ enabled: false })
   })
 
@@ -190,10 +190,10 @@ describe('tts 迁移', () => {
       desktopControl: { enabled: false },
       browserControl: { enabled: false, mode: 'isolated' }
     })
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
     expect(out.tts).toEqual({
       enabled: false, runtimeInstallPath: '', device: 'auto', useFlashAttn: false,
-      targetLanguage: 'auto', playbackTrigger: 'batch', synthesisChunking: 'sentence',
+      targetLanguage: 'auto', playbackTrigger: 'batch', synthesisChunking: 'sentence', textSplit: 'smart',
       isCutText: true, cutMinLen: 10, cutMute: 0.3,
       speed: 1, noiseScale: 0.5, temperature: 1, topK: 15, topP: 1, repetitionPenalty: 1.35
     })
@@ -219,13 +219,34 @@ describe('tts 迁移', () => {
 
   it('非法枚举值退化为默认;非法数字退化为默认', () => {
     const out = normalizeSettings({
-      tts: { device: 'quantum', targetLanguage: 'klingon', playbackTrigger: 'teleport', synthesisChunking: 'vibe', speed: 'fast', topK: -1 }
+      tts: { device: 'quantum', targetLanguage: 'klingon', playbackTrigger: 'teleport', synthesisChunking: 'vibe', textSplit: 'quantum', speed: 'fast', topK: -1 }
     })
     expect(out.tts.device).toBe('auto')
     expect(out.tts.targetLanguage).toBe('auto')
     expect(out.tts.playbackTrigger).toBe('batch')
     expect(out.tts.synthesisChunking).toBe('sentence')
+    expect(out.tts.textSplit).toBe('smart')
     expect(out.tts.speed).toBe(1)
     expect(out.tts.topK).toBe(15)
+  })
+
+  it('v9 设置(tts 无 textSplit)→ 补默认 smart,schemaVersion 升到 10', () => {
+    const out = normalizeSettings({
+      schemaVersion: 9,
+      tts: {
+        enabled: true, runtimeInstallPath: 'D:\\voice-runtime', device: 'cuda', useFlashAttn: false,
+        targetLanguage: 'ja', playbackTrigger: 'stream', synthesisChunking: 'sentence',
+        isCutText: true, cutMinLen: 10, cutMute: 0.3,
+        speed: 1, noiseScale: 0.5, temperature: 1, topK: 15, topP: 1, repetitionPenalty: 1.35
+      }
+    })
+    expect(out.schemaVersion).toBe(10)
+    expect(out.tts.textSplit).toBe('smart')
+    expect(out.tts.targetLanguage).toBe('ja') // 已有配置不受影响
+  })
+
+  it('已显式选了 sentence 切分的配置被保留,不被 smart 默认覆盖', () => {
+    const out = normalizeSettings({ tts: { textSplit: 'sentence' } })
+    expect(out.tts.textSplit).toBe('sentence')
   })
 })

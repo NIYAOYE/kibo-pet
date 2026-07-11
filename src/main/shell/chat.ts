@@ -1,7 +1,7 @@
 import type { ChatMessage, ChatSendPayload, ChatSendAttachment } from '@shared/ipc'
 import type { AppSettings, ProviderSettings, ImagePart, TtsSettings } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
-import { createSentenceSplitter } from '../voice/sentenceSplitter'
+import { createSentenceSplitter, createSmartSplitter } from '../voice/sentenceSplitter'
 import { loadPersona } from '../persona/personaLoader'
 import { assemblePrompt } from '../agent/promptAssembler'
 import { runAgent } from '../agent/agentLoop'
@@ -223,7 +223,9 @@ export function createChatStore(opts: {
       const ctrl = new AbortController()
       inFlight = ctrl
       let acc = ''
-      const sentenceSplitter = createSentenceSplitter()
+      const sentenceSplitter = opts.voice?.getSettings().textSplit === 'sentence'
+        ? createSentenceSplitter()
+        : createSmartSplitter()
       void (async () => {
         // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
         const recalled = await opts.memory.recall(text, ctrl.signal)

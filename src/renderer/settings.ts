@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
 import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -44,6 +44,7 @@ const ttsUseFlashAttn = $<HTMLInputElement>('ttsUseFlashAttn')
 const ttsTargetLanguage = $<HTMLSelectElement>('ttsTargetLanguage')
 const ttsPlaybackTrigger = $<HTMLSelectElement>('ttsPlaybackTrigger')
 const ttsSynthesisChunking = $<HTMLSelectElement>('ttsSynthesisChunking')
+const ttsTextSplit = $<HTMLSelectElement>('ttsTextSplit')
 const ttsSpeed = $<HTMLInputElement>('ttsSpeed')
 const ttsNoiseScale = $<HTMLInputElement>('ttsNoiseScale')
 const ttsTemperature = $<HTMLInputElement>('ttsTemperature')
@@ -76,6 +77,7 @@ function currentTts(): TtsSettings {
     targetLanguage: ttsTargetLanguage.value as TtsTargetLanguage,
     playbackTrigger: ttsPlaybackTrigger.value as TtsPlaybackTrigger,
     synthesisChunking: ttsSynthesisChunking.value as TtsSynthesisChunking,
+    textSplit: ttsTextSplit.value as TtsTextSplit,
     isCutText: ttsIsCutText.checked,
     cutMinLen: parseInt(ttsCutMinLen.value, 10) || 0,
     cutMute: parseFloat(ttsCutMute.value) || 0,
@@ -96,6 +98,7 @@ function applyTts(t: TtsSettings): void {
   ttsTargetLanguage.value = t.targetLanguage
   ttsPlaybackTrigger.value = t.playbackTrigger
   ttsSynthesisChunking.value = t.synthesisChunking
+  ttsTextSplit.value = t.textSplit
   ttsIsCutText.checked = t.isCutText
   ttsCutMinLen.value = String(t.cutMinLen)
   ttsCutMute.value = String(t.cutMute)

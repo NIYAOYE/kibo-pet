@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
@@ -8,6 +8,7 @@ const TTS_DEVICES: TtsDevice[] = ['auto', 'cuda', 'cpu']
 const TTS_TARGET_LANGUAGES: TtsTargetLanguage[] = ['auto', 'zh', 'ja', 'en']
 const TTS_PLAYBACK_TRIGGERS: TtsPlaybackTrigger[] = ['batch', 'stream']
 const TTS_SYNTHESIS_CHUNKINGS: TtsSynthesisChunking[] = ['token', 'sentence']
+const TTS_TEXT_SPLITS: TtsTextSplit[] = ['sentence', 'smart']
 
 function normalizeNumber(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
@@ -59,6 +60,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     targetLanguage: TTS_TARGET_LANGUAGES.includes(tt2.targetLanguage as TtsTargetLanguage) ? (tt2.targetLanguage as TtsTargetLanguage) : DEFAULT_SETTINGS.tts.targetLanguage,
     playbackTrigger: TTS_PLAYBACK_TRIGGERS.includes(tt2.playbackTrigger as TtsPlaybackTrigger) ? (tt2.playbackTrigger as TtsPlaybackTrigger) : DEFAULT_SETTINGS.tts.playbackTrigger,
     synthesisChunking: TTS_SYNTHESIS_CHUNKINGS.includes(tt2.synthesisChunking as TtsSynthesisChunking) ? (tt2.synthesisChunking as TtsSynthesisChunking) : DEFAULT_SETTINGS.tts.synthesisChunking,
+    textSplit: TTS_TEXT_SPLITS.includes(tt2.textSplit as TtsTextSplit) ? (tt2.textSplit as TtsTextSplit) : DEFAULT_SETTINGS.tts.textSplit,
     isCutText: tt2.isCutText === undefined ? DEFAULT_SETTINGS.tts.isCutText : tt2.isCutText === true,
     cutMinLen: normalizeNumber(tt2.cutMinLen, DEFAULT_SETTINGS.tts.cutMinLen),
     cutMute: normalizeNumber(tt2.cutMute, DEFAULT_SETTINGS.tts.cutMute),

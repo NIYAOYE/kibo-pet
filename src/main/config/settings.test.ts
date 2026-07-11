@@ -63,7 +63,7 @@ describe('activePetId', () => {
   })
   it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(9)
+    expect(loadSettings(f).schemaVersion).toBe(10)
   })
 })
 
@@ -91,6 +91,6 @@ describe('browserControl', () => {
   })
   it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(9)
+    expect(loadSettings(f).schemaVersion).toBe(10)
   })
 })

@@ -52,6 +52,8 @@ export type TtsDevice = 'auto' | 'cuda' | 'cpu'
 export type TtsTargetLanguage = 'auto' | 'zh' | 'ja' | 'en'
 export type TtsPlaybackTrigger = 'batch' | 'stream'
 export type TtsSynthesisChunking = 'token' | 'sentence'
+/** 边生成边播放时,朗读文本的切分方案:sentence=逐句立即朗读(开口最快);smart=短句攒到最小长度再朗读(逐句翻译更稳、不易漏读)。 */
+export type TtsTextSplit = 'sentence' | 'smart'
 
 export interface TtsSettings {
   enabled: boolean
@@ -62,6 +64,7 @@ export interface TtsSettings {
   targetLanguage: TtsTargetLanguage
   playbackTrigger: TtsPlaybackTrigger
   synthesisChunking: TtsSynthesisChunking
+  textSplit: TtsTextSplit
   isCutText: boolean
   cutMinLen: number
   cutMute: number
@@ -81,6 +84,7 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   targetLanguage: 'auto',
   playbackTrigger: 'batch',
   synthesisChunking: 'sentence',
+  textSplit: 'smart',
   isCutText: true,
   cutMinLen: 10,
   cutMute: 0.3,
@@ -92,7 +96,7 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   repetitionPenalty: 1.35
 }
 
-export const SETTINGS_SCHEMA_VERSION = 9
+export const SETTINGS_SCHEMA_VERSION = 10
 
 export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; tts: TtsSettings }
 

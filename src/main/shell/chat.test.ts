@@ -438,11 +438,45 @@ describe('语音接线', () => {
       pushDone: () => done(),
       pushError: () => done(),
       openSettings: () => {},
-      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream' }), speak: (t) => spoken.push(t), stop: () => {} }
+      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'sentence' }), speak: (t) => spoken.push(t), stop: () => {} }
     })
     store.handleSend({ text: '你好' })
     await finished
     expect(spoken).toEqual(['第一句。', '第二句!', '第三句剩余'])
+  })
+
+  it('stream 模式 + textSplit=smart:短句合并攒够长度(或回复结束)才朗读', async () => {
+    const seen: StreamChatRequest[] = []
+    const spoken: string[] = []
+    const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
+    let done: () => void = () => {}
+    const finished = new Promise<void>((r) => { done = r })
+    const provider = createFakeProvider({ script: [[{ type: 'text', text: '第一句。第二句!' }, { type: 'text', text: '第三句剩余' }, { type: 'done' }]] })
+    const store = createChatStore({
+      petDir: join(dir, 'no-pet'),
+      skills: { list: () => [], body: () => null },
+      memory,
+      todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
+      loadSettings: () => settings,
+      getKey: () => 'k',
+      getSearchKey: () => null,
+      getFirecrawlKey: () => null,
+      makeProvider: () => recording(provider, seen),
+      prepareImages: () => [],
+      clipboard: { readText: () => '', writeText: () => {} },
+      emitPetEvent: () => {},
+      pushUpdate: () => {},
+      pushStream: () => {},
+      pushStatus: () => {},
+      pushDone: () => done(),
+      pushError: () => done(),
+      openSettings: () => {},
+      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'smart' }), speak: (t) => spoken.push(t), stop: () => {} }
+    })
+    store.handleSend({ text: '你好' })
+    await finished
+    // 三个短句合计不足智能合并阈值 → 一直攒着,回复结束时合并成一段朗读
+    expect(spoken).toEqual(['第一句。第二句!第三句剩余'])
   })
 
   it('取消(cancel)时调用 voice.stop()', () => {
