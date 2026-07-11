@@ -53,3 +53,31 @@ describe('loadTranscript / saveTranscript', () => {
     expect(loadTranscript(file)).toEqual(emptyTranscript())
   })
 })
+
+describe('appendMessage 透传 timestamp', () => {
+  it('传入 timestamp 时原样保留', () => {
+    let t = emptyTranscript()
+    t = appendMessage(t, { role: 'user', text: 'hi', timestamp: 1000 })
+    expect(t.messages[0]).toEqual({ role: 'user', text: 'hi', timestamp: 1000 })
+  })
+  it('未传 timestamp 时不生成该字段', () => {
+    let t = emptyTranscript()
+    t = appendMessage(t, { role: 'user', text: 'hi' })
+    expect(t.messages[0]).toEqual({ role: 'user', text: 'hi' })
+  })
+})
+
+describe('parseTranscript 透传 timestamp', () => {
+  it('保留合法 timestamp,非法类型的直接丢弃该字段', () => {
+    const t = parseTranscript({
+      messages: [
+        { role: 'user', text: 'a', timestamp: 123 },
+        { role: 'pet', text: 'b', timestamp: 'bad' }
+      ]
+    })
+    expect(t.messages).toEqual([
+      { role: 'user', text: 'a', timestamp: 123 },
+      { role: 'pet', text: 'b' }
+    ])
+  })
+})

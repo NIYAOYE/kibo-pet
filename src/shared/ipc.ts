@@ -92,7 +92,7 @@ export interface WindowBounds { workArea: Bounds; window: Bounds }
 export interface ChatAttachment { kind: 'image' }
 /** 发送用(瞬态):携带降采样后的图像字节,不落盘 */
 export interface ChatSendAttachment { kind: 'image'; mimeType: string; dataBase64: string }
-export interface ChatMessage { role: 'user' | 'pet'; text: string; attachments?: ChatAttachment[] }
+export interface ChatMessage { role: 'user' | 'pet'; text: string; attachments?: ChatAttachment[]; timestamp?: number }
 export interface ChatSendPayload { text: string; attachments?: ChatSendAttachment[] }
 
 export interface OverlayInit { screenshotDataUrl: string; width: number; height: number }

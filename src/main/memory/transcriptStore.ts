@@ -15,7 +15,7 @@ export function parseTranscript(raw: unknown): TranscriptFile {
   const messages = Array.isArray(r.messages)
     ? (r.messages as ChatMessage[]).filter(
         (m) => m && (m.role === 'user' || m.role === 'pet') && typeof m.text === 'string'
-      ).map((m) => ({ role: m.role, text: m.text }))
+      ).map((m) => (typeof m.timestamp === 'number' ? { role: m.role, text: m.text, timestamp: m.timestamp } : { role: m.role, text: m.text }))
     : []
   const totalCount =
     typeof r.totalCount === 'number' && r.totalCount >= messages.length
@@ -26,7 +26,10 @@ export function parseTranscript(raw: unknown): TranscriptFile {
 
 /** totalCount 是累计序号(单调递增),裁剪不回退——摘要的 coveredCount 依赖它对齐 */
 export function appendMessage(t: TranscriptFile, msg: ChatMessage, max = TRANSCRIPT_MAX): TranscriptFile {
-  const messages = [...t.messages, { role: msg.role, text: msg.text }]
+  const entry = typeof msg.timestamp === 'number'
+    ? { role: msg.role, text: msg.text, timestamp: msg.timestamp }
+    : { role: msg.role, text: msg.text }
+  const messages = [...t.messages, entry]
   return {
     schemaVersion: 1,
     totalCount: t.totalCount + 1,
