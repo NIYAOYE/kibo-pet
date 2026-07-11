@@ -40,12 +40,16 @@ export function createSpeechSequencer(opts: {
     return b
   }
 
-  /** cursor 指向的句子如果已经在缓冲区里"完工"了,就把它放出来,并继续往前推。 */
-  function drainReady(): void {
+  /** 从 cursor 开始,把已经到位的音频块按顺序放出来;遇到还没合成完的就停在原地等下一次。 */
+  function flush(): void {
     for (;;) {
       const b = buffers.get(cursor)
-      if (!b || !b.finished) return
-      for (const c of b.chunks) opts.onChunk(c)
+      if (!b) return
+      if (b.chunks.length > 0) {
+        for (const c of b.chunks) opts.onChunk(c)
+        b.chunks = []
+      }
+      if (!b.finished) return
       buffers.delete(cursor)
       cursor++
     }
@@ -57,16 +61,14 @@ export function createSpeechSequencer(opts: {
       const seq = item.seq
       inFlightCount++
       void opts.speakOne(item.text, (c) => {
-        if (seq === cursor) opts.onChunk(c)
-        else if (seq > cursor) bufferFor(seq).chunks.push(c)
-        // seq < cursor:属于已被 stop() 跳过的旧一轮,丢弃
+        if (seq < cursor) return // 属于已被 stop() 跳过的旧一轮,丢弃
+        bufferFor(seq).chunks.push(c)
+        flush()
       }).finally(() => {
         inFlightCount--
-        if (seq === cursor) {
-          cursor++
-          drainReady()
-        } else if (seq > cursor) {
+        if (seq >= cursor) {
           bufferFor(seq).finished = true
+          flush()
         }
         pump()
       }).catch(() => {

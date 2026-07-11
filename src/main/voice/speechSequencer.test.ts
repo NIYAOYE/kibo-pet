@@ -161,4 +161,39 @@ describe('createSpeechSequencer', () => {
     seq.getSettings()
     expect(getSettings).toHaveBeenCalledOnce()
   })
+
+  it('回归测试:预取的下一句在轮到它之前就已经吐出多个音频块,轮到它之后又继续吐,全部音频块都必须按顺序送出、一个不丢', async () => {
+    const chunks: PcmChunk[] = []
+    const emitters = new Map<string, (c: PcmChunk) => void>()
+    const resolvers = new Map<string, () => void>()
+    const speakOne = vi.fn((text: string, onChunk: (c: PcmChunk) => void) => {
+      emitters.set(text, onChunk)
+      return new Promise<void>((resolve) => { resolvers.set(text, resolve) })
+    })
+    const seq = createSpeechSequencer({
+      speakOne, onChunk: (c) => chunks.push(c),
+      getSettings: () => DEFAULT_TTS_SETTINGS, stopUnderlying: () => {}
+    })
+    seq.speak('第一句')
+    seq.speak('第二句')
+
+    // 第二句(预取)在第一句还没播完时,就已经吐出了两个音频块——必须先缓冲住
+    emitters.get('第二句')!({ audioBase64: '第二句-A', sampleRate: 32000 })
+    emitters.get('第二句')!({ audioBase64: '第二句-B', sampleRate: 32000 })
+    await Promise.resolve()
+    expect(chunks).toEqual([])
+
+    // 第一句播完,游标推进到第二句——此时被缓冲的 A、B 必须被放出来
+    resolvers.get('第一句')!()
+    await Promise.resolve()
+    expect(chunks.map((c) => c.audioBase64)).toEqual(['第二句-A', '第二句-B'])
+
+    // 第二句后续继续吐出的音频块,要能正常实时转发,不能因为"曾经被缓冲过"而卡住
+    emitters.get('第二句')!({ audioBase64: '第二句-C', sampleRate: 32000 })
+    await Promise.resolve()
+    expect(chunks.map((c) => c.audioBase64)).toEqual(['第二句-A', '第二句-B', '第二句-C'])
+
+    resolvers.get('第二句')!()
+    await Promise.resolve()
+  })
 })
