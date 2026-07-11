@@ -21,9 +21,9 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate },
       getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'auto' }),
-      onChunk: (c) => chunks.push(c), onError: () => {}
+      onError: () => {}
     })
-    await vp.speak('你好')
+    await vp.speak('你好', (c) => chunks.push(c))
     expect(translate).not.toHaveBeenCalled()
     expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ text: '你好' }), expect.any(Function), expect.any(Object))
     expect(chunks).toEqual([{ audioBase64: 'QUJD', sampleRate: 32000 }])
@@ -35,9 +35,9 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate },
       getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
-      onChunk: () => {}, onError: () => {}
+      onError: () => {}
     })
-    await vp.speak('你好')
+    await vp.speak('你好', () => {})
     expect(translate).toHaveBeenCalledWith('你好', 'ja', expect.any(Object))
     expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ text: 'こんにちは' }), expect.any(Function), expect.any(Object))
   })
@@ -48,9 +48,9 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate },
       getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
-      onChunk: () => {}, onError: () => {}
+      onError: () => {}
     })
-    await vp.speak('こんにちは')
+    await vp.speak('こんにちは', () => {})
     expect(translate).not.toHaveBeenCalled()
   })
 
@@ -61,9 +61,9 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate },
       getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
-      onChunk: () => {}, onError: (m) => errors.push(m)
+      onError: (m) => errors.push(m)
     })
-    await vp.speak('你好')
+    await vp.speak('你好', () => {})
     expect(sidecar.speak).not.toHaveBeenCalled()
     expect(errors[0]).toContain('翻译服务不可用')
   })
@@ -74,9 +74,9 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate: vi.fn() },
       getSettings: () => DEFAULT_TTS_SETTINGS,
-      onChunk: () => {}, onError: (m) => errors.push(m)
+      onError: (m) => errors.push(m)
     })
-    await vp.speak('你好')
+    await vp.speak('你好', () => {})
     expect(errors[0]).toContain('合成失败')
   })
 
@@ -85,10 +85,34 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate: vi.fn() },
       getSettings: () => DEFAULT_TTS_SETTINGS,
-      onChunk: () => {}, onError: () => {}
+      onError: () => {}
     })
-    await vp.speak('   ')
+    await vp.speak('   ', () => {})
     expect(sidecar.speak).not.toHaveBeenCalled()
+  })
+
+  it('只含 Markdown/符号、归一化后为空 → 直接跳过,不调用 sidecar(不当作错误)', async () => {
+    const sidecar = fakeSidecar()
+    const errors: string[] = []
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      onError: (m) => errors.push(m)
+    })
+    await vp.speak('`raw_only_code`', () => {})
+    expect(sidecar.speak).not.toHaveBeenCalled()
+    expect(errors).toEqual([])
+  })
+
+  it('发音前会先做 Markdown/符号归一化,再送去合成', async () => {
+    const sidecar = fakeSidecar()
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      onError: () => {}
+    })
+    await vp.speak('**今天20℃**', () => {})
+    expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ text: '今天20摄氏度' }), expect.any(Function), expect.any(Object))
   })
 
   it('stop() 让正在进行的 speak() 的 signal 被 abort', async () => {
@@ -99,19 +123,15 @@ describe('createVoiceProvider', () => {
     const vp = createVoiceProvider({
       sidecar, translator: { translate: vi.fn() },
       getSettings: () => DEFAULT_TTS_SETTINGS,
-      onChunk: () => {}, onError: () => {}
+      onError: () => {}
     })
-    const p = vp.speak('你好')
+    const p = vp.speak('你好', () => {})
     vp.stop()
     await p
     expect((capturedSignal as AbortSignal | null)?.aborted).toBe(true)
   })
 
-  it('stream 模式下两句重叠合成时,stop() 必须 abort 全部在途请求(而非仅最后一个)', async () => {
-    // 模拟 chat.ts 在 stream 模式下不等待前一句 speak() 完成就触发下一句:
-    // 句子 A 的 sidecar.speak 尚未 resolve 时,句子 B 的 speak() 就已开始 —— 两者在
-    // stop() 被调用的那一刻都必须仍处于「在途」状态(测试期间都不 resolve),
-    // 才能真正复现「仅最后一个被 abort」的 bug。
+  it('两句重叠合成时,stop() 必须 abort 全部在途请求(而非仅最后一个)', async () => {
     const capturedSignals: AbortSignal[] = []
     let releaseA: () => void = () => {}
     let releaseB: () => void = () => {}
@@ -121,21 +141,19 @@ describe('createVoiceProvider', () => {
     const sidecar = fakeSidecar({
       speak: vi.fn(async (req: { text: string }, _onChunk, signal: AbortSignal) => {
         capturedSignals.push(signal)
-        await (req.text === 'A' ? pendingA : pendingB) // 挂起,直到测试显式放行
+        await (req.text === 'A' ? pendingA : pendingB)
       })
     })
     const vp = createVoiceProvider({
       sidecar, translator: { translate: vi.fn() },
       getSettings: () => DEFAULT_TTS_SETTINGS,
-      onChunk: () => {}, onError: () => {}
+      onError: () => {}
     })
 
-    // 两次 speak() 均不 await,且中间没有任何 await —— 与 chat.ts 的
-    // fire-and-forget 调用方式一致,保证 stop() 执行时 A、B 都仍在 inFlight 集合中。
-    const pA = vp.speak('A')
-    const pB = vp.speak('B')
+    const pA = vp.speak('A', () => {})
+    const pB = vp.speak('B', () => {})
 
-    vp.stop() // 此时应同时 abort A 和 B 的 controller
+    vp.stop()
 
     releaseA()
     releaseB()
