@@ -41,6 +41,7 @@ Thumbs.db
 # 之前的 .gitignore 误将它们整体忽略,已修正。
 AGENTS.md
 ROADMAP.md
+TODO-agent-optimization.md
 Reference
 build
 pets/luluka
