@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, tts: DEFAULT_SETTINGS.tts }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, tts: DEFAULT_SETTINGS.tts }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -63,7 +63,7 @@ describe('activePetId', () => {
   })
   it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(10)
+    expect(loadSettings(f).schemaVersion).toBe(11)
   })
 })
 
@@ -91,6 +91,21 @@ describe('browserControl', () => {
   })
   it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(10)
+    expect(loadSettings(f).schemaVersion).toBe(11)
+  })
+})
+
+describe('appFocusLlmOpener', () => {
+  it('缺省 → 默认 enabled:false', () => {
+    const f = tmpSettingsFile({ schemaVersion: 10, provider: { kind: 'anthropic', model: 'x' } })
+    expect(loadSettings(f).appFocusLlmOpener).toEqual({ enabled: false })
+  })
+  it('保留合法的 enabled:true', () => {
+    const f = tmpSettingsFile({ appFocusLlmOpener: { enabled: true } })
+    expect(loadSettings(f).appFocusLlmOpener).toEqual({ enabled: true })
+  })
+  it('非法值(非 true) → 回退 false', () => {
+    const f = tmpSettingsFile({ appFocusLlmOpener: { enabled: 'yes' } })
+    expect(loadSettings(f).appFocusLlmOpener).toEqual({ enabled: false })
   })
 })

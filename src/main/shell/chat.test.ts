@@ -20,6 +20,7 @@ const settings: AppSettings = {
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
+  appFocusLlmOpener: { enabled: false },
   tts: DEFAULT_TTS_SETTINGS
 }
 

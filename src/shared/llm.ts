@@ -41,6 +41,8 @@ export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
 export interface DesktopControlSettings { enabled: boolean }
 
+export interface AppFocusLlmOpenerSettings { enabled: boolean }
+
 export type BrowserControlMode = 'isolated' | 'cdp'
 /** chromePath:独立实例模式下可选的自定义 Chrome 可执行文件路径,绕开 Playwright 的
  *  channel:'chrome' 自动探测——该探测在 Windows 上优先检查 %LOCALAPPDATA%,若用户机器上
@@ -96,9 +98,9 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   repetitionPenalty: 1.35
 }
 
-export const SETTINGS_SCHEMA_VERSION = 10
+export const SETTINGS_SCHEMA_VERSION = 11
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; tts: TtsSettings }
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; tts: TtsSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
+  appFocusLlmOpener: { enabled: false },
   tts: DEFAULT_TTS_SETTINGS
 }
 
