@@ -7,7 +7,7 @@ const persona = { persona: 'P', voice: 'V', behavior: 'B', tools: 'T' }
 describe('assemblePrompt', () => {
   it('joins persona blocks in order into system', () => {
     const { system } = assemblePrompt(persona, [])
-    expect(system).toBe('P\n\nV\n\nB\n\nT')
+    expect(system.startsWith('P\n\nV\n\nB\n\nT')).toBe(true)
   })
 
   it('maps pet->assistant / user->user and truncates to the window', () => {
@@ -32,7 +32,8 @@ describe('assemblePrompt', () => {
 
   it('skips empty persona blocks', () => {
     const { system } = assemblePrompt({ persona: 'P', voice: '', behavior: '', tools: '' }, [])
-    expect(system).toBe('P')
+    expect(system.startsWith('P\n\n#')).toBe(true) // P 之后直接是恒注入的规范小节
+    expect(system).not.toContain('P\n\nV')
   })
 
   it('persona.examples 渲染为「对话示范」小节,并声明只用于风格参考', () => {
@@ -90,7 +91,25 @@ describe('promptAssembler 当前时间注入', () => {
   })
 })
 
+describe('回复规范注入', () => {
+  it('system 恒含「回复规范」小节(与工具/记忆无关)', () => {
+    const { system } = assemblePrompt(persona, [])
+    expect(system).toContain('# 回复规范')
+    expect(system).toContain('结论')
+  })
+  it('回复规范在人设之后、时间之前(静态区,缓存友好)', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined, 1_700_000_000_000)
+    expect(system.indexOf('# 回复规范')).toBeGreaterThan(system.indexOf('P'))
+    expect(system.indexOf('# 回复规范')).toBeLessThan(system.indexOf('# 当前时间'))
+  })
+})
+
 describe('工具执行规范注入', () => {
+  it('截图验证条款不再硬编码单一工具名(只开浏览器工具时 take_screenshot 不存在)', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined, undefined, true)
+    expect(system).toContain('browser_screenshot')
+  })
+
   it('hasTools=true 时 system 含"工具执行规范"小节', () => {
     const { system } = assemblePrompt(persona, [], [], undefined, undefined, true)
     expect(system).toContain('# 工具执行规范')
