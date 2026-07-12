@@ -1,6 +1,7 @@
 import type { LlmProvider } from '../providers/llmProvider'
 import type { AgentMessage, ToolUse } from '@shared/llm'
 import type { ToolRegistry } from '../tools/toolRegistry'
+import { pruneStaleImages } from './contextPruning'
 
 /** §5.6 硬循环上限:单次请求最多工具调用轮数 */
 export const MAX_TOOL_ROUNDS = 6
@@ -43,6 +44,8 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
   let pendingRetryNudge = ''
 
   for (let round = 1; round <= maxRounds; round++) {
+    // 每轮请求前剥离过期截图:旧图对当前决策几乎无用,却在长任务里每轮全量重发
+    pruneStaleImages(messages)
     // system 的临时追加只作用于这一次请求,绝不写回 messages 历史(避免打破 Anthropic
     // 要求 user/assistant 角色交替的约束——tool_result 批次本身就会映射成一条 user 消息,
     // 再插一条独立的 user 消息有连续同角色的风险)。

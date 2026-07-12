@@ -227,4 +227,40 @@ describe('runAgent 多轮工具循环', () => {
     const toolResultMsg = secondCallMessages.find((m) => m.role === 'tool_result')
     expect(toolResultMsg?.images).toEqual([{ mimeType: 'image/jpeg', dataBase64: 'AAA' }])
   })
+
+  it('多轮截图任务:超过保留数的旧截图在后续轮次的请求里被剥离', async () => {
+    let shots = 0
+    const imgTool: ToolSpec = {
+      name: 'shot',
+      description: '截图',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+      run: async () => ({ content: `已截屏${++shots}`, images: [{ mimeType: 'image/jpeg', dataBase64: `IMG${shots}` }] })
+    }
+    const seen: Array<Array<{ role: string; content?: string; images?: unknown[] }>> = []
+    const provider = {
+      async *streamChat(req: { messages: Array<{ role: string; content?: string; images?: unknown[] }> }) {
+        // 深拷贝快照:messages 被 agentLoop 原地裁剪,存引用会看不到当时的状态
+        seen.push(JSON.parse(JSON.stringify(req.messages)))
+        if (seen.length <= 3) { yield { type: 'tool_use' as const, toolUse: { id: `t${seen.length}`, name: 'shot', input: {} } }; yield { type: 'done' as const } }
+        else { yield { type: 'text' as const, text: '完成' }; yield { type: 'done' as const } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([imgTool]),
+      system: 'sys',
+      messages: [{ role: 'user', content: '连续截三次' }],
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    // 第 4 轮请求:此时历史里有 3 条带图 tool_result,最早那条的图必须已被剥离
+    const results = seen[3].filter((m) => m.role === 'tool_result')
+    expect(results).toHaveLength(3)
+    expect(results[0].images).toBeUndefined()
+    expect(results[0].content).toContain('过期')
+    expect(results[1].images).toHaveLength(1)
+    expect(results[2].images).toHaveLength(1)
+  })
 })
