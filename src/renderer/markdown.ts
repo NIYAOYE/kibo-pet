@@ -10,7 +10,9 @@
  */
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // 引号也必须转义:链接正则捕获的 URL 允许含 ",不转义的话不可信内容(模型回复/搜索结果)
+  // 能靠一个 " 提前闭合 href 属性、往生成的 <a> 里注入任意属性(HTML 属性注入)。
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /** 行内规则。输入必须是已 HTML 转义的文本。 */

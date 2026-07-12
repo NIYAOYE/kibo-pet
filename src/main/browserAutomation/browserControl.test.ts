@@ -48,6 +48,24 @@ describe('createBrowserControl', () => {
     expect(factory.launch).toHaveBeenCalledTimes(1)
   })
 
+  it('navigate 非 http(s)(file:///)被拒绝,不启动浏览器也不 goto', async () => {
+    const page = fakePage()
+    const factory = fakeFactory(fakeBrowser([page]))
+    const control = createBrowserControl({ driverFactory: factory, getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    const r = await control.navigate('file:///C:/Windows/win.ini')
+    expect(r.ok).toBe(false)
+    expect(factory.launch).not.toHaveBeenCalled()
+    expect(page.goto).not.toHaveBeenCalled()
+  })
+
+  it('openTab 传非 http(s) 网址被拒绝,不新开标签页', async () => {
+    const browser = fakeBrowser([fakePage()])
+    const control = createBrowserControl({ driverFactory: fakeFactory(browser), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    const r = await control.openTab({ url: 'file:///etc/passwd' })
+    expect(r.ok).toBe(false)
+    expect(browser.newPage).not.toHaveBeenCalled()
+  })
+
   it('navigate 两次:第二次复用同一个浏览器,不重新 launch', async () => {
     const page = fakePage()
     const factory = fakeFactory(fakeBrowser([page]))
