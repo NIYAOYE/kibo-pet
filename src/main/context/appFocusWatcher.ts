@@ -139,7 +139,7 @@ export async function runAppFocusTick(
 
   const rule = rules[result.firedRuleIndex]
   let text: string | null = null
-  if (generateOpener) text = await generateOpener({ processName: sample.processName, windowTitle: sample.windowTitle })
+  if (generateOpener) text = await generateOpener({ processName: sample.processName, windowTitle: sample.windowTitle }).catch(() => null)
   return text ? { text } : pickFromPool(rule.lines, lastFiredText)
 }
 
