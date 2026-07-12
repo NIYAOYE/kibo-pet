@@ -34,6 +34,18 @@ describe('assemblePrompt', () => {
     const { system } = assemblePrompt({ persona: 'P', voice: '', behavior: '', tools: '' }, [])
     expect(system).toBe('P')
   })
+
+  it('persona.examples 渲染为「对话示范」小节,并声明只用于风格参考', () => {
+    const { system } = assemblePrompt({ ...persona, examples: '用户:你好\n宠物:哇!' }, [])
+    expect(system).toContain('# 对话示范')
+    expect(system).toContain('用户:你好\n宠物:哇!')
+    expect(system).toContain('语气')
+  })
+
+  it('无 examples 时不出现「对话示范」小节', () => {
+    const { system } = assemblePrompt(persona, [])
+    expect(system).not.toContain('对话示范')
+  })
 })
 
 describe('memory 注入', () => {

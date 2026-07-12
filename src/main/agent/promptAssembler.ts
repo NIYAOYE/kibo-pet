@@ -35,6 +35,14 @@ function toolExecutionSection(hasTools: boolean): string {
   )
 }
 
+/** few-shot 风格样本:风格散文对弱模型的遵循度远不如两三条示范对话 */
+function examplesSection(examples?: string): string {
+  if (!examples || examples.trim().length === 0) return ''
+  return (
+    '\n\n# 对话示范\n以下示范只用于展示语气与风格,不是真实发生过的对话:\n' + examples.trim()
+  )
+}
+
 /** §5.4:[人设分块]+[召回的长期记忆]+[工作记忆摘要],记忆为空时对应小节整体省略 */
 function memorySection(memory?: MemoryContext): string {
   if (!memory) return ''
@@ -72,6 +80,7 @@ export function assemblePrompt(
     [persona.persona, persona.voice, persona.behavior, persona.tools]
       .filter((s) => s.trim().length > 0)
       .join('\n\n') +
+    examplesSection(persona.examples) +
     toolExecutionSection(hasTools) +
     skillsSection(skills) +
     memorySection(memory) +

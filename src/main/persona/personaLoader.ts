@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export interface PersonaBlocks { persona: string; voice: string; behavior: string; tools: string }
+/** examples:可选的 few-shot 对话示范——风格描述散文对弱模型的遵循度远不如示范样本 */
+export interface PersonaBlocks { persona: string; voice: string; behavior: string; tools: string; examples?: string }
 
 function keyFor(heading: string): keyof PersonaBlocks | null {
   const h = heading.toLowerCase()
@@ -9,11 +10,12 @@ function keyFor(heading: string): keyof PersonaBlocks | null {
   if (h.includes('voice')) return 'voice'
   if (h.includes('behavior')) return 'behavior'
   if (h.includes('tools')) return 'tools'
+  if (h.includes('example')) return 'examples'
   return null
 }
 
 export function parsePersona(md: string): PersonaBlocks {
-  const blocks: PersonaBlocks = { persona: '', voice: '', behavior: '', tools: '' }
+  const blocks: PersonaBlocks = { persona: '', voice: '', behavior: '', tools: '', examples: '' }
   let current: keyof PersonaBlocks | null = null
   let buf: string[] = []
   const flush = (): void => {
@@ -38,7 +40,7 @@ export function loadPersona(petDir: string): PersonaBlocks {
   try {
     blocks = parsePersona(readFileSync(join(petDir, 'persona.md'), 'utf-8'))
   } catch {
-    blocks = { persona: '', voice: '', behavior: '', tools: '' }
+    blocks = { persona: '', voice: '', behavior: '', tools: '', examples: '' }
   }
   cache.set(petDir, blocks)
   return blocks

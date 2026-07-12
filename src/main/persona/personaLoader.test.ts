@@ -30,4 +30,14 @@ describe('parsePersona', () => {
     expect(b.behavior).toBe('')
     expect(b.tools).toBe('')
   })
+
+  it('认领 Examples 块(few-shot 风格样本)', () => {
+    const b = parsePersona(md + '\n# Examples(对话示范)\n用户:你好\n露露卡:唔。\n')
+    expect(b.examples).toBe('用户:你好\n露露卡:唔。')
+  })
+
+  it('无 Examples 块时 examples 为空字符串', () => {
+    const b = parsePersona(md)
+    expect(b.examples).toBe('')
+  })
 })
