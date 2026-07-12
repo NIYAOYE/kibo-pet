@@ -13,7 +13,7 @@ function fakeControl(overrides: Partial<BrowserControl> = {}): BrowserControl {
     screenshot: vi.fn(async () => ({ ok: true, image: { mimeType: 'image/jpeg', dataBase64: 'AAA' } })),
     scroll: vi.fn(async () => ({ ok: true })),
     waitFor: vi.fn(async () => ({ ok: true })),
-    listTabs: vi.fn(async () => ({ ok: true, tabs: [{ index: 0, title: 'A', url: 'https://a.com' }] })),
+    listTabs: vi.fn(async () => ({ ok: true, tabs: [{ index: 0, title: 'A', url: 'https://a.com', active: true }] })),
     openTab: vi.fn(async () => ({ ok: true })),
     switchTab: vi.fn(async () => ({ ok: true })),
     close: vi.fn(async () => ({ ok: true })),
@@ -88,6 +88,49 @@ describe('createBrowserTools', () => {
     const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_click')!
     const r = await tool.run({ text: '视频卡片' }, ctx)
     expect(typeof r === 'string' ? r : r.content).toContain('新标签页')
+  })
+
+  it('browser_read_text/browser_screenshot:结果携带当前标签页方位(第几页/网址)', async () => {
+    const tab = { index: 1, count: 3, title: '视频页', url: 'https://b.com/video' }
+    const control = fakeControl({
+      readText: vi.fn(async () => ({ ok: true, text: '正文', tab })),
+      screenshot: vi.fn(async () => ({ ok: true, image: { mimeType: 'image/jpeg', dataBase64: 'AAA' }, tab }))
+    })
+    const tools = createBrowserTools({ control })
+    const rt = await tools.find((t) => t.name === 'browser_read_text')!.run({}, ctx)
+    const rtText = typeof rt === 'string' ? rt : rt.content
+    expect(rtText).toContain('2/3')
+    expect(rtText).toContain('https://b.com/video')
+    const rs = await tools.find((t) => t.name === 'browser_screenshot')!.run({}, ctx)
+    const rsText = typeof rs === 'string' ? rs : rs.content
+    expect(rsText).toContain('2/3')
+    expect(rsText).toContain('https://b.com/video')
+  })
+
+  it('browser_list_tabs:标记当前活动标签页', async () => {
+    const control = fakeControl({
+      listTabs: vi.fn(async () => ({
+        ok: true,
+        tabs: [
+          { index: 0, title: 'A', url: 'https://a.com', active: false },
+          { index: 1, title: 'B', url: 'https://b.com', active: true }
+        ]
+      }))
+    })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_list_tabs')!
+    const r = await tool.run({}, ctx)
+    const text = typeof r === 'string' ? r : r.content
+    expect(text).toContain('[1](当前)')
+    expect(text).not.toContain('[0](当前)')
+  })
+
+  it('browser_open_tab:去重 note(已开着,切换过去)透传给模型', async () => {
+    const control = fakeControl({
+      openTab: vi.fn(async () => ({ ok: true, note: '该网址已在标签页 [0] 打开,已切换过去,没有重复新开' }))
+    })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_open_tab')!
+    const r = await tool.run({ url: 'https://a.com' }, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('没有重复新开')
   })
 
   it('browser_read_text:正文包在反注入头之下(网页内容不是指令)', async () => {

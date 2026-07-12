@@ -1,6 +1,13 @@
 import type { ToolSpec } from './toolSpec'
-import type { BrowserControl } from '../browserAutomation/browserControl'
+import type { BrowserControl, TabContext } from '../browserAutomation/browserControl'
 import { truncate, wrapUntrusted } from './untrusted'
+
+/** 观察类工具统一附带方位:1 起数,模型对"第几个"比 0 起 index 直觉;
+ *  切换仍用 browser_list_tabs 返回的 0 起序号 */
+function tabLine(tab?: TabContext): string {
+  if (!tab) return ''
+  return `【当前标签页 ${tab.index + 1}/${tab.count}】${tab.url}`
+}
 
 const READ_TEXT_HEADER =
   '以下是当前网页的可见正文,请据此判断页面状态或回答问题。' +
@@ -67,7 +74,9 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     inputSchema: { type: 'object', properties: {}, required: [] },
     run: async () => {
       const r = await c.readText()
-      return r.ok ? wrapUntrusted(READ_TEXT_HEADER, truncate(r.text ?? '')) : `读取失败:${r.error}`
+      if (!r.ok) return `读取失败:${r.error}`
+      const body = [tabLine(r.tab), truncate(r.text ?? '')].filter(Boolean).join('\n\n')
+      return wrapUntrusted(READ_TEXT_HEADER, body)
     }
   }
 
@@ -78,7 +87,8 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     run: async () => {
       const r = await c.screenshot()
       if (!r.ok || !r.image) return `截图失败:${r.error}`
-      return { content: '已截取当前页面', images: [r.image] }
+      const where = tabLine(r.tab)
+      return { content: where ? `已截取当前页面。${where}` : '已截取当前页面', images: [r.image] }
     }
   }
 
@@ -123,7 +133,7 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
       const r = await c.listTabs()
       if (!r.ok || !r.tabs) return `列出标签页失败:${r.error}`
       if (r.tabs.length === 0) return '当前没有打开的标签页'
-      return `当前标签页:\n${r.tabs.map((t) => `[${t.index}] ${t.title} (${t.url})`).join('\n')}`
+      return `当前标签页:\n${r.tabs.map((t) => `[${t.index}]${t.active ? '(当前)' : ''} ${t.title} (${t.url})`).join('\n')}`
     }
   }
 
@@ -138,7 +148,8 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     run: async (input) => {
       const { url } = input as { url?: string }
       const r = await c.openTab({ url })
-      return r.ok ? '已新开标签页' : `新开标签页失败:${r.error}`
+      if (!r.ok) return `新开标签页失败:${r.error}`
+      return r.note ?? '已新开标签页'
     }
   }
 

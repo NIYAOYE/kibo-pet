@@ -118,7 +118,9 @@ describe('createBrowserControl', () => {
     const page = fakePage({ innerText: vi.fn(async () => '一些正文') })
     const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([page])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
     await control.navigate('https://a.com')
-    expect(await control.readText()).toEqual({ ok: true, text: '一些正文' })
+    const r = await control.readText()
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe('一些正文')
   })
 
   it('screenshot:返回 base64 编码的 image', async () => {
@@ -148,13 +150,53 @@ describe('createBrowserControl', () => {
     expect(r).toEqual({ ok: false, error: '等待超时' })
   })
 
-  it('listTabs:列出所有页面的 index/title/url', async () => {
+  it('listTabs:列出所有页面的 index/title/url,并标记当前活动页', async () => {
     const p1 = fakePage({ title: vi.fn(async () => 'A'), url: () => 'https://a.com' })
     const p2 = fakePage({ title: vi.fn(async () => 'B'), url: () => 'https://b.com' })
     const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([p1, p2])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
     await control.navigate('https://a.com')
     const r = await control.listTabs()
-    expect(r).toEqual({ ok: true, tabs: [{ index: 0, title: 'A', url: 'https://a.com' }, { index: 1, title: 'B', url: 'https://b.com' }] })
+    expect(r).toEqual({
+      ok: true,
+      tabs: [
+        { index: 0, title: 'A', url: 'https://a.com', active: true },
+        { index: 1, title: 'B', url: 'https://b.com', active: false }
+      ]
+    })
+  })
+
+  it('openTab 去重:目标网址已在某个标签页打开 → 切换过去而不是重复新开', async () => {
+    // 真机复现:模型撞上登录墙后重跑"打开首页"流程,同一网址被开了两次
+    const home = fakePage({ url: () => 'https://www.bilibili.com/' })
+    const browser = fakeBrowser([home])
+    const control = createBrowserControl({ driverFactory: fakeFactory(browser), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    await control.navigate('https://www.bilibili.com/')
+    const r = await control.openTab({ url: 'https://www.bilibili.com' }) // 差一个尾斜杠也该视为同一网址
+    expect(r.ok).toBe(true)
+    expect(r.note).toContain('已')
+    expect(browser.newPage).not.toHaveBeenCalled()
+    expect(browser.pages()).toHaveLength(1)
+  })
+
+  it('openTab 目标网址未打开:照常新开', async () => {
+    const home = fakePage({ url: () => 'https://a.com' })
+    const browser = fakeBrowser([home])
+    const control = createBrowserControl({ driverFactory: fakeFactory(browser), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    await control.navigate('https://a.com')
+    const r = await control.openTab({ url: 'https://b.com' })
+    expect(r.ok).toBe(true)
+    expect(browser.newPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('readText/screenshot 携带当前标签页上下文(第几页/共几页/网址)', async () => {
+    const p1 = fakePage({ title: vi.fn(async () => 'A'), url: () => 'https://a.com', innerText: vi.fn(async () => '正文A') })
+    const p2 = fakePage({ title: vi.fn(async () => 'B'), url: () => 'https://b.com' })
+    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([p1, p2])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    await control.navigate('https://a.com')
+    const rt = await control.readText()
+    expect(rt.tab).toEqual({ index: 0, count: 2, title: 'A', url: 'https://a.com' })
+    const rs = await control.screenshot()
+    expect(rs.tab).toEqual({ index: 0, count: 2, title: 'A', url: 'https://a.com' })
   })
 
   it('openTab 后活动标签页切到新页;switchTab 能切回旧的', async () => {
@@ -196,7 +238,9 @@ describe('createBrowserControl', () => {
     const r = await control.click({ text: '视频卡片' })
     expect(r.ok).toBe(true)
     expect(r.note).toContain('新')
-    expect(await control.readText()).toEqual({ ok: true, text: '视频播放页正文' })
+    const rt = await control.readText()
+    expect(rt.ok).toBe(true)
+    expect(rt.text).toBe('视频播放页正文')
   })
 
   it('点击没有开新标签页:不切换、结果不带 note', async () => {
