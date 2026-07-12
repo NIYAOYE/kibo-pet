@@ -73,8 +73,8 @@ export const IPC = {
   VOICE_PLAYBACK_STOP: 'voice:playback-stop'
 } as const
 
-/** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒，均为一次性边沿事件 */
-export type ContextSignalKind = 'afk_leave' | 'break_reminder'
+/** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
+export type ContextSignalKind = 'afk_leave' | 'break_reminder' | 'app_focus'
 
 export interface LoadedPet {
   manifest: PetManifest
