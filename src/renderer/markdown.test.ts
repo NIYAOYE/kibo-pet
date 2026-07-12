@@ -40,6 +40,13 @@ describe('renderMarkdownSafe', () => {
     expect(out).not.toContain('<a ')
   })
 
+  it('链接 URL 里的引号被转义,不能提前闭合 href 注入属性', () => {
+    const out = renderMarkdownSafe('[点我](http://x.com/a"onmouseover="alert(1))')
+    expect(out).not.toContain('onmouseover="alert')
+    expect(out).not.toContain('a"onmouseover')
+    expect(out).toContain('&quot;')
+  })
+
   it('裸 http(s) URL 也变可点击链接', () => {
     const out = renderMarkdownSafe('来源:https://example.com/x')
     expect(out).toContain('<a href="https://example.com/x" class="md-link">https://example.com/x</a>')

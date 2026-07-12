@@ -51,6 +51,12 @@ const SCROLL_DELTA = { page: 800, small: 200 }
 
 function errMsg(e: unknown): string { return String((e as Error)?.message ?? e) }
 
+/** 只放行 http(s):否则模型可用 file:///、about:、data: 等把浏览器导航到本地文件再用
+ *  browser_read_text 读回,越过"网页浏览"这个功能设定读到本地敏感内容。 */
+function isAllowedUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim())
+}
+
 export function createBrowserControl(opts: {
   driverFactory: BrowserDriverFactory
   /** 每次懒启动时都重新读取(同 chat.ts 的 loadSettings() 用法),而不是构造时快照一份——
@@ -83,6 +89,7 @@ export function createBrowserControl(opts: {
 
   return {
     async navigate(url) {
+      if (!isAllowedUrl(url)) return { ok: false, error: `只能访问 http/https 网址,拒绝导航到:${url}` }
       const r = await guard(async () => { const p = await activePage(); await p.goto(url) })
       return r.ok ? { ok: true } : { ok: false, error: r.error }
     },
@@ -131,6 +138,9 @@ export function createBrowserControl(opts: {
       return r.ok ? { ok: true, tabs: r.value } : { ok: false, error: r.error }
     },
     async openTab(input) {
+      if (input.url !== undefined && !isAllowedUrl(input.url)) {
+        return { ok: false, error: `只能访问 http/https 网址,拒绝打开:${input.url}` }
+      }
       const r = await guard(async () => {
         const b = await ensureBrowser()
         await b.newPage(input.url)
