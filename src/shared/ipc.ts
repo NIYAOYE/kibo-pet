@@ -92,7 +92,8 @@ export interface WindowBounds { workArea: Bounds; window: Bounds }
 export interface ChatAttachment { kind: 'image' }
 /** 发送用(瞬态):携带降采样后的图像字节,不落盘 */
 export interface ChatSendAttachment { kind: 'image'; mimeType: string; dataBase64: string }
-export interface ChatMessage { role: 'user' | 'pet'; text: string; attachments?: ChatAttachment[]; timestamp?: number }
+/** actions:该回合调用过的工具名(按执行顺序,可重复);只供后续回合的提示词拼装感知"上回合做过什么",渲染层不展示 */
+export interface ChatMessage { role: 'user' | 'pet'; text: string; attachments?: ChatAttachment[]; timestamp?: number; actions?: string[] }
 export interface ChatSendPayload { text: string; attachments?: ChatSendAttachment[] }
 
 export interface OverlayInit { screenshotDataUrl: string; width: number; height: number }

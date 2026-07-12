@@ -43,7 +43,8 @@ export interface AgentRunOptions {
   onStatus?: (text: string) => void
 }
 
-export interface AgentRunResult { text: string; error?: string; canceled?: boolean }
+/** toolsUsed:本次运行按执行顺序实际调用过的工具名(可重复),供调用方落盘做跨回合动作摘要 */
+export interface AgentRunResult { text: string; error?: string; canceled?: boolean; toolsUsed?: string[] }
 
 export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
   if (opts.signal.aborted) return { text: '', canceled: true }
@@ -54,6 +55,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
   let text = ''
   let truncatedRetries = 0
   let pendingRetryNudge = ''
+  const toolsUsed: string[] = []
   // 重复失败熔断:上一轮失败过的 (tool, input) 组合;本轮再次失败则下一轮提醒换方式
   let prevFailedKeys = new Set<string>()
 
@@ -96,17 +98,17 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
         if (internal.signal.aborted) break
         if (chunk.type === 'text') { roundText += chunk.text; text += chunk.text; opts.onText(chunk.text) }
         else if (chunk.type === 'tool_use') toolUses.push(chunk.toolUse)
-        else if (chunk.type === 'error') { cleanup(); return { text, error: chunk.message } }
+        else if (chunk.type === 'error') { cleanup(); return { text, toolsUsed, error: chunk.message } }
         else if (chunk.type === 'done') { finishReason = chunk.finishReason; break }
       }
     } catch (err) {
       cleanup()
       if (opts.signal.aborted && !timedOut) return { text, canceled: true }
-      return { text, error: timedOut ? '响应超时' : String((err as Error)?.message ?? err) }
+      return { text, toolsUsed, error: timedOut ? '响应超时' : String((err as Error)?.message ?? err) }
     }
     cleanup()
     if (opts.signal.aborted && !timedOut) return { text, canceled: true }
-    if (timedOut) return { text, error: '响应超时' }
+    if (timedOut) return { text, toolsUsed, error: '响应超时' }
 
     console.log(
       `[agentLoop] round ${round}/${maxRounds} finishReason=${finishReason ?? 'n/a'} toolUses=${toolUses.length} textLen=${roundText.length}`
@@ -122,7 +124,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
         pendingRetryNudge = TRUNCATED_RETRY_NUDGE
         continue
       }
-      return { text }
+      return { text, toolsUsed }
     }
     if (!opts.registry) return { text, error: '模型请求调用工具,但当前没有可用工具' }
 
@@ -136,6 +138,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
       if (opts.signal.aborted) return { text, canceled: true }
       const r = await opts.registry.run(tu.name, tu.input, { signal: opts.signal, onStatus: opts.onStatus })
       if (opts.signal.aborted) return { text, canceled: true }
+      toolsUsed.push(tu.name)
       if (looksFailed(r)) {
         const key = `${tu.name}:${JSON.stringify(tu.input ?? {})}`
         failedKeys.add(key)
@@ -151,5 +154,5 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
     prevFailedKeys = failedKeys
   }
 
-  return { text, error: '工具调用轮数达到上限,已停止;先基于目前查到的内容回复吧' }
+  return { text, toolsUsed, error: '工具调用轮数达到上限,已停止;先基于目前查到的内容回复吧' }
 }

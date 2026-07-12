@@ -20,7 +20,7 @@ describe('runAgent', () => {
     const onText = vi.fn()
     const res = await runAgent(base({ onText }))
     expect(onText.mock.calls.map((c) => c[0])).toEqual(['ab', 'cd'])
-    expect(res).toEqual({ text: 'abcd' })
+    expect(res).toEqual({ text: 'abcd', toolsUsed: [] })
   })
 
   it('surfaces a provider error chunk as result.error', async () => {

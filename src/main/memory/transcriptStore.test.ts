@@ -67,6 +67,25 @@ describe('appendMessage 透传 timestamp', () => {
   })
 })
 
+describe('actions 字段(跨回合动作摘要)', () => {
+  it('append 保留合法的 actions 数组', () => {
+    let t = emptyTranscript()
+    t = appendMessage(t, { role: 'pet', text: '办好啦', actions: ['weather', 'weather'] })
+    expect(t.messages[0].actions).toEqual(['weather', 'weather'])
+  })
+  it('空数组/非字符串数组不落盘该字段', () => {
+    let t = emptyTranscript()
+    t = appendMessage(t, { role: 'pet', text: 'a', actions: [] })
+    t = appendMessage(t, { role: 'pet', text: 'b', actions: [1, 2] as unknown as string[] })
+    expect(t.messages[0].actions).toBeUndefined()
+    expect(t.messages[1].actions).toBeUndefined()
+  })
+  it('parse 往返保留 actions', () => {
+    const t = parseTranscript({ messages: [{ role: 'pet', text: 'x', actions: ['web_search'] }] })
+    expect(t.messages[0].actions).toEqual(['web_search'])
+  })
+})
+
 describe('parseTranscript 透传 timestamp', () => {
   it('保留合法 timestamp,非法类型的直接丢弃该字段', () => {
     const t = parseTranscript({

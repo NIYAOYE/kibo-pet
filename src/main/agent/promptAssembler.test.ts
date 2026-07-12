@@ -49,6 +49,31 @@ describe('assemblePrompt', () => {
   })
 })
 
+describe('跨回合动作摘要', () => {
+  it('pet 消息带 actions 时,assistant content 末尾追加压缩的动作行', () => {
+    const transcript: ChatMessage[] = [
+      { role: 'user', text: '查天气再截个屏' },
+      { role: 'pet', text: '都办好啦', actions: ['weather', 'take_screenshot', 'take_screenshot'] },
+      { role: 'user', text: '刚才你干了什么' }
+    ]
+    const { messages } = assemblePrompt(persona, transcript)
+    const assistant = messages.find((m) => m.role === 'assistant')!
+    expect(assistant.content).toContain('都办好啦')
+    expect(assistant.content).toContain('weather×1')
+    expect(assistant.content).toContain('take_screenshot×2')
+  })
+
+  it('无 actions 的消息保持原文,不加动作行', () => {
+    const transcript: ChatMessage[] = [
+      { role: 'user', text: 'hi' },
+      { role: 'pet', text: '你好' },
+      { role: 'user', text: '嗯' }
+    ]
+    const { messages } = assemblePrompt(persona, transcript)
+    expect(messages[1].content).toBe('你好')
+  })
+})
+
 describe('memory 注入', () => {
   it('facts 渲染为「关于用户的记忆」小节', () => {
     const { system } = assemblePrompt(persona, [], [], { facts: ['用户叫小星', '用户爱吃冰淇淋'] })

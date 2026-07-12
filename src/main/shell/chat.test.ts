@@ -107,6 +107,32 @@ describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
     expect(facts.facts.map((f: { text: string }) => f.text)).toEqual(['用户爱吃冰淇淋'])
   })
 
+  it('调过工具的回合:pet 消息落盘时带 actions 字段(供后续回合提示词感知)', async () => {
+    const seen: StreamChatRequest[] = []
+    const provider = createFakeProvider({
+      script: [
+        [{ type: 'tool_use', toolUse: { id: 't1', name: 'save_memory', input: { text: '用户爱吃冰淇淋' } } }],
+        [{ type: 'text', text: '记好啦!' }, { type: 'done' }]
+      ]
+    })
+    const { store, finished } = makeStore(provider, seen)
+    store.handleSend({ text: '记住我爱吃冰淇淋' })
+    await finished
+    const t = JSON.parse(readFileSync(join(dir, 'memory', 'transcript.json'), 'utf-8'))
+    const pet = t.messages.find((m: { role: string }) => m.role === 'pet')
+    expect(pet.actions).toEqual(['save_memory'])
+  })
+
+  it('没调工具的回合:pet 消息不带 actions 字段', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: '你好!' }), seen)
+    store.handleSend({ text: '你好' })
+    await finished
+    const t = JSON.parse(readFileSync(join(dir, 'memory', 'transcript.json'), 'utf-8'))
+    const pet = t.messages.find((m: { role: string }) => m.role === 'pet')
+    expect(pet.actions).toBeUndefined()
+  })
+
   it('save_memory 工具在 registry 中注册(defs 传给 provider)', async () => {
     const seen: StreamChatRequest[] = []
     const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)

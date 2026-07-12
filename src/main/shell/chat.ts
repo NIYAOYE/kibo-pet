@@ -266,14 +266,16 @@ export function createChatStore(opts: {
         })
         if (inFlight === ctrl) inFlight = null
         if (res.canceled) return // 静默丢弃
+        // 该回合用过的工具名落进 pet 消息(工具往返本身不落盘,这是跨回合感知的唯一线索)
+        const actions = res.toolsUsed && res.toolsUsed.length > 0 ? { actions: res.toolsUsed } : {}
         if (res.error) {
           // 有部分文本(如轮数上限)时先落 transcript,再报错
-          if (acc) opts.memory.appendMessage({ role: 'pet', text: acc })
+          if (acc) opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
           opts.pushUpdate(opts.memory.messages())
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
         } else {
-          opts.memory.appendMessage({ role: 'pet', text: acc })
+          opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
           opts.pushUpdate(opts.memory.messages())
           opts.pushDone()
           opts.emitPetEvent('replyDone')

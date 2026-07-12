@@ -84,6 +84,21 @@ describe('runAgent 多轮工具循环', () => {
     expect(res.text).toBe('两轮都查完了')
   })
 
+  it('结果携带 toolsUsed:按执行顺序列出本回合用过的工具名', async () => {
+    const { spec } = searchTool()
+    const res = await runAgent({
+      ...base([[tu('t1', 'A'), tu('t2', 'B'), done], [tu('t3', 'C'), done], [text('好了'), done]], spec),
+      onText: () => {}
+    })
+    expect(res.toolsUsed).toEqual(['search', 'search', 'search'])
+  })
+
+  it('没调过工具时 toolsUsed 为空数组', async () => {
+    const { spec } = searchTool()
+    const res = await runAgent({ ...base([[text('直接回答'), done]], spec), onText: () => {} })
+    expect(res.toolsUsed).toEqual([])
+  })
+
   it('到达轮数上限:停止并返回上限说明,不再调 provider', async () => {
     const { spec, calls } = searchTool()
     const script = Array.from({ length: MAX_TOOL_ROUNDS + 3 }, (_, i) => [tu(`t${i}`, `q${i}`), done])

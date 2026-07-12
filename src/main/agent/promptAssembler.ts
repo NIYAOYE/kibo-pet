@@ -105,7 +105,17 @@ export function assemblePrompt(
   while (window.length > 0 && window[0].role !== 'user') window = window.slice(1)
   const messages: ChatTurn[] = window.map((m) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
-    content: m.text
+    content: m.role === 'pet' && m.actions && m.actions.length > 0
+      ? `${m.text}\n(该回合调用过工具:${formatActions(m.actions)})`
+      : m.text
   }))
   return { system, messages }
+}
+
+/** 压缩动作列表:['a','a','b'] → 'a×2、b×1'。工具往返消息不落盘,这行摘要是
+ *  后续回合感知"上回合做过什么"的唯一来源(只喂给模型,UI 不展示)。 */
+export function formatActions(actions: string[]): string {
+  const counts = new Map<string, number>()
+  for (const name of actions) counts.set(name, (counts.get(name) ?? 0) + 1)
+  return [...counts.entries()].map(([name, n]) => `${name}×${n}`).join('、')
 }

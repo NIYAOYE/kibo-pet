@@ -10,12 +10,22 @@ export function emptyTranscript(): TranscriptFile {
   return { schemaVersion: 1, totalCount: 0, messages: [] }
 }
 
+/** 白名单收窄到已知字段;actions 仅收合法的字符串数组(跨回合动作摘要) */
+function sanitize(m: ChatMessage): ChatMessage {
+  const entry: ChatMessage = { role: m.role, text: m.text }
+  if (typeof m.timestamp === 'number') entry.timestamp = m.timestamp
+  if (Array.isArray(m.actions) && m.actions.length > 0 && m.actions.every((a) => typeof a === 'string')) {
+    entry.actions = [...m.actions]
+  }
+  return entry
+}
+
 export function parseTranscript(raw: unknown): TranscriptFile {
   const r = (raw ?? {}) as Record<string, unknown>
   const messages = Array.isArray(r.messages)
     ? (r.messages as ChatMessage[]).filter(
         (m) => m && (m.role === 'user' || m.role === 'pet') && typeof m.text === 'string'
-      ).map((m) => (typeof m.timestamp === 'number' ? { role: m.role, text: m.text, timestamp: m.timestamp } : { role: m.role, text: m.text }))
+      ).map(sanitize)
     : []
   const totalCount =
     typeof r.totalCount === 'number' && r.totalCount >= messages.length
@@ -26,10 +36,7 @@ export function parseTranscript(raw: unknown): TranscriptFile {
 
 /** totalCount 是累计序号(单调递增),裁剪不回退——摘要的 coveredCount 依赖它对齐 */
 export function appendMessage(t: TranscriptFile, msg: ChatMessage, max = TRANSCRIPT_MAX): TranscriptFile {
-  const entry = typeof msg.timestamp === 'number'
-    ? { role: msg.role, text: msg.text, timestamp: msg.timestamp }
-    : { role: msg.role, text: msg.text }
-  const messages = [...t.messages, entry]
+  const messages = [...t.messages, sanitize(msg)]
   return {
     schemaVersion: 1,
     totalCount: t.totalCount + 1,
