@@ -133,6 +133,14 @@
             <label id="firecrawlBaseRow" style="display:none">Firecrawl Base URL(可选 · 自托管才需改)
               <input id="firecrawlBaseURL" type="text" placeholder="https://api.firecrawl.dev" />
             </label>
+            <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+              <input id="appFocusLlmOpenerEnabled" type="checkbox" style="width:auto" />
+              <span>应用焦点开场白由 AI 现场生成(而非固定台词)</span>
+            </label>
+            <div class="hint" style="margin-top:2px">
+              开启后,命中应用焦点规则时(如切到 VS Code/Chrome)会把当前应用名/窗口标题发送给你配置的 LLM 服务商,
+              用来生成一句贴合当下情境的开场白;未开启或生成失败时,仍使用宠物预设的固定台词。默认关闭。
+            </div>
             <div style="margin-top:14px;padding:10px;border:1px solid var(--danger-border);border-radius:8px;background:var(--danger-bg)">
               <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
                 <input id="desktopControlEnabled" type="checkbox" style="width:auto" />
