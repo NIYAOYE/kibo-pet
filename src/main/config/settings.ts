@@ -51,6 +51,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     mode: bc.mode === 'cdp' ? 'cdp' as const : 'isolated' as const,
     chromePath: typeof bc.chromePath === 'string' && bc.chromePath.trim().length > 0 ? bc.chromePath.trim() : undefined
   }
+  const afo = (r.appFocusLlmOpener ?? {}) as Record<string, unknown>
+  const appFocusLlmOpener = { enabled: afo.enabled === true }
   const tt2 = (r.tts ?? {}) as Record<string, unknown>
   const tts = {
     enabled: tt2.enabled === true,
@@ -81,6 +83,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     firecrawl,
     desktopControl,
     browserControl,
+    appFocusLlmOpener,
     tts
   }
 }

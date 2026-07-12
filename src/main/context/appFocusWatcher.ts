@@ -115,6 +115,35 @@ import { join } from 'node:path'
 export interface AppFocusWatcherHandle { stop: () => void }
 
 /**
+ * 单次 tick 的核心步骤,拆出来是为了可以在测试里直接调用、不依赖 setInterval/真实计时器。
+ * 关键顺序:onStateUpdated 必须在 await generateOpener 之前调用,否则一次生成耗时超过
+ * pollIntervalMs 时,下一 tick 会用"没考虑这次触发"的旧状态重新判定,绕开冷却重复触发。
+ */
+export async function runAppFocusTick(
+  state: AppFocusWatcherState,
+  rules: AppFocusRule[],
+  cfg: AppFocusWatcherConfig,
+  execFile: (script: string) => Promise<{ stdout: string; stderr: string }>,
+  lastFiredText: string | undefined,
+  generateOpener: ((ctx: { processName: string; windowTitle: string }) => Promise<string | null>) | undefined,
+  onStateUpdated: (state: AppFocusWatcherState) => void
+): Promise<Line | null> {
+  const sample = await execFile(buildForegroundWindowScript())
+    .then((r) => parseForegroundWindowOutput(r.stdout))
+    .catch(() => null)
+
+  const result = stepAppFocusWatcher(state, sample, rules, cfg)
+  onStateUpdated(result.state)
+
+  if (result.firedRuleIndex === null || !sample) return null
+
+  const rule = rules[result.firedRuleIndex]
+  let text: string | null = null
+  if (generateOpener) text = await generateOpener({ processName: sample.processName, windowTitle: sample.windowTitle }).catch(() => null)
+  return text ? { text } : pickFromPool(rule.lines, lastFiredText)
+}
+
+/**
  * 薄包装:读取宠物包 lines.json 的 app_focus 规则(没有规则/没有该文件 → 空数组);
  * 若规则为空,直接返回 no-op handle,不起轮询——不启动的检测就是零隐私/性能开销,
  * 而不是"启动了但恰好不触发"。
@@ -125,6 +154,8 @@ export function startAppFocusWatcher(
     execFile: (script: string) => Promise<{ stdout: string; stderr: string }>
     onMatch: (line: Line) => void
     config?: Partial<AppFocusWatcherConfig>
+    /** 命中规则时的可选生成分支:开启时优先用它的结果,失败/返回 null/未注入时回退预写台词池 */
+    generateOpener?: (ctx: { processName: string; windowTitle: string }) => Promise<string | null>
   }
 ): AppFocusWatcherHandle {
   let rules: AppFocusRule[]
@@ -135,17 +166,11 @@ export function startAppFocusWatcher(
 
   const cfg = { ...DEFAULT_APP_FOCUS_WATCHER_CONFIG, ...opts.config }
   let state = initAppFocusWatcher(rules.length, cfg)
-  let lastFiredText: string | null = null
+  let lastFiredText: string | undefined
 
   const handle = setInterval(() => {
-    void opts.execFile(buildForegroundWindowScript())
-      .then((r) => parseForegroundWindowOutput(r.stdout))
-      .catch(() => null)
-      .then((sample) => {
-        const result = stepAppFocusWatcher(state, sample, rules, cfg)
-        state = result.state
-        if (result.firedRuleIndex === null) return
-        const line = pickFromPool(rules[result.firedRuleIndex].lines, lastFiredText ?? undefined)
+    void runAppFocusTick(state, rules, cfg, opts.execFile, lastFiredText, opts.generateOpener, (s) => { state = s })
+      .then((line) => {
         if (!line) return
         lastFiredText = line.text
         opts.onMatch(line)

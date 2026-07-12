@@ -63,6 +63,7 @@ describe('resolveEmbeddingKey', () => {
     firecrawl: { enabled: false },
     desktopControl: { enabled: false },
     browserControl: { enabled: false, mode: 'isolated' },
+    appFocusLlmOpener: { enabled: false },
     tts: DEFAULT_TTS_SETTINGS
   })
   it('有独立 key 优先用', () => {

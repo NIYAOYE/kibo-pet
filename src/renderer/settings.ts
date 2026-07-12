@@ -19,6 +19,7 @@ const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
 const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
 const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
 const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
+const appFocusLlmOpenerEnabled = $<HTMLInputElement>('appFocusLlmOpenerEnabled')
 const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
@@ -329,6 +330,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         mode: browserControlMode.value as 'isolated' | 'cdp',
         chromePath: browserControlChromePath.value.trim() || undefined
       },
+      appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
       tts: currentTts()
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
@@ -347,6 +349,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
+  appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)

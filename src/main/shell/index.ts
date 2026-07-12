@@ -39,6 +39,8 @@ import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
 import { startAppFocusWatcher } from '../context/appFocusWatcher'
+import { generateContextualLine } from '../context/contextualLineGenerator'
+import { loadPersona } from '../persona/personaLoader'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createBubbleController } from './bubbleWindow'
@@ -301,6 +303,15 @@ export function startShell(): void {
       if (dialog.isOpen()) return // 对话框开着不触发,与 showAmbientLine 的兜底一致
       pendingAppFocusText = line.text
       petWin.webContents.send(IPC.CONTEXT_SIGNAL, 'app_focus')
+    },
+    generateOpener: async ({ processName, windowTitle }) => {
+      const settings = loadSettings(settingsFile)
+      if (!settings.appFocusLlmOpener.enabled) return null
+      const key = secrets.getKey()
+      if (!key) return null
+      const persona = loadPersona(petDir)
+      const provider = createProvider(settings.provider, key)
+      return generateContextualLine({ personaText: persona.persona, processName, windowTitle, provider })
     }
   })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseAppFocusRules, matchAppFocusRule, initAppFocusWatcher, stepAppFocusWatcher, type AppFocusWatcherConfig } from './appFocusWatcher'
+import { parseAppFocusRules, matchAppFocusRule, initAppFocusWatcher, stepAppFocusWatcher, runAppFocusTick, type AppFocusWatcherConfig } from './appFocusWatcher'
 
 describe('parseAppFocusRules', () => {
   it('解析合法规则', () => {
@@ -131,5 +131,59 @@ describe('stepAppFocusWatcher', () => {
     const state = initAppFocusWatcher(rules.length, cfg)
     const r = stepAppFocusWatcher(state, { processName: 'notepad.exe', windowTitle: 'Untitled' }, rules, cfg)
     expect(r.firedRuleIndex).toBeNull()
+  })
+})
+
+describe('runAppFocusTick', () => {
+  const cfg: AppFocusWatcherConfig = { pollIntervalMs: 1000, minGapMs: 3000, ruleCooldownMs: 5000 }
+  const rules = [{ match: ['code.exe'], lines: [{ text: 'code预设台词' }] }]
+  const execFile = async (): Promise<{ stdout: string; stderr: string }> =>
+    ({ stdout: 'PROC:code.exe\nTITLE:a', stderr: '' })
+
+  it('没有 generateOpener → 走 pickFromPool 预设台词', async () => {
+    const state = initAppFocusWatcher(rules.length, cfg)
+    const line = await runAppFocusTick(state, rules, cfg, execFile, undefined, undefined, () => {})
+    expect(line).toEqual({ text: 'code预设台词' })
+  })
+
+  it('generateOpener 返回文本 → 优先使用该文本', async () => {
+    const state = initAppFocusWatcher(rules.length, cfg)
+    const line = await runAppFocusTick(state, rules, cfg, execFile, undefined, async () => '现场生成的话', () => {})
+    expect(line).toEqual({ text: '现场生成的话' })
+  })
+
+  it('generateOpener 返回 null → 回退 pickFromPool 预设台词', async () => {
+    const state = initAppFocusWatcher(rules.length, cfg)
+    const line = await runAppFocusTick(state, rules, cfg, execFile, undefined, async () => null, () => {})
+    expect(line).toEqual({ text: 'code预设台词' })
+  })
+
+  it('都不命中规则时不调用 generateOpener', async () => {
+    const state = initAppFocusWatcher(rules.length, cfg)
+    let called = false
+    const missExecFile = async (): Promise<{ stdout: string; stderr: string }> =>
+      ({ stdout: 'PROC:notepad.exe\nTITLE:x', stderr: '' })
+    const line = await runAppFocusTick(state, rules, cfg, missExecFile, undefined, async () => { called = true; return 'x' }, () => {})
+    expect(line).toBeNull()
+    expect(called).toBe(false)
+  })
+
+  it('冷却状态在发起 generateOpener 调用前就已落定,不会被并发的第二次判定绕过', async () => {
+    const state = initAppFocusWatcher(rules.length, cfg)
+    let committedState = state
+    let resolveGen: (v: string | null) => void = () => {}
+    const pendingGen = new Promise<string | null>((res) => { resolveGen = res })
+
+    const firstTick = runAppFocusTick(state, rules, cfg, execFile, undefined, () => pendingGen, (s) => { committedState = s })
+
+    // 让 execFile 的微任务链跑完、onStateUpdated 已经被调用,但 generateOpener 仍未 resolve(模拟一次慢生成)
+    await new Promise((r) => setTimeout(r, 0))
+
+    // 用第一次 tick 已提交的冷却状态,立刻发起第二次判定(同一时刻切回同一应用)
+    const secondLine = await runAppFocusTick(committedState, rules, cfg, execFile, undefined, undefined, () => {})
+    expect(secondLine).toBeNull() // ruleCooldownMs 应已生效,压住第二次触发
+
+    resolveGen(null)
+    await firstTick
   })
 })
