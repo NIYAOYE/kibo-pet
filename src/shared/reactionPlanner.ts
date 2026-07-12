@@ -1,12 +1,12 @@
 export type ReactionCategory =
   | 'idle' | 'long_idle' | 'wake' | 'click' | 'drag'
-  | 'greet' | 'farewell' | 'sleep' | 'break'
+  | 'greet' | 'farewell' | 'sleep' | 'break' | 'app_focus'
 export const REACTION_CATEGORIES: ReactionCategory[] = [
-  'idle', 'long_idle', 'wake', 'click', 'drag', 'greet', 'farewell', 'sleep', 'break'
+  'idle', 'long_idle', 'wake', 'click', 'drag', 'greet', 'farewell', 'sleep', 'break', 'app_focus'
 ]
 
 /** 用户触碰/唤醒产生的即时触发,或主进程情境信号(afk_leave/break_reminder);idle/long_idle 是环境定时,不走这里 */
-export type ReactionTrigger = 'poke' | 'drag' | 'wake' | 'afk_leave' | 'break_reminder'
+export type ReactionTrigger = 'poke' | 'drag' | 'wake' | 'afk_leave' | 'break_reminder' | 'app_focus'
 
 export interface ReactionConfig {
   globalCooldownMs: number   // 触碰后压制 idle 闲聊的最短间隔
@@ -129,6 +129,13 @@ export function stepReaction(
   if (input.trigger === 'break_reminder') {
     next = { ...next, chatterTimerMs: Math.max(next.chatterTimerMs, cfg.globalCooldownMs) }
     return { ctx: next, output: { speak: 'break' } }
+  }
+
+  // 2.5) 应用焦点感知：主进程已完成匹配+双层冷却过滤，到这里的都是"确定要说"；
+  // 调用方已在同一 tick 内叫醒宠物（若需要），同 break_reminder
+  if (input.trigger === 'app_focus') {
+    next = { ...next, chatterTimerMs: Math.max(next.chatterTimerMs, cfg.globalCooldownMs) }
+    return { ctx: next, output: { speak: 'app_focus' } }
   }
 
   // 3) AFK 离开：主进程边沿信号，不改变宠物状态

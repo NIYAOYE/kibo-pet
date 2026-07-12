@@ -63,9 +63,9 @@ export class PetController {
 
     let event = this.pending.shift()
     if (event === 'pickup') this.pendingReaction = 'drag' // 拖起 → drag 台词
-    // 久坐提醒命中且宠物在睡：同一 tick 内强制叫醒，避免下一 tick 的 wokeUp 派生
-    // 把更具体的 break 台词覆盖成通用 wake 台词（见设计文档 §7 时序陷阱）。
-    if (contextSignal === 'break_reminder' && this.ctx.state === 'sleep') event = 'wake'
+    // 久坐提醒/应用焦点感知命中且宠物在睡：同一 tick 内强制叫醒，避免下一 tick 的
+    // wokeUp 派生把更具体的台词覆盖成通用 wake 台词（见设计文档 §7 时序陷阱）。
+    if ((contextSignal === 'break_reminder' || contextSignal === 'app_focus') && this.ctx.state === 'sleep') event = 'wake'
 
     const prevState = this.ctx.state
     const { ctx, effects } = step(this.ctx, {

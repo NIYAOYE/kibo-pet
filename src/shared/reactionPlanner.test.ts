@@ -12,7 +12,7 @@ const NEXT_NIGHT_MS = new Date(2026, 0, 2, 0, 30, 0).getTime()  // 次日 0:30,�
 describe('reactionPlanner', () => {
   it('REACTION_CATEGORIES 覆盖全部 category', () => {
     expect(REACTION_CATEGORIES).toEqual(
-      ['idle', 'long_idle', 'wake', 'click', 'drag', 'greet', 'farewell', 'sleep', 'break']
+      ['idle', 'long_idle', 'wake', 'click', 'drag', 'greet', 'farewell', 'sleep', 'break', 'app_focus']
     )
   })
 
@@ -117,6 +117,16 @@ describe('reactionPlanner', () => {
     let r = stepReaction(initReaction(cfg), { dtMs: 16, trigger: 'afk_leave', pausedByDialog: true, sleeping: false, nowMs: NOON_MS, rng })
     expect(r.output.speak).toBeUndefined()
     r = stepReaction(initReaction(cfg), { dtMs: 16, trigger: 'break_reminder', pausedByDialog: true, sleeping: false, nowMs: NOON_MS, rng })
+    expect(r.output.speak).toBeUndefined()
+  })
+
+  it('app_focus → app_focus category', () => {
+    const r = stepReaction(initReaction(cfg), { dtMs: 16, trigger: 'app_focus', pausedByDialog: false, sleeping: false, nowMs: NOON_MS, rng })
+    expect(r.output.speak).toBe('app_focus')
+  })
+
+  it('pausedByDialog 时 app_focus 也静音', () => {
+    const r = stepReaction(initReaction(cfg), { dtMs: 16, trigger: 'app_focus', pausedByDialog: true, sleeping: false, nowMs: NOON_MS, rng })
     expect(r.output.speak).toBeUndefined()
   })
 })

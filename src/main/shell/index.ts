@@ -38,6 +38,7 @@ import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
+import { startAppFocusWatcher } from '../context/appFocusWatcher'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createBubbleController } from './bubbleWindow'
@@ -208,6 +209,7 @@ export function startShell(): void {
   const AMBIENT_TTL_MS = 3500
   let ambientHideTimer: NodeJS.Timeout | null = null
   let lastLineText: string | null = null // 供 pickLine 避免连续复读
+  let pendingAppFocusText: string | null = null // appFocusWatcher 已选好的台词,PET_SPEAK('app_focus') 特判读取
 
   function clearAmbientLine(): void {
     if (ambientHideTimer) { clearTimeout(ambientHideTimer); ambientHideTimer = null }
@@ -291,6 +293,15 @@ export function startShell(): void {
     // null,前台窗口全程未变),但保留这个选项零成本、能防住其他 Windows 版本/配置下的
     // 潜在同类问题,不依赖"这次没测出来"就假设它不会发生。
     execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
+  })
+
+  const appFocusWatcher = startAppFocusWatcher(petDir, {
+    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr })),
+    onMatch: (line) => {
+      if (dialog.isOpen()) return // 对话框开着不触发,与 showAmbientLine 的兜底一致
+      pendingAppFocusText = line.text
+      petWin.webContents.send(IPC.CONTEXT_SIGNAL, 'app_focus')
+    }
   })
 
   const browserControl = createBrowserControl({
@@ -642,8 +653,11 @@ export function startShell(): void {
     const category = validateReactionCategory(raw)
     if (!category) return
     if (dialog.isOpen()) return // 对话框开着不冒话
-    const line = pickLine(loadLines(petDir), category, lastLineText ?? undefined)
-    if (!line) return // lines.json 缺失或该 category 为空 → 静默降级
+    const line = category === 'app_focus'
+      ? (pendingAppFocusText ? { text: pendingAppFocusText } : null)
+      : pickLine(loadLines(petDir), category, lastLineText ?? undefined)
+    if (category === 'app_focus') pendingAppFocusText = null
+    if (!line) return // lines.json 缺失/该 category 为空/app_focus 无暂存台词 → 静默降级
     lastLineText = line.text
     showAmbientLine(line.text)
   })
@@ -917,5 +931,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close(); voiceSidecarInstance?.stop() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); appFocusWatcher.stop(); void browserControl.close(); voiceSidecarInstance?.stop() })
 }

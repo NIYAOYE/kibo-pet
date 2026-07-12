@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseLines, pickLine } from './linesLoader'
+import { parseLines, pickLine, pickFromPool } from './linesLoader'
 
 describe('parseLines', () => {
   it('解析合法台词表并跳过 _about 元数据', () => {
@@ -41,5 +41,23 @@ describe('pickLine', () => {
   })
   it('只有一条时即便命中 avoidText 也返回它', () => {
     expect(pickLine({ idle: [{ text: 'a' }] }, 'idle', 'a')).toEqual({ text: 'a' })
+  })
+})
+
+describe('pickFromPool', () => {
+  it('空数组 → null', () => {
+    expect(pickFromPool([])).toBeNull()
+  })
+  it('rng 决定选中项', () => {
+    const pool = [{ text: 'a' }, { text: 'b' }]
+    expect(pickFromPool(pool, undefined, () => 0)).toEqual({ text: 'a' })
+    expect(pickFromPool(pool, undefined, () => 0.99)).toEqual({ text: 'b' })
+  })
+  it('avoidText 时避开上一句', () => {
+    const pool = [{ text: 'a' }, { text: 'b' }]
+    expect(pickFromPool(pool, 'a', () => 0)).toEqual({ text: 'b' })
+  })
+  it('只有一条时即便命中 avoidText 也返回它', () => {
+    expect(pickFromPool([{ text: 'a' }], 'a')).toEqual({ text: 'a' })
   })
 })
