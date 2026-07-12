@@ -13,6 +13,18 @@ const ROUND_BUDGET_WARN_THRESHOLD = 2
 const TRUNCATED_RETRY_NUDGE =
   '\n\n(系统提示:你上一轮回复被截断且没有产生任何输出,请直接调用工具继续任务,不要输出多余的思考过程。)'
 
+const REPEATED_FAILURE_NUDGE =
+  '\n\n(系统提示:同一个工具用相同参数已连续失败多轮,不要原样重试;请换一种方式——调整参数、先查看当前状态,或向用户说明困难。)'
+
+/**
+ * 判定一次工具调用是否失败:registry 的硬失败走 isError;桌面/浏览器工具的
+ * "软失败"(点击失败/输入失败等)按约定是把失败原因包成 "XX失败:…" 的普通
+ * 文本回灌,agentLoop 只能靠这个文案前缀识别。启发式,仅用于追加提醒,不拦截。
+ */
+function looksFailed(r: { isError?: boolean; content: string }): boolean {
+  return r.isError === true || /失败/.test(r.content.slice(0, 30))
+}
+
 function roundBudgetWarning(roundsLeftIncludingThis: number): string {
   return `\n\n(系统提示:本次任务你还剩 ${roundsLeftIncludingThis} 轮工具调用机会,请尽快完成当前动作或总结目前进度。)`
 }
@@ -42,6 +54,8 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
   let text = ''
   let truncatedRetries = 0
   let pendingRetryNudge = ''
+  // 重复失败熔断:上一轮失败过的 (tool, input) 组合;本轮再次失败则下一轮提醒换方式
+  let prevFailedKeys = new Set<string>()
 
   for (let round = 1; round <= maxRounds; round++) {
     // 每轮请求前剥离过期截图:旧图对当前决策几乎无用,却在长任务里每轮全量重发
@@ -117,10 +131,16 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
     toolUses.forEach((tu, i) => {
       messages.push({ role: 'assistant_tool_use', text: i === 0 && roundText ? roundText : undefined, toolUse: tu })
     })
+    const failedKeys = new Set<string>()
     for (const tu of toolUses) {
       if (opts.signal.aborted) return { text, canceled: true }
       const r = await opts.registry.run(tu.name, tu.input, { signal: opts.signal, onStatus: opts.onStatus })
       if (opts.signal.aborted) return { text, canceled: true }
+      if (looksFailed(r)) {
+        const key = `${tu.name}:${JSON.stringify(tu.input ?? {})}`
+        failedKeys.add(key)
+        if (prevFailedKeys.has(key)) pendingRetryNudge = REPEATED_FAILURE_NUDGE
+      }
       // 工具的"软失败"(比如 browser_click 点击失败)不会走 registry 的 isError/抛异常路径——
       // 它们是工具自己把失败原因包成普通文本回灌给模型的,agentLoop 之前完全看不到,只能靠
       // 模型自己的转述猜是什么问题。这里把每次工具调用的原始结果打出来,方便下次真机复现时
@@ -128,6 +148,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
       console.log(`[tool] ${tu.name} isError=${r.isError ?? false} content=${r.content.slice(0, 200)}`)
       messages.push({ role: 'tool_result', toolUseId: tu.id, content: r.content, isError: r.isError, images: r.images })
     }
+    prevFailedKeys = failedKeys
   }
 
   return { text, error: '工具调用轮数达到上限,已停止;先基于目前查到的内容回复吧' }

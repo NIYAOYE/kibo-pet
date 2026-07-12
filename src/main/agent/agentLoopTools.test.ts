@@ -146,6 +146,70 @@ describe('runAgent 多轮工具循环', () => {
     expect(seenSystems[2]).toContain('轮')
   })
 
+  it('同一 (tool, input) 连续失败两轮:第三轮 system 里追加换方式提醒', async () => {
+    const failing: ToolSpec = {
+      name: 'clicker',
+      description: '总是点不到',
+      inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      run: async () => '点击失败:找不到元素'
+    }
+    const seenSystems: string[] = []
+    const provider = {
+      async *streamChat(req: { system: string }): AsyncIterable<StreamChunk> {
+        seenSystems.push(req.system)
+        if (seenSystems.length <= 3) {
+          yield { type: 'tool_use', toolUse: { id: `t${seenSystems.length}`, name: 'clicker', input: { text: '登录' } } }
+          yield { type: 'done' }
+        } else { yield { type: 'text', text: '好吧' }; yield { type: 'done' } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([failing]),
+      system: 'BASE',
+      messages: [{ role: 'user', content: '点登录' }],
+      maxToolRounds: 10,
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    expect(seenSystems[0]).toBe('BASE')
+    expect(seenSystems[1]).toBe('BASE') // 只失败一次还不熔断
+    expect(seenSystems[2]).toContain('连续失败')
+  })
+
+  it('同名工具但参数不同的失败:不触发换方式提醒', async () => {
+    const failing: ToolSpec = {
+      name: 'clicker',
+      description: '总是点不到',
+      inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      run: async () => '点击失败:找不到元素'
+    }
+    const seenSystems: string[] = []
+    const provider = {
+      async *streamChat(req: { system: string }): AsyncIterable<StreamChunk> {
+        seenSystems.push(req.system)
+        if (seenSystems.length <= 3) {
+          yield { type: 'tool_use', toolUse: { id: `t${seenSystems.length}`, name: 'clicker', input: { text: `目标${seenSystems.length}` } } }
+          yield { type: 'done' }
+        } else { yield { type: 'text', text: '好吧' }; yield { type: 'done' } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([failing]),
+      system: 'BASE',
+      messages: [{ role: 'user', content: '点点点' }],
+      maxToolRounds: 10,
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    for (const s of seenSystems) expect(s).not.toContain('连续失败')
+  })
+
   it('工具报错回灌(isError)不终止:模型下一轮正常收场', async () => {
     const { spec } = searchTool(async () => { throw new Error('后端限流') })
     const res = await runAgent({
