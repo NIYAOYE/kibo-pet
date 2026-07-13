@@ -59,6 +59,7 @@ const ttsRepetitionPenalty = $<HTMLInputElement>('ttsRepetitionPenalty')
 const ttsIsCutText = $<HTMLInputElement>('ttsIsCutText')
 const ttsCutMinLen = $<HTMLInputElement>('ttsCutMinLen')
 const ttsCutMute = $<HTMLInputElement>('ttsCutMute')
+const ttsAdvancedParams = $<HTMLElement>('ttsAdvancedParams')
 const genieRuntimeStatus = $<HTMLElement>('genieRuntimeStatus')
 const genieInstallPath = $<HTMLInputElement>('genieInstallPath')
 const geniePickPath = $<HTMLButtonElement>('geniePickPath')
@@ -153,6 +154,10 @@ function refreshBackendAvailability(): void {
   const selected = ttsBackend.value as TtsBackend
   const unavailable = selected === 'genie-tts' ? !supportsGenie : !supportsGsv
   ttsBackendUnavailable.style.display = unavailable ? '' : 'none'
+  // 生成参数(speed/noiseScale/temperature/topK/topP/repetitionPenalty/切分相关)只有 GSV-TTS-Lite
+  // 支持——Genie-TTS 的 tts_async() 没有这些旋钮,genie_server.py 收到也会直接忽略,选中 Genie-TTS
+  // 时这块 UI 对用户没有意义,隐藏掉避免误导。
+  ttsAdvancedParams.style.display = selected === 'genie-tts' ? 'none' : ''
 }
 
 ttsBackend.addEventListener('change', refreshBackendAvailability)
