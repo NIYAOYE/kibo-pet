@@ -57,6 +57,13 @@ const ttsRepetitionPenalty = $<HTMLInputElement>('ttsRepetitionPenalty')
 const ttsIsCutText = $<HTMLInputElement>('ttsIsCutText')
 const ttsCutMinLen = $<HTMLInputElement>('ttsCutMinLen')
 const ttsCutMute = $<HTMLInputElement>('ttsCutMute')
+const genieRuntimeStatus = $<HTMLElement>('genieRuntimeStatus')
+const genieInstallPath = $<HTMLInputElement>('genieInstallPath')
+const geniePickPath = $<HTMLButtonElement>('geniePickPath')
+const genieInstall = $<HTMLButtonElement>('genieInstall')
+const genieImport = $<HTMLButtonElement>('genieImport')
+const genieExport = $<HTMLButtonElement>('genieExport')
+const genieInstallLog = $<HTMLPreElement>('genieInstallLog')
 
 function formatRuntimeState(s: VoiceRuntimeState): string {
   if (!s.installed) return '运行时状态:未安装'
@@ -65,10 +72,22 @@ function formatRuntimeState(s: VoiceRuntimeState): string {
   return `运行时状态:已安装${ver}${dev}`
 }
 
+function formatGenieRuntimeState(s: { installed: boolean; genieTtsVersion?: string }): string {
+  if (!s.installed) return '运行时状态:未安装'
+  const ver = s.genieTtsVersion ? ` · ${s.genieTtsVersion}` : ''
+  return `运行时状态:已安装${ver}`
+}
+
 function appendInstallLog(line: string): void {
   ttsInstallLog.style.display = ''
   ttsInstallLog.textContent += `${line}\n`
   ttsInstallLog.scrollTop = ttsInstallLog.scrollHeight
+}
+
+function appendGenieInstallLog(line: string): void {
+  genieInstallLog.style.display = ''
+  genieInstallLog.textContent += `${line}\n`
+  genieInstallLog.scrollTop = genieInstallLog.scrollHeight
 }
 
 function currentTts(): TtsSettings {
@@ -113,6 +132,14 @@ function applyTts(t: TtsSettings): void {
   ttsRepetitionPenalty.value = String(t.repetitionPenalty)
 }
 
+function currentTtsGenie(): { runtimeInstallPath: string } {
+  return { runtimeInstallPath: genieInstallPath.value.trim() }
+}
+
+function applyTtsGenie(t: { runtimeInstallPath: string }): void {
+  genieInstallPath.value = t.runtimeInstallPath
+}
+
 ttsPickPath.addEventListener('click', async () => {
   const p = await window.voiceApi.pickInstallPath()
   if (p) ttsInstallPath.value = p
@@ -144,6 +171,43 @@ ttsImport.addEventListener('click', async () => {
 ttsExport.addEventListener('click', async () => {
   try {
     const res = await window.voiceApi.exportArchive()
+    status.textContent = res.ok ? '✓ 导出成功' : `✗ ${res.error ?? '导出失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+geniePickPath.addEventListener('click', async () => {
+  const p = await window.genieVoiceApi.pickInstallPath()
+  if (p) genieInstallPath.value = p
+})
+
+genieInstall.addEventListener('click', () => {
+  if (!genieInstallPath.value.trim()) {
+    status.textContent = '✗ 请先选择安装位置'
+    return
+  }
+  genieInstallLog.textContent = ''
+  appendGenieInstallLog('开始安装…')
+  window.genieVoiceApi.startInstall()
+})
+
+window.genieVoiceApi.onInstallProgress((p) => {
+  appendGenieInstallLog(`[${p.stage}] ${p.message}`)
+})
+
+genieImport.addEventListener('click', async () => {
+  try {
+    const res = await window.genieVoiceApi.importArchive()
+    status.textContent = res.ok ? '✓ 导入成功' : `✗ ${res.error ?? '导入失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+genieExport.addEventListener('click', async () => {
+  try {
+    const res = await window.genieVoiceApi.exportArchive()
     status.textContent = res.ok ? '✓ 导出成功' : `✗ ${res.error ?? '导出失败'}`
   } catch (err) {
     status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
@@ -331,7 +395,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         chromePath: browserControlChromePath.value.trim() || undefined
       },
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
-      tts: currentTts()
+      tts: currentTts(),
+      ttsGenie: currentTtsGenie()
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
@@ -351,6 +416,7 @@ void (async () => {
   savedActivePetId = snap.settings.activePetId
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
+  applyTtsGenie(snap.settings.ttsGenie)
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
@@ -386,5 +452,13 @@ void (async () => {
     ttsRuntimeStatus.textContent = formatRuntimeState(await window.voiceApi.getState())
   } catch {
     // 无宠物包引导模式下语音子系统未接线(见 startOnboarding),这里静默即可
+  }
+})()
+
+void (async () => {
+  try {
+    genieRuntimeStatus.textContent = formatGenieRuntimeState(await window.genieVoiceApi.getState())
+  } catch {
+    // 无宠物包引导模式下语音子系统未接线,这里静默即可
   }
 })()

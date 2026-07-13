@@ -218,6 +218,27 @@
               <pre id="ttsInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none;color:#f0f0f4"></pre>
             </div>
 
+            <div style="margin-top:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg)">
+              <div class="hint" style="margin-bottom:6px">
+                Genie-TTS(轻量,基于 ONNX Runtime,无需 torch/CUDA,只用 CPU)——与上面的
+                GSV-TTS-Lite 是两套独立的运行时,按当前宠物包提供的模型类型自动选用。
+              </div>
+              <div id="genieRuntimeStatus" class="hint">运行时状态:检测中…</div>
+              <label style="margin-top:8px">安装位置
+                <div class="row">
+                  <input id="genieInstallPath" type="text" readonly placeholder="尚未选择" style="flex:1" />
+                  <button id="geniePickPath" class="secondary" type="button">选择安装位置</button>
+                </div>
+              </label>
+              <div class="hint" style="margin-top:2px">选择安装位置后请先点击下方"保存",再进行安装/导入/导出。</div>
+              <div class="row" style="margin-top:8px">
+                <button id="genieInstall" class="secondary" type="button">现场安装</button>
+                <button id="genieImport" class="secondary" type="button">导入压缩包…</button>
+                <button id="genieExport" class="secondary" type="button">导出压缩包…</button>
+              </div>
+              <pre id="genieInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none;color:#f0f0f4"></pre>
+            </div>
+
             <label>设备
               <select id="ttsDevice">
                 <option value="auto">自动</option>

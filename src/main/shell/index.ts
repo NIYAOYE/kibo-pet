@@ -13,7 +13,9 @@ import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
 import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
 import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
-import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
+import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall, realSpawnGenieProcess, realDownloadGenieData } from '../voice/realVoiceTransport'
+import { runGenieRuntimeInstall } from '../voice/genieRuntimeInstall'
+import { parseGenieRuntimeMarker, isGenieRuntimeUsable, serializeGenieRuntimeMarker, GENIE_RUNTIME_MARKER_VERSION } from '../voice/genieRuntimeMarker'
 import { createProvider } from '../providers/createProvider'
 import { createScreenshotState } from '../automation/screenshotState'
 import { captureFullScreen } from '../media/fullScreenCapture'
@@ -31,9 +33,11 @@ import {
   type TestResult,
   type VoiceRuntimeState,
   type VoiceArchiveResult,
-  type VoicePcmChunk
+  type VoicePcmChunk,
+  type GenieRuntimeState
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
+import type { PetVoice } from '@shared/petPackage'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
@@ -151,6 +155,12 @@ function startOnboarding(opts: {
   })
 
   settings.open()
+}
+
+/** 语音后端选择:宠物包提供 onnxModel 时走 Genie-TTS,否则(gptModel/sovitsModel)走 GSV-TTS-Lite。
+ *  纯函数,独立导出以便单测覆盖这个 startVoiceIfConfigured() 里最高风险的分支决策。 */
+export function shouldUseGenieBackend(petVoice: PetVoice): boolean {
+  return !!petVoice.onnxModel
 }
 
 export function startShell(): void {
@@ -386,6 +396,21 @@ export function startShell(): void {
     return { installed: true, installPath, gsvTtsLiteVersion: marker!.gsvTtsLiteVersion, device: marker!.device }
   }
 
+  // ---- 语音(Genie-TTS,第二后端)----
+  const GENIE_VOICE_PORT = 8851
+  const genieScriptPath = join(appRoot, 'resources/voice/genie_server.py')
+  const genieMarkerFile = (installPath: string): string => join(installPath, 'genie-runtime-marker.json')
+  const geniePythonExe = (installPath: string): string => join(installPath, 'python.exe')
+
+  function getGenieRuntimeState(): GenieRuntimeState {
+    const s = loadSettings(settingsFile)
+    const installPath = s.ttsGenie.runtimeInstallPath
+    if (!installPath || !existsSync(genieMarkerFile(installPath))) return { installed: false, installPath }
+    const marker = parseGenieRuntimeMarker(readFileSync(genieMarkerFile(installPath), 'utf-8'))
+    if (!isGenieRuntimeUsable(marker)) return { installed: false, installPath }
+    return { installed: true, installPath, genieTtsVersion: marker!.genieTtsVersion }
+  }
+
   let voiceProviderInstance: ReturnType<typeof createVoiceProvider> | null = null
   let speechSequencerInstance: ReturnType<typeof createSpeechSequencer> | null = null
   let voiceSidecarInstance: ReturnType<typeof createVoiceSidecar> | null = null
@@ -393,8 +418,6 @@ export function startShell(): void {
   async function startVoiceIfConfigured(): Promise<void> {
     const s = loadSettings(settingsFile)
     if (!s.tts.enabled) return
-    const state = getVoiceRuntimeState()
-    if (!state.installed) return
     let petVoice: import('@shared/petPackage').PetVoice | undefined
     try {
       petVoice = (await loadPet(petDir)).manifest.voice
@@ -403,24 +426,54 @@ export function startShell(): void {
     }
     if (!petVoice) return
 
-    const sidecar = createVoiceSidecar({
-      port: VOICE_PORT,
-      spawnProcess: () => realSpawnProcess({
-        pythonExe: voicePythonExe(state.installPath),
-        scriptPath: voiceScriptPath,
+    const useGenie = shouldUseGenieBackend(petVoice)
+    let sidecar: ReturnType<typeof createVoiceSidecar>
+
+    if (useGenie) {
+      const state = getGenieRuntimeState()
+      if (!state.installed) {
+        console.warn('[voice] 该宠物需要 Genie-TTS 运行时,请到设置安装;本次运行语音功能不可用')
+        return
+      }
+      sidecar = createVoiceSidecar({
+        port: GENIE_VOICE_PORT,
+        spawnProcess: () => realSpawnGenieProcess({
+          pythonExe: geniePythonExe(state.installPath),
+          scriptPath: genieScriptPath,
+          port: GENIE_VOICE_PORT,
+          voice: {
+            onnxModel: join(petDir, petVoice!.onnxModel!),
+            refAudio: join(petDir, petVoice!.refAudio),
+            refText: join(petDir, petVoice!.refText),
+            language: petVoice!.language!
+          },
+          installDir: state.installPath
+        }),
+        postSse: realPostSse
+      })
+    } else {
+      const state = getVoiceRuntimeState()
+      if (!state.installed) return
+      sidecar = createVoiceSidecar({
         port: VOICE_PORT,
-        voice: {
-          gptModel: join(petDir, petVoice!.gptModel),
-          sovitsModel: join(petDir, petVoice!.sovitsModel),
-          refAudio: join(petDir, petVoice!.refAudio),
-          refText: join(petDir, petVoice!.refText)
-        },
-        device: s.tts.device,
-        useFlashAttn: s.tts.useFlashAttn,
-        modelsDir: voiceModelsDir(state.installPath)
-      }),
-      postSse: realPostSse
-    })
+        spawnProcess: () => realSpawnProcess({
+          pythonExe: voicePythonExe(state.installPath),
+          scriptPath: voiceScriptPath,
+          port: VOICE_PORT,
+          voice: {
+            gptModel: join(petDir, petVoice!.gptModel!),
+            sovitsModel: join(petDir, petVoice!.sovitsModel!),
+            refAudio: join(petDir, petVoice!.refAudio),
+            refText: join(petDir, petVoice!.refText)
+          },
+          device: s.tts.device,
+          useFlashAttn: s.tts.useFlashAttn,
+          modelsDir: voiceModelsDir(state.installPath)
+        }),
+        postSse: realPostSse
+      })
+    }
+
     try {
       await sidecar.start()
     } catch (e) {
@@ -898,6 +951,77 @@ export function startShell(): void {
     const r = await electronDialog.showSaveDialog({ defaultPath: 'voice-runtime.zip', filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
     if (r.canceled || !r.filePath) return { ok: false, error: '已取消' }
     return exportVoiceRuntimeArchive({ srcDir: s.tts.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
+  })
+
+  ipcMain.handle(IPC.GENIE_GET_STATE, async () => getGenieRuntimeState())
+
+  ipcMain.handle(IPC.GENIE_PICK_INSTALL_PATH, async () => {
+    const r = await electronDialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    return r.canceled ? null : r.filePaths[0]
+  })
+
+  ipcMain.on(IPC.GENIE_START_INSTALL, () => {
+    const s = loadSettings(settingsFile)
+    const destDir = s.ttsGenie.runtimeInstallPath
+    if (!destDir) { petWin.webContents.send(IPC.GENIE_INSTALL_PROGRESS, { stage: 'done', message: '请先选择安装位置' }); return }
+    const win = settings.window()
+    void runGenieRuntimeInstall({
+      destDir,
+      steps: {
+        downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
+        enablePip: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        installGenieTts: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['genie-tts==2.0.2'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        downloadGenieData: async (dir) => {
+          await realDownloadGenieData({ pythonExe: geniePythonExe(dir), scriptPath: genieScriptPath, installDir: dir })
+        }
+      },
+      onProgress: (p) => { win?.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p); petWin.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p) }
+    }).then((r) => {
+      if (r.ok) {
+        mkdirSync(destDir, { recursive: true })
+        writeFileSync(genieMarkerFile(destDir), serializeGenieRuntimeMarker({ markerVersion: GENIE_RUNTIME_MARKER_VERSION, genieTtsVersion: '2.0.2' }))
+      } else {
+        const p = { stage: r.stage, message: `安装失败:${r.error}` }
+        win?.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p)
+        petWin.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p)
+      }
+    })
+  })
+
+  ipcMain.handle(IPC.GENIE_IMPORT_ARCHIVE, async (): Promise<VoiceArchiveResult> => {
+    const s = loadSettings(settingsFile)
+    if (!s.ttsGenie.runtimeInstallPath) return { ok: false, error: '请先选择安装位置' }
+    const r = await electronDialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
+    if (r.canceled || r.filePaths.length === 0) return { ok: false, error: '已取消' }
+    return importVoiceRuntimeArchive({ zipPath: r.filePaths[0], destDir: s.ttsGenie.runtimeInstallPath, io: createAdmZipArchiveIO() })
+  })
+
+  ipcMain.handle(IPC.GENIE_EXPORT_ARCHIVE, async (): Promise<VoiceArchiveResult> => {
+    const s = loadSettings(settingsFile)
+    if (!s.ttsGenie.runtimeInstallPath) return { ok: false, error: '尚未安装,无法导出' }
+    const r = await electronDialog.showSaveDialog({ defaultPath: 'genie-voice-runtime.zip', filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
+    if (r.canceled || !r.filePath) return { ok: false, error: '已取消' }
+    return exportVoiceRuntimeArchive({ srcDir: s.ttsGenie.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
   })
 
   ipcMain.on(IPC.VOICE_STOP, () => speechSequencerInstance?.stop())

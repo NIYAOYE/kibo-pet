@@ -70,7 +70,13 @@ export const IPC = {
   VOICE_AUDIO_DONE: 'voice:audio-done',
   VOICE_AUDIO_ERROR: 'voice:audio-error',
   VOICE_STOP: 'voice:stop',
-  VOICE_PLAYBACK_STOP: 'voice:playback-stop'
+  VOICE_PLAYBACK_STOP: 'voice:playback-stop',
+  GENIE_GET_STATE: 'genie:get-state',
+  GENIE_PICK_INSTALL_PATH: 'genie:pick-install-path',
+  GENIE_START_INSTALL: 'genie:start-install',
+  GENIE_INSTALL_PROGRESS: 'genie:install-progress',
+  GENIE_IMPORT_ARCHIVE: 'genie:import-archive',
+  GENIE_EXPORT_ARCHIVE: 'genie:export-archive'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
@@ -218,8 +224,20 @@ export interface VoiceApi {
   stop(): void
 }
 
+export interface GenieRuntimeState { installed: boolean; installPath: string; genieTtsVersion?: string }
+export interface GenieInstallProgress { stage: string; message: string }
+
+export interface GenieVoiceApi {
+  getState(): Promise<GenieRuntimeState>
+  pickInstallPath(): Promise<string | null>
+  startInstall(): void
+  onInstallProgress(cb: (p: GenieInstallProgress) => void): void
+  importArchive(): Promise<VoiceArchiveResult>
+  exportArchive(): Promise<VoiceArchiveResult>
+}
+
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi; genieVoiceApi: GenieVoiceApi }
 }
 
 export type { PetEvent, Bounds }

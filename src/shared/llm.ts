@@ -98,9 +98,15 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   repetitionPenalty: 1.35
 }
 
-export const SETTINGS_SCHEMA_VERSION = 11
+export interface GenieTtsSettings { runtimeInstallPath: string }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; tts: TtsSettings }
+export const DEFAULT_GENIE_TTS_SETTINGS: GenieTtsSettings = {
+  runtimeInstallPath: ''
+}
+
+export const SETTINGS_SCHEMA_VERSION = 12
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -113,7 +119,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
   appFocusLlmOpener: { enabled: false },
-  tts: DEFAULT_TTS_SETTINGS
+  tts: DEFAULT_TTS_SETTINGS,
+  ttsGenie: DEFAULT_GENIE_TTS_SETTINGS
 }
 
 export interface Preset {

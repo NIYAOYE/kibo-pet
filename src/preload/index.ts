@@ -5,7 +5,8 @@ import {
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
   type BubbleApi, type BubblePlace, type ContextSignalKind,
-  type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk
+  type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
+  type GenieVoiceApi, type GenieInstallProgress
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -165,6 +166,18 @@ const voiceApi = {
   stop: () => ipcRenderer.send(IPC.VOICE_STOP)
 } satisfies VoiceApi
 
+const genieVoiceApi = {
+  getState: () => ipcRenderer.invoke(IPC.GENIE_GET_STATE),
+  pickInstallPath: () => ipcRenderer.invoke(IPC.GENIE_PICK_INSTALL_PATH),
+  startInstall: () => ipcRenderer.send(IPC.GENIE_START_INSTALL),
+  onInstallProgress: (cb: (p: GenieInstallProgress) => void) => {
+    ipcRenderer.removeAllListeners(IPC.GENIE_INSTALL_PROGRESS)
+    ipcRenderer.on(IPC.GENIE_INSTALL_PROGRESS, (_e, p) => cb(p))
+  },
+  importArchive: () => ipcRenderer.invoke(IPC.GENIE_IMPORT_ARCHIVE),
+  exportArchive: () => ipcRenderer.invoke(IPC.GENIE_EXPORT_ARCHIVE)
+} satisfies GenieVoiceApi
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
@@ -173,3 +186,4 @@ contextBridge.exposeInMainWorld('overlayApi', overlayApi)
 contextBridge.exposeInMainWorld('todoApi', todoApi)
 contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)
 contextBridge.exposeInMainWorld('voiceApi', voiceApi)
+contextBridge.exposeInMainWorld('genieVoiceApi', genieVoiceApi)

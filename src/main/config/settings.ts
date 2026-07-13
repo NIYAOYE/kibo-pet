@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type GenieTtsSettings } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
@@ -73,6 +73,10 @@ export function normalizeSettings(raw: unknown): AppSettings {
     topP: normalizeNumber(tt2.topP, DEFAULT_SETTINGS.tts.topP),
     repetitionPenalty: normalizeNumber(tt2.repetitionPenalty, DEFAULT_SETTINGS.tts.repetitionPenalty)
   }
+  const tg = (r.ttsGenie ?? {}) as Record<string, unknown>
+  const ttsGenie: GenieTtsSettings = {
+    runtimeInstallPath: typeof tg.runtimeInstallPath === 'string' ? tg.runtimeInstallPath : DEFAULT_SETTINGS.ttsGenie.runtimeInstallPath
+  }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
@@ -84,7 +88,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     desktopControl,
     browserControl,
     appFocusLlmOpener,
-    tts
+    tts,
+    ttsGenie
   }
 }
 

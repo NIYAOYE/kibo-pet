@@ -69,4 +69,53 @@ describe('parsePetManifest voice 字段(可选)', () => {
       voice: { gptModel: '', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
     })).toThrow()
   })
+
+  it('只提供 onnxModel(Genie-TTS 后端)→ 解析成功,原样保留', () => {
+    const m = parsePetManifest({
+      ...base,
+      voice: { onnxModel: 'voice/alice-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'ja' }
+    })
+    expect(m.voice).toEqual({ onnxModel: 'voice/alice-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'ja' })
+  })
+
+  it('gptModel/sovitsModel 与 onnxModel 都提供 → 都保留', () => {
+    const m = parsePetManifest({
+      ...base,
+      voice: {
+        gptModel: 'voice/a.ckpt', sovitsModel: 'voice/a.pth', onnxModel: 'voice/a-onnx',
+        refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'ja'
+      }
+    })
+    expect(m.voice?.onnxModel).toBe('voice/a-onnx')
+    expect(m.voice?.gptModel).toBe('voice/a.ckpt')
+  })
+
+  it('既没有 onnxModel 也没有 gptModel/sovitsModel → 抛错', () => {
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow(/onnxModel|gptModel/)
+  })
+
+  it('只给 gptModel 不给 sovitsModel(反之亦然)→ 抛错', () => {
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { gptModel: 'voice/a.ckpt', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow()
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow()
+  })
+
+  it('onnxModel 存在但 language 缺失/非法 → 抛错', () => {
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { onnxModel: 'voice/a-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow(/language/)
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { onnxModel: 'voice/a-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'fr' }
+    })).toThrow(/language/)
+  })
 })
