@@ -28,6 +28,9 @@ const noPetBanner = $<HTMLElement>('noPetBanner')
 const closeBtn = $<HTMLButtonElement>('closeBtn')
 closeBtn.addEventListener('click', () => window.close())
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
+// ttsGenie 本页暂无 UI(见 Task 9),缓存已加载值以便保存时原样回填,避免每次保存都把它
+// 静默重置成默认值(SET_SETTINGS 是整体覆盖写,不是与已存设置合并)。
+let savedTtsGenie = DEFAULT_SETTINGS.ttsGenie
 // 本页是否是在"引导模式(无任何已装宠物包)"下打开的——见 save 按钮处理里的用法:
 // 这种情况下即便用户选中的宠物 id 恰好等于 savedActivePetId 的默认值(比如重新导入了
 // 一个同样叫 luluka 的包),应用本身也还没正常启动,任何一次成功保存都需要重启才能生效。
@@ -332,7 +335,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       },
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
       tts: currentTts(),
-      ttsGenie: DEFAULT_SETTINGS.ttsGenie
+      ttsGenie: savedTtsGenie
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
@@ -350,6 +353,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
+  savedTtsGenie = snap.settings.ttsGenie
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
   await refreshPets(snap.settings.activePetId)
