@@ -410,6 +410,8 @@ export function startShell(): void {
         scriptPath: voiceScriptPath,
         port: VOICE_PORT,
         voice: {
+          // TODO(Task 8): 这里假设 petVoice 一定是 GSV-TTS-Lite 后端(gptModel/sovitsModel 都在)——
+          // 目前成立是因为还没有只提供 onnxModel 的宠物包,Task 8 会把这整段改成按后端分支,到时移除本注释。
           gptModel: join(petDir, petVoice!.gptModel!),
           sovitsModel: join(petDir, petVoice!.sovitsModel!),
           refAudio: join(petDir, petVoice!.refAudio),
