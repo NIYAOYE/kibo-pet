@@ -64,7 +64,7 @@ import { listPets, importPetFolder } from '../pets/petCatalog'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
-import { DEFAULT_SETTINGS } from '@shared/llm'
+import { DEFAULT_SETTINGS, type TtsBackend } from '@shared/llm'
 import type { ChatSendAttachment } from '@shared/ipc'
 import type { TodoItem } from '@shared/todo'
 import {
@@ -157,10 +157,15 @@ function startOnboarding(opts: {
   settings.open()
 }
 
-/** 语音后端选择:宠物包提供 onnxModel 时走 Genie-TTS,否则(gptModel/sovitsModel)走 GSV-TTS-Lite。
+export type VoiceBackendChoice = 'gsv-tts-lite' | 'genie-tts'
+
+/** 按用户在设置里选的后端 + 当前宠物包实际提供的模型文件,解出这次要用哪个后端。
+ *  选中的后端如果宠物包没提供对应模型文件,返回 null(不可用)——不会退回另一个后端,
+ *  这是设计文档明确要求的行为,不是遗漏。
  *  纯函数,独立导出以便单测覆盖这个 startVoiceIfConfigured() 里最高风险的分支决策。 */
-export function shouldUseGenieBackend(petVoice: PetVoice): boolean {
-  return !!petVoice.onnxModel
+export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): VoiceBackendChoice | null {
+  if (selected === 'genie-tts') return petVoice.onnxModel ? 'genie-tts' : null
+  return (petVoice.gptModel && petVoice.sovitsModel) ? 'gsv-tts-lite' : null
 }
 
 export function startShell(): void {
@@ -426,10 +431,14 @@ export function startShell(): void {
     }
     if (!petVoice) return
 
-    const useGenie = shouldUseGenieBackend(petVoice)
+    const backend = resolveVoiceBackend(petVoice, s.tts.backend)
+    if (backend === null) {
+      console.warn(`[voice] 当前宠物不提供 ${s.tts.backend === 'genie-tts' ? 'Genie-TTS' : 'GSV-TTS-Lite'} 需要的模型文件,本次运行语音功能不可用`)
+      return
+    }
     let sidecar: ReturnType<typeof createVoiceSidecar>
 
-    if (useGenie) {
+    if (backend === 'genie-tts') {
       const state = getGenieRuntimeState()
       if (!state.installed) {
         console.warn('[voice] 该宠物需要 Genie-TTS 运行时,请到设置安装;本次运行语音功能不可用')
