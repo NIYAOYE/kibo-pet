@@ -38,6 +38,7 @@ import {
   type GenieInstallProgress
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
+import type { PetVoice } from '@shared/petPackage'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
@@ -155,6 +156,12 @@ function startOnboarding(opts: {
   })
 
   settings.open()
+}
+
+/** 语音后端选择:宠物包提供 onnxModel 时走 Genie-TTS,否则(gptModel/sovitsModel)走 GSV-TTS-Lite。
+ *  纯函数,独立导出以便单测覆盖这个 startVoiceIfConfigured() 里最高风险的分支决策。 */
+export function shouldUseGenieBackend(petVoice: PetVoice): boolean {
+  return !!petVoice.onnxModel
 }
 
 export function startShell(): void {
@@ -420,7 +427,7 @@ export function startShell(): void {
     }
     if (!petVoice) return
 
-    const useGenie = !!petVoice.onnxModel
+    const useGenie = shouldUseGenieBackend(petVoice)
     let sidecar: ReturnType<typeof createVoiceSidecar>
 
     if (useGenie) {
