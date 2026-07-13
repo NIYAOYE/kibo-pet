@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, DEFAULT_SETTINGS, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
 import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -331,7 +331,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         chromePath: browserControlChromePath.value.trim() || undefined
       },
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
-      tts: currentTts()
+      tts: currentTts(),
+      ttsGenie: DEFAULT_SETTINGS.ttsGenie
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
