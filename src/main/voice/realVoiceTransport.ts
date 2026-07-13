@@ -100,7 +100,7 @@ export function realSpawnGenieProcess(opts: {
   ]
   return spawnAndWaitForReady(opts.pythonExe, args, 'Genie-TTS 语音 sidecar', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8' }
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_HUB_DOWNLOAD_TIMEOUT: '30' }
   })
 }
 
@@ -124,7 +124,11 @@ export function realSpawnGenieProcess(opts: {
  *  HF_ENDPOINT 指向 hf-mirror.com:genie_tts 底层用 huggingface_hub 直连 huggingface.co 默认下载,
  *  国内网络环境下常年缓慢/超时,表现为"卡住不动"(真实用户报告的第一次尝试症状);hf-mirror.com 是
  *  huggingface_hub 官方支持的镜像重定向机制(标准环境变量,非 hack),与本项目 pip 安装那套镜像源
- *  思路一致,用于缓解同一类"国内直连太慢"的问题。 */
+ *  思路一致,用于缓解同一类"国内直连太慢"的问题。
+ *  HF_HUB_DOWNLOAD_TIMEOUT 从默认 10 秒调到 30 秒:确认 hf-mirror.com 本身可正常访问后,真实用户
+ *  仍复现过 17 个并发文件里某一个 HEAD 请求超时导致整批下载失败(huggingface_hub 对 thread_map
+ *  并发下载里的任一失败无重试,直接抛 LocalEntryNotFoundError);调大超时容忍镜像连接偏慢的情形,
+ *  真正的"单次失败整批崩"问题由 genie_server.py --download-data 分支自身的重试循环处理(见该文件)。 */
 export function realDownloadGenieData(opts: {
   pythonExe: string
   scriptPath: string
@@ -133,7 +137,7 @@ export function realDownloadGenieData(opts: {
   rmSync(join(opts.installDir, 'GenieData'), { recursive: true, force: true })
   const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: 'https://hf-mirror.com' },
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: 'https://hf-mirror.com', HF_HUB_DOWNLOAD_TIMEOUT: '30' },
     stdin: 'y\n'
   })
   return child.waitReady()
