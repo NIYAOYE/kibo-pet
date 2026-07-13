@@ -6,7 +6,7 @@ export interface GenieInstallStepRunner {
   downloadEmbeddablePython(destDir: string): Promise<void>
   enablePip(destDir: string, onProgress: (message: string) => void): Promise<void>
   installGenieTts(destDir: string, onProgress: (message: string) => void): Promise<void>
-  downloadGenieData(destDir: string): Promise<void>
+  downloadGenieData(destDir: string, onProgress: (message: string) => void): Promise<void>
 }
 
 export async function runGenieRuntimeInstall(opts: {
@@ -29,7 +29,7 @@ export async function runGenieRuntimeInstall(opts: {
 
     stage = 'download-genie-data'
     opts.onProgress({ stage, message: '下载基础模型(首次,约 391MB)…' })
-    await opts.steps.downloadGenieData(opts.destDir)
+    await opts.steps.downloadGenieData(opts.destDir, (message) => opts.onProgress({ stage, message }))
 
     stage = 'done'
     opts.onProgress({ stage, message: '安装完成' })

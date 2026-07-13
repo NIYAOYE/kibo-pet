@@ -10,12 +10,13 @@ import { createSseParser, type SseFrame } from './sseParser'
 const execFileP = promisify(execFileCb)
 
 /** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝,错误信息里带上 earlyExitLabel 与 Python 侧的 stderr 尾巴(通常是 traceback)。 */
-function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string, spawnOpts: { cwd?: string; env?: NodeJS.ProcessEnv; stdin?: string } = {}): { kill(): void; waitReady(): Promise<void> } {
-  const { stdin, ...nodeOpts } = spawnOpts
+function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string, spawnOpts: { cwd?: string; env?: NodeJS.ProcessEnv; stdin?: string; onStdout?: (chunk: string) => void } = {}): { kill(): void; waitReady(): Promise<void> } {
+  const { stdin, onStdout, ...nodeOpts } = spawnOpts
   const child = spawn(pythonExe, args, { windowsHide: true, ...nodeOpts })
   if (stdin !== undefined) { child.stdin?.end(stdin) }
+  if (onStdout) { child.stdout?.on('data', (buf: Buffer) => onStdout(buf.toString('utf-8'))) }
   let stderrTail = ''
-  child.stderr?.on('data', (buf: Buffer) => { stderrTail = (stderrTail + buf.toString('utf-8')).slice(-2000) })
+  child.stderr?.on('data', (buf: Buffer) => { stderrTail = (stderrTail + buf.toString('utf-8')).slice(-8000) })
 
   return {
     kill(): void { child.kill() },
@@ -128,17 +129,27 @@ export function realSpawnGenieProcess(opts: {
  *  HF_HUB_DOWNLOAD_TIMEOUT 从默认 10 秒调到 30 秒:确认 hf-mirror.com 本身可正常访问后,真实用户
  *  仍复现过 17 个并发文件里某一个 HEAD 请求超时导致整批下载失败(huggingface_hub 对 thread_map
  *  并发下载里的任一失败无重试,直接抛 LocalEntryNotFoundError);调大超时容忍镜像连接偏慢的情形,
- *  真正的"单次失败整批崩"问题由 genie_server.py --download-data 分支自身的重试循环处理(见该文件)。 */
+ *  真正的"单次失败整批崩"问题由 genie_server.py --download-data 分支自身的重试循环处理(见该文件)。
+ *  opts.onProgress 把子进程 stdout 实时转发出去(而不是只在最终失败时靠有限长度的 stderr 尾巴拼凑),
+ *  解决了重试期间早期尝试的失败提示被后续更长的最终 traceback 挤出 stderr 截断窗口、导致完全看不出
+ *  重试到底跑没跑的可观测性问题(真实用户报告触发)。 */
 export function realDownloadGenieData(opts: {
   pythonExe: string
   scriptPath: string
   installDir: string
+  onProgress: (message: string) => void
 }): Promise<void> {
   rmSync(join(opts.installDir, 'GenieData'), { recursive: true, force: true })
   const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
     cwd: opts.installDir,
     env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: 'https://hf-mirror.com', HF_HUB_DOWNLOAD_TIMEOUT: '30' },
-    stdin: 'y\n'
+    stdin: 'y\n',
+    onStdout: (chunk) => {
+      for (const line of chunk.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (trimmed && trimmed !== 'READY') opts.onProgress(trimmed)
+      }
+    }
   })
   return child.waitReady()
 }

@@ -1010,8 +1010,8 @@ export function startShell(): void {
             onProgress
           )
         },
-        downloadGenieData: async (dir) => {
-          await realDownloadGenieData({ pythonExe: geniePythonExe(dir), scriptPath: genieScriptPath, installDir: dir })
+        downloadGenieData: async (dir, onProgress) => {
+          await realDownloadGenieData({ pythonExe: geniePythonExe(dir), scriptPath: genieScriptPath, installDir: dir, onProgress })
         }
       },
       onProgress: (p) => { win?.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p); petWin.webContents.send(IPC.GENIE_INSTALL_PROGRESS, p) }
