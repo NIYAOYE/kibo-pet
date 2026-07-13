@@ -34,8 +34,7 @@ import {
   type VoiceRuntimeState,
   type VoiceArchiveResult,
   type VoicePcmChunk,
-  type GenieRuntimeState,
-  type GenieInstallProgress
+  type GenieRuntimeState
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice } from '@shared/petPackage'
@@ -988,7 +987,7 @@ export function startShell(): void {
           ]
           await installWithMirrorFallback(
             candidates,
-            (c) => realPipInstall(dir, ['genie-tts'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            (c) => realPipInstall(dir, ['genie-tts==2.0.2'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
             onProgress
           )
         },
