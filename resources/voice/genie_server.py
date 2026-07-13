@@ -14,6 +14,7 @@ pet.json 的 voice 字段)。
 """
 import sys
 import json
+import time
 import base64
 import argparse
 import asyncio
@@ -93,7 +94,19 @@ def main():
     import genie_tts as genie
 
     if args.download_data:
-        genie.download_genie_data()
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                genie.download_genie_data()
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < 3:
+                    print(f"[voice] 数据下载第 {attempt} 次尝试失败,{2 * attempt} 秒后重试: {e}", flush=True)
+                    time.sleep(2 * attempt)
+        if last_error is not None:
+            raise last_error
         print("READY", flush=True)
         return
 
