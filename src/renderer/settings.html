@@ -195,13 +195,23 @@
 
           <section class="page" data-page="voice">
             <h2>语音(实验性)</h2>
-            <div class="hint">配音使用本地 GSV-TTS-Lite 运行时(独立 Python 环境 + 模型,体积较大),需先安装运行时才能生效。</div>
+            <div class="hint">配音使用本地 Python 运行时,下面选一个后端并安装对应运行时才能生效。</div>
             <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
               <input id="ttsEnabled" type="checkbox" style="width:auto" />
               <span>启用配音(宠物回复时朗读)</span>
             </label>
+            <label>TTS 后端
+              <select id="ttsBackend">
+                <option value="gsv-tts-lite">GSV-TTS-Lite</option>
+                <option value="genie-tts">Genie-TTS(轻量)</option>
+              </select>
+            </label>
+            <div id="ttsBackendUnavailable" class="hint" style="display:none;color:#e88">
+              当前宠物未提供所选后端需要的模型文件,语音功能本次不可用。
+            </div>
 
             <div style="margin-top:6px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg)">
+              <div style="font-weight:600;margin-bottom:4px">GSV-TTS-Lite 运行时</div>
               <div id="ttsRuntimeStatus" class="hint">运行时状态:检测中…</div>
               <label style="margin-top:8px">安装位置
                 <div class="row">
@@ -219,9 +229,10 @@
             </div>
 
             <div style="margin-top:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg)">
+              <div style="font-weight:600;margin-bottom:4px">Genie-TTS 运行时</div>
               <div class="hint" style="margin-bottom:6px">
-                Genie-TTS(轻量,基于 ONNX Runtime,无需 torch/CUDA,只用 CPU)——与上面的
-                GSV-TTS-Lite 是两套独立的运行时,按当前宠物包提供的模型类型自动选用。
+                轻量,基于 ONNX Runtime,无需 torch/CUDA,只用 CPU——与上面的 GSV-TTS-Lite
+                是两套独立的运行时,在上方"TTS 后端"选择哪个就用哪个。
               </div>
               <div id="genieRuntimeStatus" class="hint">运行时状态:检测中…</div>
               <label style="margin-top:8px">安装位置
@@ -277,8 +288,8 @@
               </select>
             </label>
 
-            <details style="margin-top:6px">
-              <summary style="cursor:pointer;opacity:0.9">生成参数(高级,默认即可)</summary>
+            <details id="ttsAdvancedParams" style="margin-top:6px">
+              <summary style="cursor:pointer;opacity:0.9">生成参数(高级,默认即可,仅 GSV-TTS-Lite 支持)</summary>
               <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
                 <label>语速 speed(0.1 - 2)
                   <input id="ttsSpeed" type="number" min="0.1" max="2" step="0.1" />

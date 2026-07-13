@@ -1,4 +1,4 @@
-import type { PetManifest } from './petPackage'
+import type { PetManifest, PetVoice } from './petPackage'
 import type { PetEvent, Bounds } from './petBrain'
 import type { AppSettings, ProviderSettings } from './llm'
 import type { TodoItem } from './todo'
@@ -153,7 +153,7 @@ export interface ChatApi {
   openSettings(): void
 }
 
-export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean }
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean; activePetVoice: PetVoice | undefined }
 export interface TestResult { ok: boolean; error?: string }
 
 export interface PetSummary { id: string; displayName: string; description: string }

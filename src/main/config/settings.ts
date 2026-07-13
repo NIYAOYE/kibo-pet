@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type GenieTtsSettings } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend, type GenieTtsSettings } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
@@ -9,6 +9,7 @@ const TTS_TARGET_LANGUAGES: TtsTargetLanguage[] = ['auto', 'zh', 'ja', 'en']
 const TTS_PLAYBACK_TRIGGERS: TtsPlaybackTrigger[] = ['batch', 'stream']
 const TTS_SYNTHESIS_CHUNKINGS: TtsSynthesisChunking[] = ['token', 'sentence']
 const TTS_TEXT_SPLITS: TtsTextSplit[] = ['sentence', 'smart']
+const TTS_BACKENDS: TtsBackend[] = ['gsv-tts-lite', 'genie-tts']
 
 function normalizeNumber(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
@@ -56,6 +57,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
   const tt2 = (r.tts ?? {}) as Record<string, unknown>
   const tts = {
     enabled: tt2.enabled === true,
+    backend: TTS_BACKENDS.includes(tt2.backend as TtsBackend) ? (tt2.backend as TtsBackend) : DEFAULT_SETTINGS.tts.backend,
     runtimeInstallPath: typeof tt2.runtimeInstallPath === 'string' ? tt2.runtimeInstallPath : DEFAULT_SETTINGS.tts.runtimeInstallPath,
     device: TTS_DEVICES.includes(tt2.device as TtsDevice) ? (tt2.device as TtsDevice) : DEFAULT_SETTINGS.tts.device,
     useFlashAttn: tt2.useFlashAttn === true,

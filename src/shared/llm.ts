@@ -56,9 +56,11 @@ export type TtsPlaybackTrigger = 'batch' | 'stream'
 export type TtsSynthesisChunking = 'token' | 'sentence'
 /** 边生成边播放时,朗读文本的切分方案:sentence=逐句立即朗读(开口最快);smart=短句攒到最小长度再朗读(逐句翻译更稳、不易漏读)。 */
 export type TtsTextSplit = 'sentence' | 'smart'
+export type TtsBackend = 'gsv-tts-lite' | 'genie-tts'
 
 export interface TtsSettings {
   enabled: boolean
+  backend: TtsBackend
   /** 语音运行时(可移植 Python + 依赖)安装位置;空字符串 = 未配置 */
   runtimeInstallPath: string
   device: TtsDevice
@@ -80,6 +82,7 @@ export interface TtsSettings {
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   enabled: false,
+  backend: 'gsv-tts-lite',
   runtimeInstallPath: '',
   device: 'auto',
   useFlashAttn: false,
@@ -104,7 +107,7 @@ export const DEFAULT_GENIE_TTS_SETTINGS: GenieTtsSettings = {
   runtimeInstallPath: ''
 }
 
-export const SETTINGS_SCHEMA_VERSION = 12
+export const SETTINGS_SCHEMA_VERSION = 13
 
 export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings }
 

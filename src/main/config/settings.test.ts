@@ -61,9 +61,9 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 12', () => {
+  it('归一化后 schemaVersion 升为 13', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(12)
+    expect(loadSettings(f).schemaVersion).toBe(13)
   })
 })
 
@@ -89,9 +89,9 @@ describe('browserControl', () => {
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '   ' } })).browserControl.chromePath).toBeUndefined()
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: 123 } })).browserControl.chromePath).toBeUndefined()
   })
-  it('归一化后 schemaVersion 升为 12', () => {
+  it('归一化后 schemaVersion 升为 13', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(12)
+    expect(loadSettings(f).schemaVersion).toBe(13)
   })
 })
 
@@ -123,8 +123,23 @@ describe('ttsGenie', () => {
     const f = tmpSettingsFile({ ttsGenie: { runtimeInstallPath: 123 } })
     expect(loadSettings(f).ttsGenie).toEqual({ runtimeInstallPath: '' })
   })
-  it('归一化后 schemaVersion 升为 12', () => {
+  it('归一化后 schemaVersion 升为 13', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(12)
+    expect(loadSettings(f).schemaVersion).toBe(13)
+  })
+})
+
+describe('tts.backend', () => {
+  it('缺省 → 默认 gsv-tts-lite', () => {
+    const f = tmpSettingsFile({ schemaVersion: 12, provider: { kind: 'anthropic', model: 'x' } })
+    expect(loadSettings(f).tts.backend).toBe('gsv-tts-lite')
+  })
+  it('保留合法值 genie-tts', () => {
+    const f = tmpSettingsFile({ tts: { backend: 'genie-tts' } })
+    expect(loadSettings(f).tts.backend).toBe('genie-tts')
+  })
+  it('非法值 → 回退默认 gsv-tts-lite', () => {
+    const f = tmpSettingsFile({ tts: { backend: 'not-a-real-backend' } })
+    expect(loadSettings(f).tts.backend).toBe('gsv-tts-lite')
   })
 })

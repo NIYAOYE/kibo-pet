@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend } from '@shared/llm'
 import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -35,6 +35,8 @@ let startedWithNoPet = false
 
 // 语音(TTS)分节控件
 const ttsEnabled = $<HTMLInputElement>('ttsEnabled')
+const ttsBackend = $<HTMLSelectElement>('ttsBackend')
+const ttsBackendUnavailable = $<HTMLElement>('ttsBackendUnavailable')
 const ttsRuntimeStatus = $<HTMLElement>('ttsRuntimeStatus')
 const ttsInstallPath = $<HTMLInputElement>('ttsInstallPath')
 const ttsPickPath = $<HTMLButtonElement>('ttsPickPath')
@@ -57,6 +59,7 @@ const ttsRepetitionPenalty = $<HTMLInputElement>('ttsRepetitionPenalty')
 const ttsIsCutText = $<HTMLInputElement>('ttsIsCutText')
 const ttsCutMinLen = $<HTMLInputElement>('ttsCutMinLen')
 const ttsCutMute = $<HTMLInputElement>('ttsCutMute')
+const ttsAdvancedParams = $<HTMLElement>('ttsAdvancedParams')
 const genieRuntimeStatus = $<HTMLElement>('genieRuntimeStatus')
 const genieInstallPath = $<HTMLInputElement>('genieInstallPath')
 const geniePickPath = $<HTMLButtonElement>('geniePickPath')
@@ -93,6 +96,7 @@ function appendGenieInstallLog(line: string): void {
 function currentTts(): TtsSettings {
   return {
     enabled: ttsEnabled.checked,
+    backend: ttsBackend.value as TtsBackend,
     runtimeInstallPath: ttsInstallPath.value.trim(),
     device: ttsDevice.value as TtsDevice,
     useFlashAttn: ttsUseFlashAttn.checked,
@@ -114,6 +118,7 @@ function currentTts(): TtsSettings {
 
 function applyTts(t: TtsSettings): void {
   ttsEnabled.checked = t.enabled
+  ttsBackend.value = t.backend
   ttsInstallPath.value = t.runtimeInstallPath
   ttsDevice.value = t.device
   ttsUseFlashAttn.checked = t.useFlashAttn
@@ -139,6 +144,23 @@ function currentTtsGenie(): { runtimeInstallPath: string } {
 function applyTtsGenie(t: { runtimeInstallPath: string }): void {
   genieInstallPath.value = t.runtimeInstallPath
 }
+
+let activePetVoice: import('@shared/petPackage').PetVoice | undefined
+
+function refreshBackendAvailability(): void {
+  const v = activePetVoice
+  const supportsGenie = !!v?.onnxModel
+  const supportsGsv = !!(v?.gptModel && v?.sovitsModel)
+  const selected = ttsBackend.value as TtsBackend
+  const unavailable = selected === 'genie-tts' ? !supportsGenie : !supportsGsv
+  ttsBackendUnavailable.style.display = unavailable ? '' : 'none'
+  // 生成参数(speed/noiseScale/temperature/topK/topP/repetitionPenalty/切分相关)只有 GSV-TTS-Lite
+  // 支持——Genie-TTS 的 tts_async() 没有这些旋钮,genie_server.py 收到也会直接忽略,选中 Genie-TTS
+  // 时这块 UI 对用户没有意义,隐藏掉避免误导。
+  ttsAdvancedParams.style.display = selected === 'genie-tts' ? 'none' : ''
+}
+
+ttsBackend.addEventListener('change', refreshBackendAvailability)
 
 ttsPickPath.addEventListener('click', async () => {
   const p = await window.voiceApi.pickInstallPath()
@@ -417,6 +439,8 @@ void (async () => {
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
   applyTtsGenie(snap.settings.ttsGenie)
+  activePetVoice = snap.activePetVoice
+  refreshBackendAvailability()
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
