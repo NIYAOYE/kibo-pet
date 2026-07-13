@@ -775,15 +775,23 @@ export function startShell(): void {
   })
 
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
-  ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
-    settings: loadSettings(settingsFile),
-    hasKey: secrets.hasKey(),
-    hasSearchKey: searchSecrets.hasKey(),
-    hasEmbeddingKey: embeddingSecrets.hasKey(),
-    hasFirecrawlKey: firecrawlSecrets.hasKey(),
-    noPetInstalled: false, // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
-    activePetVoice: (await loadPet(petDir)).manifest.voice
-  }))
+  ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => {
+    let activePetVoice: PetVoice | undefined
+    try {
+      activePetVoice = (await loadPet(petDir)).manifest.voice
+    } catch {
+      activePetVoice = undefined
+    }
+    return {
+      settings: loadSettings(settingsFile),
+      hasKey: secrets.hasKey(),
+      hasSearchKey: searchSecrets.hasKey(),
+      hasEmbeddingKey: embeddingSecrets.hasKey(),
+      hasFirecrawlKey: firecrawlSecrets.hasKey(),
+      noPetInstalled: false, // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
+      activePetVoice
+    }
+  })
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
     const prev = loadSettings(settingsFile)
     const next = normalizeSettings(raw)
