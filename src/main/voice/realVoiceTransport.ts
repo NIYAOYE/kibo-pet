@@ -114,15 +114,26 @@ export function realSpawnGenieProcess(opts: {
  *  人工输入,复用 genie_tts 自己"确认下载"分支里内联调用 download_genie_data() 的逻辑——同样已在
  *  真实环境验证过,能触发完整下载(17 个资源文件)。
  *  PYTHONIOENCODING=utf-8 同样是必须的:genie_tts 下载过程中打印的 emoji 日志在 Windows 默认 GBK
- *  控制台编码下会直接 UnicodeEncodeError 崩溃(也已在真实环境复现验证)。 */
+ *  控制台编码下会直接 UnicodeEncodeError 崩溃(也已在真实环境复现验证)。
+ *  rmSync 预清空同理必须:genie_tts 自己没有断点续传/重试逻辑,一旦上次尝试被中途杀掉(比如用户
+ *  等得不耐烦直接关了 App),GenieData 会以"目录存在但文件不全"的状态永久留在磁盘上——下次重试时
+ *  同一个 `os.path.exists(GENIE_DATA_DIR)` 检查会判真,同样跳过自动下载分支,摔在后面某个
+ *  `ensure_exists()` 上,且每次重试都会 100% 复现同一个报错、永远不会自愈(真实用户报告复现)。
+ *  所以每次进这个函数都要先无条件删干净整个目录,保证 genie_tts 看到的永远是"不存在",触发方式与
+ *  上面全新安装的场景完全一致。
+ *  HF_ENDPOINT 指向 hf-mirror.com:genie_tts 底层用 huggingface_hub 直连 huggingface.co 默认下载,
+ *  国内网络环境下常年缓慢/超时,表现为"卡住不动"(真实用户报告的第一次尝试症状);hf-mirror.com 是
+ *  huggingface_hub 官方支持的镜像重定向机制(标准环境变量,非 hack),与本项目 pip 安装那套镜像源
+ *  思路一致,用于缓解同一类"国内直连太慢"的问题。 */
 export function realDownloadGenieData(opts: {
   pythonExe: string
   scriptPath: string
   installDir: string
 }): Promise<void> {
+  rmSync(join(opts.installDir, 'GenieData'), { recursive: true, force: true })
   const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8' },
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: 'https://hf-mirror.com' },
     stdin: 'y\n'
   })
   return child.waitReady()
