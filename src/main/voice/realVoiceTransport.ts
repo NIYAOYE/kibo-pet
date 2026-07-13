@@ -10,8 +10,8 @@ import { createSseParser, type SseFrame } from './sseParser'
 const execFileP = promisify(execFileCb)
 
 /** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝,错误信息里带上 earlyExitLabel 与 Python 侧的 stderr 尾巴(通常是 traceback)。 */
-function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string): { kill(): void; waitReady(): Promise<void> } {
-  const child = spawn(pythonExe, args, { windowsHide: true })
+function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string, spawnOpts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): { kill(): void; waitReady(): Promise<void> } {
+  const child = spawn(pythonExe, args, { windowsHide: true, ...spawnOpts })
   let stderrTail = ''
   child.stderr?.on('data', (buf: Buffer) => { stderrTail = (stderrTail + buf.toString('utf-8')).slice(-2000) })
 
@@ -76,6 +76,47 @@ export function realSpawnWarmStart(opts: {
   if (opts.useFlashAttn) args.push('--use-flash-attn')
 
   return spawnAndWaitForReady(opts.pythonExe, args, '语音运行时预热探针')
+}
+
+/** spawn genie_server.py 处理真实语音请求,绑定具体宠物的 ONNX 模型与参考音频/文本。
+ *  cwd 必须是安装目录本身:genie_tts 的资源下载/查找默认相对于进程 cwd 拼 "./GenieData",
+ *  同时也显式设 GENIE_DATA_DIR 环境变量指向同一绝对路径,双重保险(见本文件顶部 Task 5 说明)。 */
+export function realSpawnGenieProcess(opts: {
+  pythonExe: string
+  scriptPath: string
+  port: number
+  voice: { onnxModel: string; refAudio: string; refText: string; language: 'zh' | 'ja' | 'en' }
+  installDir: string
+}): { kill(): void; waitReady(): Promise<void> } {
+  const args = [
+    opts.scriptPath,
+    '--port', String(opts.port),
+    '--onnx-model-dir', opts.voice.onnxModel,
+    '--ref-audio', opts.voice.refAudio,
+    '--ref-text-file', opts.voice.refText,
+    '--language', opts.voice.language
+  ]
+  return spawnAndWaitForReady(opts.pythonExe, args, 'Genie-TTS 语音 sidecar', {
+    cwd: opts.installDir,
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData') }
+  })
+}
+
+/** spawn genie_server.py 的 `--download-data` 模式:只触发基础预训练模型下载(首次约 391MB)后退出。
+ *  必须先在 Node 侧创建好 <installDir>/GenieData 目录(即使是空目录)——genie_tts 在 import 时如果
+ *  发现这个目录不存在,会同步跑一个交互式 input() 确认下载,在无 TTY 的子进程里直接抛 EOFError 崩溃。
+ *  提前建好空目录能让它跳过那个 input() 分支,再走 download_genie_data() 把内容真正下载进去。 */
+export function realDownloadGenieData(opts: {
+  pythonExe: string
+  scriptPath: string
+  installDir: string
+}): Promise<void> {
+  mkdirSync(join(opts.installDir, 'GenieData'), { recursive: true })
+  const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
+    cwd: opts.installDir,
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData') }
+  })
+  return child.waitReady()
 }
 
 /** 发 POST + 手动解析 text/event-stream 响应体(纯文本协议,不引入 ws 包)。 */
