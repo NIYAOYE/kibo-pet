@@ -11,6 +11,9 @@ pet.json 的 voice 字段)。
 音频协议:genie_tts.tts_async() 内部(Core/TTSPlayer.py)回调给的是 16-bit PCM(int16)字节,
 32000Hz 单声道——这里转成 float32 再 base64,和 gsv_server.py 吐出的 PcmChunk 协议完全一致,
 渲染层 pcmPlayer.ts 不用区分后端。
+
+语言:/speak 请求体里的 language 字段按次生效(与 gsv_server.py 的 _apply_language() 同一效果),
+而不是只在启动时绑定一次就再也不变——见 do_POST 里对 genie.set_reference_audio() 的重新调用。
 """
 import sys
 import json
@@ -25,6 +28,9 @@ import numpy as np
 
 CHARACTER_NAME = "pet"
 _infer_lock = threading.Lock()
+REF_AUDIO = None
+REF_TEXT = None
+BASE_LANGUAGE = None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -67,7 +73,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
 
         try:
+            requested_lang = body.get("language", "auto")
+            lang = requested_lang if requested_lang in ("zh", "ja", "en") else BASE_LANGUAGE
             with _infer_lock:
+                genie.set_reference_audio(CHARACTER_NAME, REF_AUDIO, REF_TEXT, language=lang)
                 asyncio.run(run())
             self.wfile.write(b"event: done\ndata: {}\n\n")
             self.wfile.flush()
@@ -113,10 +122,13 @@ def main():
     if not (args.port and args.onnx_model_dir and args.ref_audio and args.ref_text_file and args.language):
         parser.error("--port/--onnx-model-dir/--ref-audio/--ref-text-file/--language 均为必填(除非传 --download-data)")
 
+    global REF_AUDIO, REF_TEXT, BASE_LANGUAGE
     genie.load_character(CHARACTER_NAME, args.onnx_model_dir, args.language)
+    REF_AUDIO = args.ref_audio
+    BASE_LANGUAGE = args.language
     with open(args.ref_text_file, "r", encoding="utf-8") as f:
-        ref_text = f.read().strip()
-    genie.set_reference_audio(CHARACTER_NAME, args.ref_audio, ref_text, args.language)
+        REF_TEXT = f.read().strip()
+    genie.set_reference_audio(CHARACTER_NAME, REF_AUDIO, REF_TEXT, BASE_LANGUAGE)
 
     print("READY", flush=True)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
