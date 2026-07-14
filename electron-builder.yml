@@ -13,6 +13,18 @@ files:
   - '!{tsconfig.json,tsconfig.node.json}'
   - '!{README.md,PROGRESS.md,CLAUDE.md,pnpm-lock.yaml}'
   - '!**/*.test.*'
+  # pets/ 只应该通过下面的 extraResources 打包(且只带 .keep 占位,不带任何真实宠物包)。
+  # 这里必须显式排除,否则 files 默认把整个项目目录(含磁盘上未纳入 git 的真实宠物包,
+  # 比如带着几百 MB ONNX/GPT-SoVITS 模型文件的 pets/alice)整个扫进 app.asar。
+  - '!pets/**/*'
+  # 项目根目录下这几个都是磁盘上真机测试留下的临时产物(未纳入 git,不是运行时需要的文件):
+  # GenieData/ 是某次手动跑 genie_server.py 时没指定工作目录、genie_tts 自己按默认相对路径
+  # 下载到这儿的基础模型缓存(几百 MB);Reference/ 是 Alice 语音包的原始参考音频/文本素材;
+  # .cache/ 是某个工具的缓存目录。files 的默认扫描规则本来就会把项目目录下任何没显式排除的
+  # 东西打进 app.asar,这几条和上面的 pets/ 是同一类问题,必须显式排除。
+  - '!GenieData/**/*'
+  - '!Reference/**/*'
+  - '!.cache/**/*'
 asarUnpack:
   - '**/node_modules/playwright-core/**'
 # 运行时资源:主进程用 process.resourcesPath/<name> 读取。
