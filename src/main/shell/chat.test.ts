@@ -42,6 +42,8 @@ function makeStore(
     buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
     wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
     buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
+    beginDesktopControlTurn?: () => number
+    endDesktopControlTurn?: (token: number) => void
   }
 ) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
@@ -67,6 +69,8 @@ function makeStore(
     buildDesktopTools: desktop?.buildDesktopTools,
     wrapDesktopTools: desktop?.wrapDesktopTools,
     buildBrowserTools: desktop?.buildBrowserTools,
+    beginDesktopControlTurn: desktop?.beginDesktopControlTurn,
+    endDesktopControlTurn: desktop?.endDesktopControlTurn,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
@@ -220,6 +224,41 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     expect(seen[0].tools?.map((t) => t.name) ?? []).toContain('take_screenshot')
     expect(wrapped).toBe(true)
     settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 开启且实际用了桌面工具时,beginDesktopControlTurn 在工具执行前调用、endDesktopControlTurn 在整轮结束后用同一个 token 调用', async () => {
+    // 回归用例:安全网(manualOverrideWatch)必须以"一整轮多步任务"为边界启动/停止,
+    // 而不是每次单个工具调用都重启一次——否则两次工具调用之间(模型思考的几秒)完全
+    // 失去监控,人工接管鼠标就无法打断自动化。这里只验证 chat.ts 按轮次边界调用这两个
+    // 钩子、且传给 endDesktopControlTurn 的 token 与 beginDesktopControlTurn 的返回值一致;
+    // token 匹配逻辑本身由 toolIndicatorGate.test.ts 覆盖。
+    settings.desktopControl = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const calls: string[] = []
+    let issuedToken = -1
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')],
+      beginDesktopControlTurn: () => { calls.push('begin'); issuedToken = 42; return issuedToken },
+      endDesktopControlTurn: (token) => { calls.push(`end:${token}`) }
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(calls).toEqual(['begin', 'end:42'])
+    settings.desktopControl = { enabled: false } // 复位
+  })
+
+  it('desktopControl 关闭时不会调用 beginDesktopControlTurn/endDesktopControlTurn', async () => {
+    settings.desktopControl = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const calls: string[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      buildDesktopTools: () => [fakeDesktopTool('take_screenshot')],
+      beginDesktopControlTurn: () => { calls.push('begin'); return 1 },
+      endDesktopControlTurn: () => { calls.push('end') }
+    })
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(calls).toEqual([])
   })
 
   it('desktopControl 开启时轮数上限提升到 20,超过 6 轮的工具循环仍能继续', async () => {

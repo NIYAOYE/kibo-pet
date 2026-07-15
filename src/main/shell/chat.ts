@@ -65,6 +65,10 @@ export function createChatStore(opts: {
   buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
   /** 给桌面控制工具套上指示器显隐等生命周期钩子;省略则原样返回 */
   wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
+  /** 桌面控制工具挂载时(每次 handleSend)调用一次,取得本轮 token;与 endDesktopControlTurn 配对包住整轮多步任务 */
+  beginDesktopControlTurn?: () => number
+  /** 整轮(含所有工具调用轮次)结束时调用一次,无论成功/取消/出错 */
+  endDesktopControlTurn?: (token: number) => void
   /** 浏览器自动化工具的真实构造器;未注入则该能力永不出现,与 settings 开关无关 */
   buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
   /** 测试注入缝;生产默认 createProvider */
@@ -211,9 +215,14 @@ export function createChatStore(opts: {
         const fc = createFirecrawlClient({ getKey: opts.getFirecrawlKey, baseURL: settings.firecrawl.baseURL })
         tools.push(createReadUrlTool(fc), createExtractFromUrlTool(fc))
       }
+      // 桌面控制人工接管安全网(manualOverrideWatch)以"整轮多步任务"为边界启动/停止,
+      // 而不是每次单个工具调用——否则两次工具调用之间(模型思考的几秒)会失去监控。
+      // token 非 null 才需要在下面收尾时调用 endDesktopControlTurn,与 beginDesktopControlTurn 配对。
+      let desktopControlTurnToken: number | null = null
       if (settings.desktopControl.enabled && opts.buildDesktopTools) {
         const wrap = opts.wrapDesktopTools ?? ((t: typeof tools) => t)
         tools.push(...wrap(opts.buildDesktopTools()))
+        desktopControlTurnToken = opts.beginDesktopControlTurn?.() ?? null
       }
       if (settings.browserControl.enabled && opts.buildBrowserTools) {
         tools.push(...opts.buildBrowserTools())
@@ -227,72 +236,78 @@ export function createChatStore(opts: {
         ? createSentenceSplitter()
         : createSmartSplitter()
       void (async () => {
-        // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
-        const recalled = await opts.memory.recall(text, ctrl.signal)
-        if (ctrl.signal.aborted) return
-        const { system, messages } = assemblePrompt(
-          persona,
-          opts.memory.messages(),
-          opts.skills.list(),
-          recalled,
-          Date.now(),
-          tools.length > 0
-        )
-        // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
-        const lastUser = messages[messages.length - 1]
-        if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
-        const needsBiggerBudget = settings.desktopControl.enabled || settings.browserControl.enabled
-        // 浏览器任务比桌面点击任务更容易多耗轮次(每次页面跳转/被弹窗挡住都要多试几次才能
-        // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
-        // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
-        const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
-        const res = await runAgent({
-          provider,
-          system,
-          messages,
-          registry,
-          maxToolRounds,
-          maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
-          timeoutMs: TIMEOUT_MS,
-          signal: ctrl.signal,
-          onText: (t) => {
-            acc += t
-            opts.pushStream(t)
-            if (opts.voice && opts.voice.getSettings().playbackTrigger === 'stream') {
-              for (const sentence of sentenceSplitter.push(t)) opts.voice.speak(sentence)
-            }
-          },
-          onStatus: (t) => opts.pushStatus(t)
-        })
-        if (inFlight === ctrl) inFlight = null
-        if (res.canceled) return // 静默丢弃
-        // 该回合用过的工具名落进 pet 消息(工具往返本身不落盘,这是跨回合感知的唯一线索)
-        const actions = res.toolsUsed && res.toolsUsed.length > 0 ? { actions: res.toolsUsed } : {}
-        if (res.error) {
-          // 有部分文本(如轮数上限)时先落 transcript,再报错
-          if (acc) opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
-          opts.pushUpdate(opts.memory.messages())
-          opts.pushError(res.error)
-          opts.emitPetEvent('replyDone')
-        } else {
-          opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
-          opts.pushUpdate(opts.memory.messages())
-          opts.pushDone()
-          opts.emitPetEvent('replyDone')
-          if (opts.voice) {
-            const vs = opts.voice.getSettings()
-            if (vs.playbackTrigger === 'batch') opts.voice.speak(acc)
-            else {
-              const rest = sentenceSplitter.flush()
-              if (rest) opts.voice.speak(rest)
+        try {
+          // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
+          const recalled = await opts.memory.recall(text, ctrl.signal)
+          if (ctrl.signal.aborted) return
+          const { system, messages } = assemblePrompt(
+            persona,
+            opts.memory.messages(),
+            opts.skills.list(),
+            recalled,
+            Date.now(),
+            tools.length > 0
+          )
+          // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
+          const lastUser = messages[messages.length - 1]
+          if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
+          const needsBiggerBudget = settings.desktopControl.enabled || settings.browserControl.enabled
+          // 浏览器任务比桌面点击任务更容易多耗轮次(每次页面跳转/被弹窗挡住都要多试几次才能
+          // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
+          // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。
+          const maxToolRounds = settings.browserControl.enabled ? 40 : settings.desktopControl.enabled ? 20 : undefined
+          const res = await runAgent({
+            provider,
+            system,
+            messages,
+            registry,
+            maxToolRounds,
+            maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
+            timeoutMs: TIMEOUT_MS,
+            signal: ctrl.signal,
+            onText: (t) => {
+              acc += t
+              opts.pushStream(t)
+              if (opts.voice && opts.voice.getSettings().playbackTrigger === 'stream') {
+                for (const sentence of sentenceSplitter.push(t)) opts.voice.speak(sentence)
+              }
+            },
+            onStatus: (t) => opts.pushStatus(t)
+          })
+          if (inFlight === ctrl) inFlight = null
+          if (res.canceled) return // 静默丢弃
+          // 该回合用过的工具名落进 pet 消息(工具往返本身不落盘,这是跨回合感知的唯一线索)
+          const actions = res.toolsUsed && res.toolsUsed.length > 0 ? { actions: res.toolsUsed } : {}
+          if (res.error) {
+            // 有部分文本(如轮数上限)时先落 transcript,再报错
+            if (acc) opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
+            opts.pushUpdate(opts.memory.messages())
+            opts.pushError(res.error)
+            opts.emitPetEvent('replyDone')
+          } else {
+            opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
+            opts.pushUpdate(opts.memory.messages())
+            opts.pushDone()
+            opts.emitPetEvent('replyDone')
+            if (opts.voice) {
+              const vs = opts.voice.getSettings()
+              if (vs.playbackTrigger === 'batch') opts.voice.speak(acc)
+              else {
+                const rest = sentenceSplitter.flush()
+                if (rest) opts.voice.speak(rest)
+              }
             }
           }
+          // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
+          opts.memory.maybeSummarize(() => {
+            const k = opts.getKey()
+            return k ? make(settings.provider, k) : null
+          })
+        } finally {
+          // 无论正常结束/取消/出错,整轮任务收尾时都要关闭人工接管安全网——
+          // 与上面 beginDesktopControlTurn 配对,token 校验见 toolIndicatorGate。
+          if (desktopControlTurnToken !== null) opts.endDesktopControlTurn?.(desktopControlTurnToken)
         }
-        // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
-        opts.memory.maybeSummarize(() => {
-          const k = opts.getKey()
-          return k ? make(settings.provider, k) : null
-        })
       })()
     }
   }

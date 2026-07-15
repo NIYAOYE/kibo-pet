@@ -350,9 +350,11 @@ export function startShell(): void {
   let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
   const indicatorGate = createIndicatorGate(
     () => {
-      // 每轮桌面控制开始时清空上一轮残留的 lastAiPos:否则 manualOverrideWatch 首个 tick 会拿
-      // 上一轮点击坐标去比对本轮真实光标——用户在两轮之间正常移动鼠标就会被误判为"人工接管",
-      // 提前 cancel() 本轮尚未开始点击的自动化(fail-safe 但会打断用户,见 review finding)。
+      // show 现在只在"一整轮多步任务"里第一次实际调用桌面工具时触发一次(见 toolIndicatorGate
+      // 的 beginTurn/endTurn),而不是每个工具调用都触发——所以这里清空的是上一轮已经结束的
+      // 残留 lastAiPos,不会清掉同一轮内正在进行中的自动化状态。若不清空,上一轮的旧点击坐标会
+      // 被 manualOverrideWatch 拿来跟本轮真实光标比对,用户在两轮之间正常移动鼠标就会被误判为
+      // "人工接管",提前 cancel() 本轮尚未开始点击的自动化(fail-safe 但会打断用户)。
       lastAiPos.clear()
       controlIndicator?.show()
       manualOverrideWatch = startManualOverrideWatch({
@@ -532,6 +534,8 @@ export function startShell(): void {
       captureScreen: () => captureFullScreen(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
     }),
     wrapDesktopTools: (tools) => wrapToolsWithGate(tools, indicatorGate),
+    beginDesktopControlTurn: () => indicatorGate.beginTurn(),
+    endDesktopControlTurn: (token) => indicatorGate.endTurn(token),
     buildBrowserTools: () => createBrowserTools({ control: browserControl }),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },

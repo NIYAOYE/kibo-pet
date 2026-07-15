@@ -5,6 +5,30 @@ import {
   buildFocusWindowScript, parseFocusWindowOutput
 } from './win32Bridge'
 
+describe('stdout 编码(真机复现:list_windows/focus_window 返回的中文窗口标题在终端里显示成"锟斤拷")', () => {
+  // 真机诊断实测复现并用 Node child_process 空跑验证过根因:execFile 调用的是 Windows
+  // PowerShell 5.1(powershell.exe,不是 pwsh.exe),它给"重定向到管道"的 stdout 默认按
+  // 系统 ANSI/OEM 代码页(中文 Windows 上是 GBK)编码,而 Node 端按 UTF-8 解码 stdout——
+  // 两端编码不一致,GBK 字节流被当 UTF-8 解码时非法序列变成 U+FFFD,连续出现就是经典的
+  // "锟斤拷" 乱码。空跑复现:Write-Output 中文文本→Node 收到的是 "��..."；
+  // 修复方式(同样空跑验证过有效):脚本一开头设置 [Console]::OutputEncoding = UTF8,
+  // 让 PowerShell 按 UTF-8 写 stdout,与 Node 默认解码方式对上。
+  it.each([
+    ['buildClickScript', () => buildClickScript(1, 1, 'left', false)],
+    ['buildTypeTextScript', () => buildTypeTextScript('x')],
+    ['buildPressKeyScript', () => buildPressKeyScript([0x11])],
+    ['buildListWindowsScript', () => buildListWindowsScript()],
+    ['buildFocusWindowScript', () => buildFocusWindowScript('x')]
+  ])('%s 的脚本在任何 Write-Output 之前设置 Console.OutputEncoding 为 UTF8', (_name, build) => {
+    const s = build()
+    const encodingIdx = s.indexOf('[Console]::OutputEncoding')
+    const firstWriteIdx = s.indexOf('Write-Output')
+    expect(encodingIdx).toBeGreaterThan(-1)
+    expect(s.slice(encodingIdx, encodingIdx + 80)).toContain('UTF8')
+    expect(encodingIdx).toBeLessThan(firstWriteIdx)
+  })
+})
+
 describe('buildClickScript', () => {
   it('左键单击:含 SetCursorPos 与一次 down/up(0x0002/0x0004)', () => {
     const s = buildClickScript(100, 200, 'left', false)

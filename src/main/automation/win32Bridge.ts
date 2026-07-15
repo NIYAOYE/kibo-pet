@@ -24,9 +24,16 @@
  *    窗口在 API 意义上"前台"了,画面上却仍然只是任务栏里的图标,用户完全看不到。
  *    必须先 `ShowWindow(hwnd, SW_RESTORE)`(把窗口从最小化状态还原)再调
  *    `SetForegroundWindow`,顺序不能反。
+ * 4. execFile 起的是 Windows PowerShell 5.1(powershell.exe,不是 pwsh.exe)。它给
+ *    "重定向到管道"的 stdout 默认按系统 ANSI/OEM 代码页编码(中文 Windows 上是
+ *    GBK),而 Node 端 execFile 默认按 UTF-8 解码 stdout——两端编码不一致,含中文的
+ *    输出(list_windows/focus_window 的窗口标题)在终端里会显示成经典的"锟斤拷"乱码。
+ *    真机复现 + Node 空跑验证过:脚本一开头设置 Console.OutputEncoding 为 UTF8 就能
+ *    让 PowerShell 按 UTF-8 写 stdout,与 Node 默认解码方式对上。
  */
 
 const NATIVE_HEADER = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
