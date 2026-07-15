@@ -9,6 +9,11 @@ files:
   - '!docs'
   - '!tools'
   - '!.superpowers'
+  # .claude/ 是 Claude Code 的工具目录,里面可能有手动开的 git worktree(比如
+  # .claude/worktrees/<branch>/),worktree 内会有真机测试导入的完整宠物包
+  # (带 GPT-SoVITS/ONNX 语音模型,几百 MB 级)。根目录的 pets/**/* 排除规则管不到
+  # 这层嵌套路径,files 默认扫描会把整个 .claude 树打进 app.asar。
+  - '!.claude/**/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{tsconfig.json,tsconfig.node.json}'
   - '!{README.md,PROGRESS.md,CLAUDE.md,pnpm-lock.yaml}'
