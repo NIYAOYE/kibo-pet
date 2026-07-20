@@ -108,3 +108,7 @@ export function validateBubbleHeight(v: unknown): number | null {
 export function validateCollapsedHeight(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 400 ? v : null
 }
+
+export function validatePetId(v: unknown): string | null {
+  return typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v) ? v : null
+}

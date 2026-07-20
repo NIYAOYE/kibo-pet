@@ -6,7 +6,8 @@ import {
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
   type BubbleApi, type BubblePlace, type ContextSignalKind,
   type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
-  type GenieVoiceApi, type GenieInstallProgress
+  type GenieVoiceApi, type GenieInstallProgress,
+  type PetChatListItem, type PetSwitchedPayload
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -27,7 +28,11 @@ const petApi: PetApi = {
     ipcRenderer.removeAllListeners(IPC.CONTEXT_SIGNAL)
     ipcRenderer.on(IPC.CONTEXT_SIGNAL, (_e, kind: ContextSignalKind) => cb(kind))
   },
-  quit: (): void => ipcRenderer.send(IPC.QUIT)
+  quit: (): void => ipcRenderer.send(IPC.QUIT),
+  onPetChanged: (cb: () => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_CHANGED)
+    ipcRenderer.on(IPC.PET_CHANGED, () => cb())
+  }
 }
 
 const chatApi: ChatApi = {
@@ -56,7 +61,13 @@ const chatApi: ChatApi = {
   setSize: (collapsed: boolean): void => ipcRenderer.send(IPC.DIALOG_SET_SIZE, collapsed),
   reportCollapsedHeight: (height: number): void => ipcRenderer.send(IPC.DIALOG_REPORT_COLLAPSED_HEIGHT, height),
   close: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),
-  openSettings: (): void => ipcRenderer.send(IPC.OPEN_SETTINGS)
+  openSettings: (): void => ipcRenderer.send(IPC.OPEN_SETTINGS),
+  listPetsForChat: (): Promise<PetChatListItem[]> => ipcRenderer.invoke(IPC.CHAT_LIST_PETS),
+  switchPet: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.SWITCH_PET, id),
+  onSwitched: (cb: (p: PetSwitchedPayload) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_SWITCHED)
+    ipcRenderer.on(IPC.PET_SWITCHED, (_e, p: PetSwitchedPayload) => cb(p))
+  }
 }
 
 const settingsApi: SettingsApi = {

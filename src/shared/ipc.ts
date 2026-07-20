@@ -77,7 +77,11 @@ export const IPC = {
   GENIE_START_INSTALL: 'genie:start-install',
   GENIE_INSTALL_PROGRESS: 'genie:install-progress',
   GENIE_IMPORT_ARCHIVE: 'genie:import-archive',
-  GENIE_EXPORT_ARCHIVE: 'genie:export-archive'
+  GENIE_EXPORT_ARCHIVE: 'genie:export-archive',
+  CHAT_LIST_PETS: 'chat:list-pets',
+  SWITCH_PET: 'chat:switch-pet',
+  PET_SWITCHED: 'chat:pet-switched',
+  PET_CHANGED: 'pet:changed'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
@@ -139,6 +143,8 @@ export interface PetApi {
   /** 主进程情境信号(AFK 离开/久坐提醒):main→renderer 推送 */
   onContextSignal(cb: (kind: ContextSignalKind) => void): void
   quit(): void
+  /** 主进程通知宠物已换,渲染层重载精灵(重新 getPet + 重建 SpritePlayer) */
+  onPetChanged(cb: () => void): void
 }
 
 export interface ChatApi {
@@ -154,6 +160,12 @@ export interface ChatApi {
   reportCollapsedHeight(height: number): void
   close(): void
   openSettings(): void
+  /** 展开态左栏用:头像 + 名字 + 末条消息预览 + 活跃标记(与 SettingsApi.listPets 返回形不同,专供聊天面板) */
+  listPetsForChat(): Promise<PetChatListItem[]>
+  /** 点头像热切换宠物;返回是否切换成功 */
+  switchPet(id: string): Promise<boolean>
+  /** 切换完成后主进程通知,渲染层据此刷新右栏头部 + 左栏高亮 */
+  onSwitched(cb: (p: PetSwitchedPayload) => void): void
 }
 
 export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean; activePetVoice: PetVoice | undefined }
@@ -164,6 +176,16 @@ export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-sprites
 export type ImportResult =
   | { ok: true; pet: PetSummary }
   | { ok: false; reason: ImportReason; message: string }
+
+export interface PetChatListItem {
+  id: string
+  displayName: string
+  avatarDataUrl: string        // 主进程裁好的小头像;裁不出为 '',渲染层退回色块占位
+  lastMessage?: string
+  lastMessageTime?: number
+  active: boolean
+}
+export interface PetSwitchedPayload { petId: string; displayName: string }
 
 export interface SettingsApi {
   getSettings(): Promise<SettingsSnapshot>

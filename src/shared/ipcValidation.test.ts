@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg,
-  validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight, validateCollapsedHeight
+  validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight, validateCollapsedHeight,
+  validatePetId
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -175,5 +176,19 @@ describe('validateCollapsedHeight', () => {
     expect(validateCollapsedHeight(401)).toBeNull()
     expect(validateCollapsedHeight('52')).toBeNull()
     expect(validateCollapsedHeight(null)).toBeNull()
+  })
+})
+
+describe('validatePetId', () => {
+  it('接受合法 id(字母数字下划线连字符)', () => {
+    expect(validatePetId('luluka')).toBe('luluka')
+    expect(validatePetId('pet_01-a')).toBe('pet_01-a')
+  })
+  it('拒绝空/含分隔符/路径穿越/非字符串', () => {
+    expect(validatePetId('')).toBeNull()
+    expect(validatePetId('a/b')).toBeNull()
+    expect(validatePetId('../x')).toBeNull()
+    expect(validatePetId('a.b')).toBeNull()
+    expect(validatePetId(123)).toBeNull()
   })
 })
