@@ -161,7 +161,7 @@ Grep 'showOpenDialog'  src/
 | v39 | desktopCapturer macOS 权限 | 确认 no-op(macOS-only,本项目 Windows-only) |
 | v40 | 渲染层 Electron `clipboard` 弃用 | 确认 no-op(渲染层用 DOM `clipboardData`;Electron `clipboard` 只在 `src/main/shell/index.ts` 主进程使用) |
 | v42 | electron 不再 postinstall 下载 | Task 2 已记录(懒下载改为 `require('electron')` 首次触发),非本 Task 范围 |
-| v43 | dialog 默认目录改 Downloads | **确认命中**(7 处 `showOpenDialog` 调用均无 `defaultPath`),但为非破坏性运行时 UX 变化,不改代码,留 Task 5 真机验收 |
+| v43 | dialog 默认目录改 Downloads | **确认命中**(7 处 `showOpenDialog` 调用均无 `defaultPath`;另有 `src/main/shell/index.ts:936,1007` 两处 `showSaveDialog` 传的是纯文件名〔`'voice-runtime.zip'`/`'genie-voice-runtime.zip'`〕、无目录部分,同样受该变更影响——最终整支审查补充发现),但为非破坏性运行时 UX 变化,不改代码,留 Task 5 真机验收 |
 | v43 | `NativeImage.toBitmap()` 归一化 sRGB | 确认 no-op(`toBitmap` 零命中) |
 
 ### 结论
@@ -222,7 +222,7 @@ pnpm build        → 三包(main/preload/renderer)均构建成功
 - 浏览器控制(Playwright 隔离 profile)
 - 语音 Sidecar 实际发声 + 切宠物端口释放重启
 - 图像往返(承 Task 3):png/jpg 识图、宠物头像、托盘图标
-- **v43 dialog 目录变化**(承 Task 3 发现):选图/导入宠物文件夹/选语音安装路径默认目录变 Downloads——确认可接受
+- **v43 dialog 目录变化**(承 Task 3 发现,最终审查补充):选图/导入宠物文件夹/选语音安装路径默认目录变 Downloads(7 处 `showOpenDialog`);语音运行时导出压缩包的另外 2 处 `showSaveDialog`(仅传文件名无目录)同样受影响——确认可接受
 - **GPU 两模式回归**:Phase 0(`gpuBootDecision`)尚未合并进 main,本阶段仅验证了默认软件渲染模式的冒烟启动;硬件加速实验开关模式的回归留待 Phase 0 合并后补做(按 plan Task 5 Step 3 fallback)
 
 ## Task 6:打包回归(2026-07-20)
