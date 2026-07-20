@@ -171,3 +171,56 @@ Grep 'showOpenDialog'  src/
 Step 3(imagePrep/petAvatar 图像往返健全性)因二者 import electron 无法被 Vitest 直接跑,按既定约定留待 Task 5 真机手动验收:识图选 png + jpg 能正常降采样识别、宠物头像在聊天左栏正常显示、托盘图标正常。
 
 本 Task 未运行 `pnpm typecheck`/`pnpm test`/`pnpm build`(brief 允许:无代码改动时无需重新验证;Task 2 已验证过 typecheck/build 绿,Task 4 会跑一次完整 789 用例回归)。
+
+## Task 4:自动化回归复跑(2026-07-20)
+
+在 Task 3 无代码改动的 HEAD(`12c8504`)上按 brief 逐条重跑:
+
+```
+pnpm test        → 89 files / 789 tests 全部通过,与基线 N=789 完全一致,0 新增失败
+pnpm typecheck    → 通过,无错误
+pnpm build        → 三包(main/preload/renderer)均构建成功
+```
+
+零改动、无需提交(与升级前基线逐条对齐,Electron 31→43 升级对现有 789 个测试零回归)。
+
+## Task 5:开发态手动回归矩阵(2026-07-20)
+
+本 Task 绝大部分要求真实 Windows 显示器/键鼠交互(拖拽跟手、DPI、多屏、TTS 实际发声等),按项目既定惯例由用户在真机完成——下方"待用户验收清单"列出全部未验证项。
+
+**但本次 controller 探测发现,当前 agent 会话环境与以往记录的"全程无显示 sandbox"不同**:`Session: 1`(非 Session-0 服务会话)、`[Environment]::UserInteractive = True`。据此直接执行了一次可行的自动化子集——**冒烟启动验证**(区别于完整肉眼 GUI 走查):
+
+```
+1. unset ELECTRON_RUN_AS_NODE(shell 里此变量默认被设为 1,是 CLAUDE.md 记录的已知坑;
+   不 unset 会导致 Electron 以纯 Node 跑并崩溃)
+2. pnpm preview 后台启动
+3. 8 秒后:tasklist 确认 7 个 electron.exe 进程存活(browser+GPU+renderer+utility 的正常
+   Electron 多进程模型,内存占用量级合理,45MB~167MB/进程)
+4. PowerShell Get-Process 确认存在一个真实 MainWindowTitle="kibo-pet" 的窗口
+   (证明不只是后台进程存活,而是真的创建并渲染了一个 OS 窗口——这是 typecheck/build
+   通过之外的额外证据,证明升级后应用能真正跑起来而非仅编译通过)
+5. 又等 4 秒(共 12 秒存活),复查窗口仍在、日志无新增错误
+6. 检查 userData 目录(`%LOCALAPPDATA%\Kibo\` / `%APPDATA%\Pet-Agent\`)均不存在
+   ——即没有触发 `src/main/index.ts` 的 uncaughtException/startup-crash.log 兜底写盘,
+   与"零崩溃"一致
+7. taskkill //F //IM electron.exe 干净终止全部 7 个进程,复查确认无残留
+```
+
+**结论**:Electron 31→43 升级后应用真实启动、创建窗口、运行 12 秒无崩溃、无错误日志——这是比自动化测试更强的运行时证据,但**不等于**完整 GUI 验收(未做任何鼠标/键盘交互,未肉眼确认宠物精灵渲染正确、透明背景生效、点击穿透生效等)。
+
+### 待用户验收清单(仍需真机人工完成,未被上述冒烟测试覆盖)
+
+- 透明置顶窗渲染 luluka + idle 动画(冒烟测试只confirm窗口存在,未确认内容正确渲染)
+- 点击穿透:透明区域点击穿透、宠物像素上不穿透
+- 拖拽移窗:跟手、跨屏/不同 DPI 不漂移
+- 托盘:右键菜单、退出;任务栏不显图标
+- 全局热键呼出/关闭对话框
+- 设置窗、聊天流式回复、Markdown 渲染、来源链接外开
+- 气泡窗跟随 + 自适应高度
+- 待办面板增删改 + 到点提醒
+- 截屏 + 桌面控制(click_at/type_text/focus_window 实际生效、提示条显示、人工接管中断)
+- 浏览器控制(Playwright 隔离 profile)
+- 语音 Sidecar 实际发声 + 切宠物端口释放重启
+- 图像往返(承 Task 3):png/jpg 识图、宠物头像、托盘图标
+- **v43 dialog 目录变化**(承 Task 3 发现):选图/导入宠物文件夹/选语音安装路径默认目录变 Downloads——确认可接受
+- **GPU 两模式回归**:Phase 0(`gpuBootDecision`)尚未合并进 main,本阶段仅验证了默认软件渲染模式的冒烟启动;硬件加速实验开关模式的回归留待 Phase 0 合并后补做(按 plan Task 5 Step 3 fallback)
