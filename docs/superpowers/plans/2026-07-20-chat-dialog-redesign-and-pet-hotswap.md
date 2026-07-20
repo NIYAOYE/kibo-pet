@@ -296,9 +296,7 @@ export interface PetSessionDeps {
   bundledPetsDir: string
   legacyMemoryDir: string
   defaultPetId: string
-  settingsFile: string
   loadSettings: () => AppSettings
-  saveSettings: (s: AppSettings) => void
   getKey: () => string | null
   getSearchKey: () => string | null
   getFirecrawlKey: () => string | null
@@ -475,9 +473,8 @@ async function stopVoice(): Promise<void> {
 ```ts
 const sessionDeps: PetSessionDeps = {
   userData, bundledPetsDir: petCatalogDirs.bundledPetsDir, legacyMemoryDir,
-  defaultPetId, settingsFile,
+  defaultPetId,
   loadSettings: () => loadSettings(settingsFile),
-  saveSettings: (s) => saveSettings(settingsFile, s),
   getKey: () => secrets.getKey(),
   getSearchKey: () => searchSecrets.getKey(),
   getFirecrawlKey: () => firecrawlSecrets.getKey(),
