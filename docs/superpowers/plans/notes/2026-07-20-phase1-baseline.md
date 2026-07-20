@@ -224,3 +224,26 @@ pnpm build        → 三包(main/preload/renderer)均构建成功
 - 图像往返(承 Task 3):png/jpg 识图、宠物头像、托盘图标
 - **v43 dialog 目录变化**(承 Task 3 发现):选图/导入宠物文件夹/选语音安装路径默认目录变 Downloads——确认可接受
 - **GPU 两模式回归**:Phase 0(`gpuBootDecision`)尚未合并进 main,本阶段仅验证了默认软件渲染模式的冒烟启动;硬件加速实验开关模式的回归留待 Phase 0 合并后补做(按 plan Task 5 Step 3 fallback)
+
+## Task 6:打包回归(2026-07-20)
+
+按 plan 明确标注"必须真机执行"的边界:controller 只做**不改变用户系统状态的部分**(出包,产物落在项目 `dist/` 目录),不执行**会修改用户系统的部分**(双击安装、写 `%APPDATA%`/注册表)——安装属于需要用户授权的系统变更操作,不在 agent 自主执行范围内。
+
+```
+pnpm dist
+```
+
+结果:**一次性成功**,未触发 README 记录的 `winCodeSign` darwin 符号链接权限坑(该坑此前在 electron-builder ^24.13.3 上稳定复现;本次 electron-builder 26.15.3 全程无需三选一绕过手段,原因未深究,留意后续如复现再按 README 处理)。
+
+```
+dist/Kibo Setup 0.0.1.exe            103,160,993 bytes
+dist/Kibo Setup 0.0.1.exe.blockmap       110,520 bytes
+```
+
+资源核查:`dist/win-unpacked/resources/resources/voice/{genie_server.py,gsv_server.py}` 均已正确打包进产物(此前 Genie-TTS 功能最终审查曾把"打包版是否带上这两个脚本"列为待验收项,现已在 Electron 43 产物上确认存在)。
+
+### 待用户验收清单(Task 6 剩余部分,必须真机)
+
+- 在 C: 和 D: 各装一次 `Kibo Setup 0.0.1.exe` 并运行,确认:宠物渲染/托盘/对话/记忆落盘(`%APPDATA%\Pet-Agent\...`)/编辑 persona 生效/拷走宠物文件夹可移植/卸载不丢数据
+- **尤其确认不复现 MVP-06 的打包秒退**(GPU 子进程 `0xC0000135` 崩溃根因,当时靠 `app.disableHardwareAcceleration()` 修复;新 Electron/Chromium 的 GPU 子进程行为可能与 31 不同,若崩溃按 WER LocalDumps → minidump 解析法重新诊断)
+- E: 盘符(非标准 ACL)已知会触发该崩溃,用户已接受装 C:/D:,本阶段不特别验证 E:
