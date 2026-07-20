@@ -74,6 +74,11 @@ pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup 
    "$SEVENZ" x "$CACHE"/*.7z -o"$CACHE/winCodeSign-2.6.0" -xr'!'darwin -y
    ```
 
+**`TypeError: Yallist is not a constructor`**（`node_modules/hosted-git-info/node_modules/lru-cache/index.js` 内报出，`electron-builder` 26.x 起出现）：本项目 `.npmrc` 用 `node-linker=hoisted`，把所有依赖拍平到顶层 `node_modules`。`electron-builder@26.x` 新引入的 `@electron/rebuild → node-gyp → tar@7.x` 链需要 `yallist@5.x`（ESM 重写版，无旧版 CommonJS 构造函数导出），会顶掉 `hosted-git-info` 的嵌套 `lru-cache@6.x` 原本需要的 `yallist@^4.0.0`（该嵌套包自身没有私有拷贝，落到顶层不兼容的 5.x 版本上报错）。此现象仅在 `node_modules` 由多次增量 `pnpm install` 累积而来时出现，全新 `pnpm install` 不会触发。**解决**：删除 `node_modules` 后重新安装，让 pnpm 一次性重算依赖拍平结果：
+```bash
+rm -rf node_modules && pnpm install
+```
+
 </details>
 
 ## 宠物包：可移植、可编辑、可换
