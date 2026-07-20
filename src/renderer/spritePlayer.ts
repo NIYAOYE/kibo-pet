@@ -31,6 +31,15 @@ export class SpritePlayer {
     if (this.timer !== null) { clearTimeout(this.timer); this.timer = null }
   }
 
+  /** 热切换宠物:换图集与 manifest,复位帧/状态,由下一次 play() 重新起播。 */
+  reload(sheet: HTMLImageElement, manifest: PetManifest): void {
+    this.stop()
+    this.sheet = sheet
+    this.manifest = manifest
+    this.frame = 0
+    this.state = ''
+  }
+
   private tick(anim: PetAnimation): void {
     this.draw(anim, this.frame)
     const delay = frameDurationMs(anim, this.frame)

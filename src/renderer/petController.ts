@@ -36,6 +36,17 @@ export class PetController {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
   }
 
+  /** 热切换宠物:重新拉取宠物数据、换掉 SpritePlayer 的图集/manifest,大脑复位到 idle。 */
+  async reload(): Promise<void> {
+    const { manifest, spritesheetDataUrl } = await window.petApi.getPet()
+    const sheet = new Image()
+    sheet.src = spritesheetDataUrl
+    await sheet.decode()
+    this.player.reload(sheet, manifest)
+    this.ctx = initBrain()
+    this.currentAnim = ''
+  }
+
   send(event: PetEvent): void { this.pending.push(event) }
 
   /** 双击=戳：下一 tick 喂给反应规划器 */

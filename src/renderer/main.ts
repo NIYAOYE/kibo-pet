@@ -23,6 +23,9 @@ async function boot(): Promise<void> {
     if (event === 'messageSent') pcmPlayer.stop()
   })
   window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
+  window.petApi.onPetChanged(() => {
+    void controller.reload().catch((err) => console.warn('pet reload failed', err))
+  })
   window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
   window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())

@@ -42,7 +42,7 @@ import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createBubbleController } from './bubbleWindow'
 import { createTodoWindow } from './todoWindow'
-import { createPetSession, type PetSessionDeps } from './petSession'
+import { createPetSession, type PetSession, type PetSessionDeps } from './petSession'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { loadSettings, saveSettings, normalizeSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
@@ -65,7 +65,7 @@ import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
-  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight
+  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight, validatePetId
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
@@ -484,6 +484,42 @@ export function startShell(): void {
       },
       avatarOf: (petId) => petAvatarCache.avatarOf(resolvePetDir(petId, petCatalogDirs), petId)
     })
+  })
+
+  async function switchPet(petId: string): Promise<boolean> {
+    if (petId === session.petId) return false
+    if (!listPets(petCatalogDirs).some((p) => p.id === petId)) {
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '找不到这只宠物')
+      return false
+    }
+    // 先建后弃:新会话构建成功才 dispose 旧的,失败则旧会话原封不动
+    let next: PetSession
+    try {
+      next = createPetSession(petId, sessionDeps)
+    } catch (e) {
+      console.warn('[switchPet] 新会话构建失败,保留当前宠物', e)
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '切换失败,已保留当前宠物')
+      return false
+    }
+    await session.dispose()          // 停旧语音(释放端口)、停 appFocus、取消在途
+    session = next
+    session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
+    saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
+    petWin.webContents.send(IPC.PET_CHANGED)     // 渲染层重载精灵
+    dialog.pushUpdate(session.messages())        // 右栏历史热切换
+    const loaded = await loadPet(session.petDir).catch(() => null)
+    dialog.window()?.webContents.send(IPC.PET_SWITCHED, {
+      petId, displayName: loaded?.manifest.displayName ?? petId
+    })
+    // 清跨宠物残留气泡
+    clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide()
+    return true
+  }
+
+  ipcMain.handle(IPC.SWITCH_PET, async (_e, raw): Promise<boolean> => {
+    const id = validatePetId(raw)
+    if (!id) return false
+    return switchPet(id)
   })
 
   // controlIndicator 现在读 session.petDir(与旧 petDir 等价);仍是上面声明的全局单例。
