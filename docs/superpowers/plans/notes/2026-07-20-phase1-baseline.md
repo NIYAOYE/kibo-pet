@@ -90,3 +90,84 @@ pnpm typecheck   → 通过,无错误
 pnpm build       → 三包(main/preload/renderer)均构建成功(vite v6.4.3)
 pnpm test        → 本 Task 未运行(不在 brief Step4 范围,回归修复留给 Task 4)
 ```
+
+## Task 3:breaking-change 审计(2026-07-20)
+
+在 Electron 43.1.1 已装好(Task 2)的状态下,对 brief 审计表逐条 grep 复核(而非照抄 plan 预判)。全部命令针对 `src/` 目录运行,结果如下。
+
+### Step 1 grep 结果
+
+```
+Grep 'File\.\w*\.path|\.file\.path|files\[\d+\]\.path|\bfile\.path\b'  src/
+  → No matches found
+
+Grep '\.path\b'  src/
+  → 仅 2 处命中,均在 src/main/voice/realVoiceTransport.ts 的注释里,
+    是 Python 侧 `os.path.exists(...)` 的引用说明文字,与 Electron File 对象无关。
+
+Grep 'getPathForFile'  src/
+  → No matches found
+
+Grep 'setPreloads|getPreloads'  src/
+  → No matches found
+
+Grep 'getBitmap'  src/
+  → No matches found
+
+Grep 'toBitmap'  src/
+  → No matches found
+
+Grep 'appendSwitch|commandLine'  **/*.ts (repo 根,非仅 src/)
+  → No files found
+
+Grep 'nativeImage|NativeImage'  src/
+  → 4 处真实用法,均为 createFromBuffer / createFromPath / createEmpty:
+    - src/main/media/imagePrep.ts:14   nativeImage.createFromBuffer(buf)
+    - src/main/pets/petAvatar.ts:29    nativeImage.createFromPath(sheetPath)
+    - src/main/shell/tray.ts:8-9       nativeImage.createFromPath / createEmpty
+    - src/main/screenCapture.ts:23     注释提及 nativeImage,非直接调用
+    实读 imagePrep.ts / petAvatar.ts 全文确认:仅用
+    getSize/resize/crop/toPNG/toJPEG/toDataURL/isEmpty,
+    未用 getBitmap()/toBitmap(),v36/v43 两条 NativeImage 变更均不命中。
+
+Grep 'clipboard'  src/
+  → 命中 8 个文件。逐一核实:
+    - src/renderer/dialog.ts:286        `e.clipboardData?.items`,DOM ClipboardEvent API,非 Electron 模块
+    - src/main/tools/clipboardTools.ts  仅定义 `{ readText: () => string }` 依赖注入接口,未直接 import electron
+    - src/main/shell/index.ts:1,430     `import { ..., clipboard, ... } from 'electron'`
+                                         `clipboard.readText()/writeText()` ——仅在主进程使用,
+                                         注入给 clipboardTools 的依赖对象。
+    确认:Electron `clipboard` 模块仅存在于主进程;渲染层是纯 DOM clipboardData。v40 渲染层弃用条目不命中。
+
+Grep 'showOpenDialog'  src/
+  → 命中 src/main/shell/index.ts 共 7 处调用(选图 MEDIA_PICK_IMAGE、importPet 选文件夹/zip、
+    语音安装路径选择器、运行时压缩包选择器等),均未传 defaultPath。
+    v43 起无 defaultPath 时默认起始目录变为 Downloads(不再记忆上次选择目录)——
+    这条**确认命中**,但性质是纯运行时 UX 行为变化(用户每次打开对话框看到的默认文件夹变了),
+    不是编译期/类型破坏,代码无需改动。留 Task 5 真机验收时确认可接受。
+```
+
+### 逐行判定
+
+| 版本 | 变更 | grep 复核结果 |
+|---|---|---|
+| v32 | `File.path` 移除 | 确认 no-op(零命中,`.path` 仅命中不相关的 Python 注释) |
+| v32 | navigationHistory API 迁移 | 确认 no-op(未用) |
+| v33 | 原生模块需 C++20 | 确认 no-op(无原生模块,`package.json` 无 node-gyp 依赖) |
+| v33 | 自定义协议 Windows 路径处理变化 | 确认 no-op(`kibo-pet://` 未在本仓库出现,Phase 2 事项) |
+| v35 | preload 注册 API 替换 | 确认 no-op(`setPreloads`/`getPreloads` 零命中,用的是 `webPreferences.preload`) |
+| v36 | `NativeImage.getBitmap()`→`toBitmap()` | 确认 no-op(`getBitmap`/`toBitmap` 零命中;imagePrep/petAvatar 实读确认只用 createFromBuffer/createFromPath+toPNG/toJPEG/toDataURL) |
+| v36 | `app.commandLine` switch 转小写 | 确认 no-op(`appendSwitch`/`commandLine` 全仓库零命中) |
+| v39 | desktopCapturer macOS 权限 | 确认 no-op(macOS-only,本项目 Windows-only) |
+| v40 | 渲染层 Electron `clipboard` 弃用 | 确认 no-op(渲染层用 DOM `clipboardData`;Electron `clipboard` 只在 `src/main/shell/index.ts` 主进程使用) |
+| v42 | electron 不再 postinstall 下载 | Task 2 已记录(懒下载改为 `require('electron')` 首次触发),非本 Task 范围 |
+| v43 | dialog 默认目录改 Downloads | **确认命中**(7 处 `showOpenDialog` 调用均无 `defaultPath`),但为非破坏性运行时 UX 变化,不改代码,留 Task 5 真机验收 |
+| v43 | `NativeImage.toBitmap()` 归一化 sRGB | 确认 no-op(`toBitmap` 零命中) |
+
+### 结论
+
+代码侧 breaking-change **零命中**,与 plan 预判一致。唯一真实命中项(v43 dialog 默认目录变 Downloads)是运行时 UX 行为变化,非代码破坏,本 Task 不做代码改动,留 Task 5 手动验收确认可接受。
+
+Step 3(imagePrep/petAvatar 图像往返健全性)因二者 import electron 无法被 Vitest 直接跑,按既定约定留待 Task 5 真机手动验收:识图选 png + jpg 能正常降采样识别、宠物头像在聊天左栏正常显示、托盘图标正常。
+
+本 Task 未运行 `pnpm typecheck`/`pnpm test`/`pnpm build`(brief 允许:无代码改动时无需重新验证;Task 2 已验证过 typecheck/build 绿,Task 4 会跑一次完整 789 用例回归)。
