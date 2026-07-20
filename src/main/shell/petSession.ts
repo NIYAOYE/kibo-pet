@@ -197,11 +197,23 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
       })
     }
 
-    try {
-      await sidecar.start()
-    } catch (e) {
-      console.warn('[voice] sidecar 启动失败,本次运行语音功能不可用', e)
-      return
+    // 换宠物快速切换时,旧会话 stop() 是同步 kill、不等 OS 真正释放端口(见 voiceSidecar.ts),
+    // 新会话紧跟着起同一端口的 sidecar 可能撞上"端口尚未释放"的瞬时失败——重试几次通常几百毫秒内自愈,
+    // 而不是直接判定语音不可用。重试耗尽后仍走原有的 catch-and-warn-and-return 兜底,不改变外部可见行为。
+    const START_ATTEMPTS = 3
+    const START_RETRY_DELAY_MS = 250
+    for (let attempt = 1; attempt <= START_ATTEMPTS; attempt++) {
+      try {
+        await sidecar.start()
+        break
+      } catch (e) {
+        if (attempt === START_ATTEMPTS) {
+          console.warn(`[voice] sidecar 启动失败(已重试 ${START_ATTEMPTS} 次),本次运行语音功能不可用`, e)
+          return
+        }
+        console.warn(`[voice] sidecar 启动失败,第 ${attempt}/${START_ATTEMPTS} 次尝试,${START_RETRY_DELAY_MS}ms 后重试`, e)
+        await new Promise((resolve) => setTimeout(resolve, START_RETRY_DELAY_MS))
+      }
     }
     voiceSidecarInstance = sidecar
 

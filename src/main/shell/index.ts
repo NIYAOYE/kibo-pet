@@ -158,7 +158,7 @@ export type VoiceBackendChoice = 'gsv-tts-lite' | 'genie-tts'
 /** 按用户在设置里选的后端 + 当前宠物包实际提供的模型文件,解出这次要用哪个后端。
  *  选中的后端如果宠物包没提供对应模型文件,返回 null(不可用)——不会退回另一个后端,
  *  这是设计文档明确要求的行为,不是遗漏。
- *  纯函数,独立导出以便单测覆盖这个 startVoiceIfConfigured() 里最高风险的分支决策。 */
+ *  纯函数,独立导出以便单测覆盖这个 PetSession.startVoice() 里最高风险的分支决策。 */
 export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): VoiceBackendChoice | null {
   if (selected === 'genie-tts') return petVoice.onnxModel ? 'genie-tts' : null
   return (petVoice.gptModel && petVoice.sovitsModel) ? 'gsv-tts-lite' : null
