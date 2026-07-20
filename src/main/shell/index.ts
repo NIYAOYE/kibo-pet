@@ -29,7 +29,8 @@ import {
   type TestResult,
   type VoiceRuntimeState,
   type VoiceArchiveResult,
-  type GenieRuntimeState
+  type GenieRuntimeState,
+  type PetChatListItem
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice } from '@shared/petPackage'
@@ -52,6 +53,9 @@ import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
 import { resolvePetHome } from '../pets/resolvePetHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
+import { buildPetChatList } from '../pets/petChatList'
+import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
+import { loadTranscript } from '../memory/transcriptStore'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
@@ -464,6 +468,23 @@ export function startShell(): void {
 
   let session = createPetSession(effectivePetId, sessionDeps)
   session.startVoice()
+
+  const petAvatarCache = createPetAvatarCache()
+
+  ipcMain.handle(IPC.CHAT_LIST_PETS, async (): Promise<PetChatListItem[]> => {
+    const pets = listPets(petCatalogDirs)
+    return buildPetChatList({
+      pets,
+      activeId: session.petId,
+      activeMessages: session.messages(),
+      peekLast: (petId) => {
+        const dir = resolvePetDir(petId, petCatalogDirs)
+        const t = loadTranscript(join(dir, 'memory', 'transcript.json'))
+        return t.messages[t.messages.length - 1]
+      },
+      avatarOf: (petId) => petAvatarCache.avatarOf(resolvePetDir(petId, petCatalogDirs), petId)
+    })
+  })
 
   // controlIndicator 现在读 session.petDir(与旧 petDir 等价);仍是上面声明的全局单例。
   void loadPet(session.petDir)
