@@ -70,7 +70,7 @@ import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
-  validateReactionCategory, validateBubbleHeight
+  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
@@ -1054,6 +1054,11 @@ export function startShell(): void {
     dialog.setSize(collapsed)
     dialogCollapsed = collapsed
     refreshBubble() // 展开→隐藏气泡(回复走对话框 history);折叠→有内容则显示
+  })
+  ipcMain.on(IPC.DIALOG_REPORT_COLLAPSED_HEIGHT, (_e, raw) => {
+    const h = validateCollapsedHeight(raw)
+    if (h === null) return
+    dialog.setCollapsedHeight(h)
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 

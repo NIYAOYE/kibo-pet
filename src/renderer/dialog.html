@@ -11,6 +11,8 @@
       #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column;
                border-radius: var(--radius-window); overflow: hidden; background: var(--app-bg);
                box-shadow: var(--shadow-float); cursor: move; -webkit-app-region: drag; }
+      /* 折叠态:去掉整块容器外观,只留输入胶囊自身;高度贴合内容(交给渲染层测量上报) */
+      #panel.collapsed { height: auto; background: transparent; box-shadow: none; }
       #input, button, #history { -webkit-app-region: no-drag; }
       #history, .bubble { cursor: default; }
 

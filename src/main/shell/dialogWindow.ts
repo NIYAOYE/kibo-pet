@@ -1,13 +1,16 @@
 import { BrowserWindow, screen, shell } from 'electron'
 import { IPC, type ChatMessage } from '@shared/ipc'
 
-const COLLAPSED = { width: 320, height: 120 }
-const EXPANDED = { width: 320, height: 470 }
+const COLLAPSED = { width: 320, height: 56 }
+const EXPANDED = { width: 520, height: 470 }
+const COLLAPSED_MIN = 44
+const COLLAPSED_MAX = 400
 
 export interface DialogController {
   toggle(getPetBounds: () => { x: number; y: number; width: number }): void
   isOpen(): boolean
   setSize(collapsed: boolean): void
+  setCollapsedHeight(height: number): void
   pushUpdate(messages: ChatMessage[]): void
   window(): BrowserWindow | null
 }
@@ -68,6 +71,14 @@ export function createDialogController(opts: {
       const wasResizable = win.isResizable()
       if (!wasResizable) win.setResizable(true)
       win.setSize(s.width, s.height)
+      if (!wasResizable) win.setResizable(false)
+    },
+    setCollapsedHeight(height: number): void {
+      if (!win || !collapsed) return // 仅折叠态生效;展开态忽略上报
+      const h = Math.max(COLLAPSED_MIN, Math.min(Math.round(height), COLLAPSED_MAX))
+      const wasResizable = win.isResizable()
+      if (!wasResizable) win.setResizable(true)
+      win.setSize(COLLAPSED.width, h)
       if (!wasResizable) win.setResizable(false)
     },
     pushUpdate(messages: ChatMessage[]): void {

@@ -54,6 +54,7 @@ const chatApi: ChatApi = {
   },
   cancel: (): void => ipcRenderer.send(IPC.CANCEL_CHAT),
   setSize: (collapsed: boolean): void => ipcRenderer.send(IPC.DIALOG_SET_SIZE, collapsed),
+  reportCollapsedHeight: (height: number): void => ipcRenderer.send(IPC.DIALOG_REPORT_COLLAPSED_HEIGHT, height),
   close: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),
   openSettings: (): void => ipcRenderer.send(IPC.OPEN_SETTINGS)
 }

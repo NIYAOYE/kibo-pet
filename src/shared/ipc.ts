@@ -13,6 +13,7 @@ export const IPC = {
   GET_WINDOW_BOUNDS: 'window:get-bounds',
   TOGGLE_DIALOG: 'dialog:toggle',
   DIALOG_SET_SIZE: 'dialog:set-size',
+  DIALOG_REPORT_COLLAPSED_HEIGHT: 'dialog:report-collapsed-height',
   CHAT_SEND: 'chat:send',
   CHAT_UPDATE: 'chat:update',
   PET_EVENT: 'pet:event',
@@ -149,6 +150,8 @@ export interface ChatApi {
   onStatus(cb: (text: string) => void): void
   cancel(): void
   setSize(collapsed: boolean): void
+  /** 折叠态渲染层测量到内容自然高度后上报,主进程夹取范围后重设折叠窗口高度 */
+  reportCollapsedHeight(height: number): void
   close(): void
   openSettings(): void
 }

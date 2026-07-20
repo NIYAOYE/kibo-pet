@@ -34,6 +34,7 @@ function renderPending(): void {
     wrap.append(im, x)
     attachStrip.appendChild(wrap)
   })
+  reportCollapsedHeight()
 }
 
 function addPending(atts: ChatSendAttachment[]): void {
@@ -178,6 +179,16 @@ function render(messages: ChatMessage[]): void {
   history.scrollTop = history.scrollHeight
 }
 
+function reportCollapsedHeight(): void {
+  if (!collapsed) return
+  // 折叠态 #panel 为 height:auto,getBoundingClientRect().height 即内容自然高度
+  requestAnimationFrame(() => {
+    if (!collapsed) return
+    const h = Math.ceil(panel.getBoundingClientRect().height)
+    window.chatApi.reportCollapsedHeight(h)
+  })
+}
+
 function setCollapsed(c: boolean): void {
   collapsed = c
   panel.classList.toggle('collapsed', c)
@@ -185,6 +196,7 @@ function setCollapsed(c: boolean): void {
   toggleBtn.textContent = c ? '⤢' : '⤡'
   toggleBtn.title = c ? '展开' : '收起'
   window.chatApi.setSize(c)
+  reportCollapsedHeight()
 }
 
 function submit(): void {
@@ -214,6 +226,7 @@ input.addEventListener('keydown', (e) => {
 input.addEventListener('input', () => {
   input.style.height = 'auto'
   input.style.height = `${input.scrollHeight}px`
+  reportCollapsedHeight()
 })
 pickBtn.addEventListener('click', async () => {
   const atts = await window.mediaApi.pickImage()
@@ -268,7 +281,10 @@ window.chatApi.onStatus((text) => {
 // 渲染层是折叠态的唯一真源:窗口每次重新显示时,把当前折叠态重新告知主进程,
 // 纠正主进程窗口尺寸与面板态可能出现的不同步(否则展开后关闭再开会卡在错误尺寸,无法恢复)。
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') window.chatApi.setSize(collapsed)
+  if (document.visibilityState === 'visible') {
+    window.chatApi.setSize(collapsed)
+    reportCollapsedHeight()
+  }
 })
 
 setCollapsed(true)
