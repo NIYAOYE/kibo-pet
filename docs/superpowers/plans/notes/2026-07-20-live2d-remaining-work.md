@@ -1,6 +1,6 @@
 # Live2D 呈现改造 — 剩余任务清单
 
-> 更新时间:2026-07-20。目的:把整个 8 阶段 Live2D 改造(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)截至目前"做完了什么 / 还剩什么"汇总到一处,供后续会话或用户直接对照执行,不必再翻散落在各 commit/ledger/memory 里的记录。
+> 更新时间:2026-07-21。目的:把整个 8 阶段 Live2D 改造(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)截至目前"做完了什么 / 还剩什么"汇总到一处,供后续会话或用户直接对照执行,不必再翻散落在各 commit/ledger/memory 里的记录。
 
 ## 总览进度
 
@@ -10,7 +10,7 @@
 | **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并 `main` 并推送 `origin/main`(`3b1f8bb`)。真机 GUI/安装验收待用户** |
 | Phase 2:宠物包 v2 + 导入器 + 资源协议 | 未开始(计划未写) |
 | Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | 未开始 |
-| Phase 4:PixiJS/Live2D 最小加载 | 未开始(依赖引擎已克隆待 spike,见下) |
+| Phase 4:PixiJS/Live2D 最小加载 | 本体未开始;**前置真实模型加载 spike 已完成并真机验证,结论见 spec §17** |
 | Phase 5:动态窗口/锚点/命中/无闪烁热切换 | 未开始 |
 | Phase 6:鼠标追踪/口型/设置预览 | 未开始 |
 | Phase 7:安全/恢复/性能/真机验收 | 未开始 |
@@ -44,9 +44,9 @@
 - [ ] **尤其确认不复现 MVP-06 的打包秒退**(GPU 子进程 `0xC0000135` 崩溃根因,当时靠 `app.disableHardwareAcceleration()` 修复;新 Electron/Chromium 的 GPU 子进程行为可能与 31 不同,若崩溃按 WER LocalDumps → minidump 解析法重新诊断,详见记忆 `packaged-gui-gpu-crash`)
 - [ ] E: 盘符(非标准 ACL)已知会触发该崩溃,用户已接受装 C:/D:,本阶段不特别验证 E:
 
-### 1.3 GPU 双模式回归(Phase 0 已 reconcile,待执行)
+### 1.3 GPU 双模式回归(已完成)
 
-- [ ] 补做硬件加速实验开关模式下的完整回归(本阶段只验证了默认软件渲染模式)
+- [x] 硬件加速实验开关模式下的完整回归——2026-07-20 用户真机验证通过(happy path + 模拟崩溃自愈路径均符合预期)。
 
 完整过程记录:`docs/superpowers/plans/notes/2026-07-20-phase1-baseline.md`;实施计划:`docs/superpowers/plans/2026-07-20-live2d-phase1-electron-upgrade.md`。
 
@@ -56,9 +56,9 @@
 
 - 2026-07-20:用 `git merge --squash worktree-gpu-accel-reboot-degrade`(12 个提交,含已废弃的 overlay-render-spike 真机结论记录)一次性解决与 main 的分叉(唯一重叠文件 `chat.test.ts` 无重叠行,无冲突),squash 成单提交 `01db719` 后 fast-forward 合并进 `main`。typecheck 通过,796/796 测试通过。**本地已合并,尚未 push 到 `origin/main`。**
 - 内容:新增 `src/shared/gpuBootDecision.ts`+test、设置页"尝试启用硬件加速渲染(实验性)"复选框、`main/index.ts` 接入 GPU 启动决策 + reboot-degrade(默认仍软渲染,勾选才走重启升级 + 启动标记文件兜底崩溃)。`AppSettings.schemaVersion` 13→14。
-- 原 worktree(`.claude/worktrees/gpu-accel-reboot-degrade`,分支 `worktree-gpu-accel-reboot-degrade`)代码已并入 main,**待用户确认后可清理**(`git worktree remove` + `git branch -D worktree-gpu-accel-reboot-degrade`);worktree 目录内有一个未跟踪的 `pets/yyz/` 测试残留,清理前一并确认是否需要保留。
-- [ ] 待办:push 到 `origin/main`(需用户确认)
-- [ ] 待办:合并后补 Phase 1 的 GPU 双模式回归(见上 §1.3)——真机验收,agent 会话无法自动化。
+- 原 worktree(`.claude/worktrees/gpu-accel-reboot-degrade`)已清理(`git worktree remove` + 删除分支)。
+- [x] 已 push 到 `origin/main`(`01db719`+`3c4535b`)。
+- [x] Phase 1 的 GPU 双模式回归(见上 §1.3)已完成。
 
 ---
 
@@ -66,7 +66,7 @@
 
 审查 2026-07-20 设计文档(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)时发现、尚未被任何计划覆盖的问题,写后续 plan 时需处理:
 
-1. **🟠 引擎 API 未做深度验证**:`untitled-pixi-live2d-engine@1.3.5` 已克隆到 `D:\LProject\claude_Project\untitled-pixi-live2d-engine`(peer 锁 `pixi.js@^8.13.1`+`@pixi/sound`,带 `cubism/`+`Core/`,基础存在性已确认)。**Phase 4 动手前必须先做 API spike**:Motion Group/HitArea/参数写入/生命周期的真实调用方式,不能照抄设计文档假设的接口形状。
+1. ~~🟠 引擎 API 未做深度验证~~ **✅ 已完成(2026-07-21 真实模型加载 spike)**:`Live2DModel.from()`/`hitTest()`/参数读写全部按假设的接口形状工作,但发现三处必须处理的真实坑——(a) 必须用 `untitled-pixi-live2d-engine/cubism` 子路径,不能用默认导出(会背上不需要的 Cubism 2 legacy 依赖);(b) Live2D 官方 Cubism Core 运行时不通过 npm 分发,需单独下载,直接印证了下面 Phase 8 隐患是真实的;(c) `untitled-pixi-live2d-engine@1.3.5` 和最新官方 Cubism Core 5 之间有一处版本不兼容(`drawables.renderOrders` 字段访问方式变了),已验证一个运行时 patch 能绕过,但 Phase 4 正式做之前要确认是升级引擎版本还是固定兼容的 Core 版本。另外发现贴图尺寸对帧率有实测 2-3 倍的影响(见下条)、购买模型可能自带需要额外处理的防盗版水印保护。完整结论见 `docs/superpowers/specs/2026-07-20-live2d-renderer-design.md` §17,过程记录见 `docs/superpowers/plans/2026-07-20-live2d-phase4-prespike.md`。
 2. **🟠 情绪状态凭空发明**:spec §4.1 的 `stateMap` 键列表里 `happy/sad/cry/surprised/love` 在当前代码里没有任何产出(`src/shared/petBrain.ts` 的 `PetLogicalState` 只有 `idle/walk/drag/sleep/greet/thinking/talk`)。**Phase 4/5 写 plan 时**:情绪态应 scope down 为"有对应 Expression 就用、否则回 idle",不新造状态机分支。另需解决 `setFacing()` 与 `walk-left/walk-right` stateMap 键重复表达朝向的歧义。
 3. **🟡 `PET_WINDOW_SIZE`(256×288)被写死在多处**:`src/main/shell/index.ts:651-655/665/671/673` 的 moveWindow 边界夹取逻辑 + `petController.ts` 默认值。**Phase 5 动态窗口改动面比设计文档描述的大**,且窗口尺寸只能在加载/切换时改一次,不能进每帧循环(参考记忆 `electron-isvisible-setresizable-drift` 的 `setResizable` 抖动教训)。
 4. **prepare-commit 热切换需要新 IPC**:当前 `PET_CHANGED`([src/shared/ipc.ts](src/shared/ipc.ts))是单向无回执推送,spec §11 的"旧模型显示中加载新模型、完成后再提交"需要新增 renderer→main 的"模型就绪"ACK 通道。
@@ -81,6 +81,7 @@
 
 ## 下一步建议
 
-1. ~~Phase 0 reconcile~~ **已完成(2026-07-20,本地 `main` @ `01db719`)**——push 到 `origin/main` 待用户确认
-2. 用户完成 §1 的 Phase 1 真机验收清单(含新解锁的 §1.3 GPU 双模式回归)
-3. 就绪后,针对 Phase 2(宠物包 v2 + 导入器 + 资源协议)走 brainstorming → writing-plans 流程,写入上面 §3 的隐患清单
+1. ~~Phase 0 reconcile~~ **已完成**,已 push。
+2. ~~Phase 1 真机验收清单(含 GPU 双模式回归)~~ **已完成**。
+3. ~~Phase 4 前置真实模型加载 spike~~ **已完成**(结论见 spec §17)。收尾:删除 `scripts/live2d-spike/` 一次性诊断代码、决定 worktree `live2d-phase4-prespike` 的合并/清理方式、决定是否 push 剩余的本地 spec/plan/结论提交到 `origin/main`。
+4. 就绪后,针对 Phase 2(宠物包 v2 + 导入器 + 资源协议)走 brainstorming → writing-plans 流程,把上面 §3 的隐患清单(含本次 spike 新确认的三条:引擎版本兼容性、Cubism Core 运行时获取、防盗版水印场景)一并纳入设计范围。
