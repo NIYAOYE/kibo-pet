@@ -22,7 +22,8 @@ const settings: AppSettings = {
   browserControl: { enabled: false, mode: 'isolated' },
   appFocusLlmOpener: { enabled: false },
   tts: DEFAULT_TTS_SETTINGS,
-  ttsGenie: DEFAULT_GENIE_TTS_SETTINGS
+  ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
+  gpuAcceleration: { experimental: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

@@ -21,6 +21,7 @@ const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
 const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
 const appFocusLlmOpenerEnabled = $<HTMLInputElement>('appFocusLlmOpenerEnabled')
 const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
+const gpuAccelerationExperimental = $<HTMLInputElement>('gpuAccelerationExperimental')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
@@ -417,6 +418,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         chromePath: browserControlChromePath.value.trim() || undefined
       },
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
+      gpuAcceleration: { experimental: gpuAccelerationExperimental.checked },
       tts: currentTts(),
       ttsGenie: currentTtsGenie()
     })
@@ -460,6 +462,7 @@ void (async () => {
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
+  gpuAccelerationExperimental.checked = snap.settings.gpuAcceleration.experimental
   browserControlEnabled.checked = snap.settings.browserControl.enabled
   browserControlMode.value = snap.settings.browserControl.mode
   browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''

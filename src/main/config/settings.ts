@@ -54,6 +54,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
   }
   const afo = (r.appFocusLlmOpener ?? {}) as Record<string, unknown>
   const appFocusLlmOpener = { enabled: afo.enabled === true }
+  const ga = (r.gpuAcceleration ?? {}) as Record<string, unknown>
+  const gpuAcceleration = { experimental: ga.experimental === true }
   const tt2 = (r.tts ?? {}) as Record<string, unknown>
   const tts = {
     enabled: tt2.enabled === true,
@@ -90,6 +92,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     desktopControl,
     browserControl,
     appFocusLlmOpener,
+    gpuAcceleration,
     tts,
     ttsGenie
   }

@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, gpuAcceleration: { experimental: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -61,9 +61,9 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 13', () => {
+  it('归一化后 schemaVersion 升为 14', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(13)
+    expect(loadSettings(f).schemaVersion).toBe(14)
   })
 })
 
@@ -89,9 +89,9 @@ describe('browserControl', () => {
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '   ' } })).browserControl.chromePath).toBeUndefined()
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: 123 } })).browserControl.chromePath).toBeUndefined()
   })
-  it('归一化后 schemaVersion 升为 13', () => {
+  it('归一化后 schemaVersion 升为 14', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(13)
+    expect(loadSettings(f).schemaVersion).toBe(14)
   })
 })
 
@@ -110,6 +110,21 @@ describe('appFocusLlmOpener', () => {
   })
 })
 
+describe('gpuAcceleration', () => {
+  it('缺省 → 默认 experimental:false', () => {
+    const f = tmpSettingsFile({ schemaVersion: 13, provider: { kind: 'anthropic', model: 'x' } })
+    expect(loadSettings(f).gpuAcceleration).toEqual({ experimental: false })
+  })
+  it('保留合法的 experimental:true', () => {
+    const f = tmpSettingsFile({ gpuAcceleration: { experimental: true } })
+    expect(loadSettings(f).gpuAcceleration).toEqual({ experimental: true })
+  })
+  it('非法值(非 true) → 回退 false', () => {
+    const f = tmpSettingsFile({ gpuAcceleration: { experimental: 'yes' } })
+    expect(loadSettings(f).gpuAcceleration).toEqual({ experimental: false })
+  })
+})
+
 describe('ttsGenie', () => {
   it('缺省 → 默认 runtimeInstallPath 空字符串', () => {
     const f = tmpSettingsFile({ schemaVersion: 11, provider: { kind: 'anthropic', model: 'x' } })
@@ -123,9 +138,9 @@ describe('ttsGenie', () => {
     const f = tmpSettingsFile({ ttsGenie: { runtimeInstallPath: 123 } })
     expect(loadSettings(f).ttsGenie).toEqual({ runtimeInstallPath: '' })
   })
-  it('归一化后 schemaVersion 升为 13', () => {
+  it('归一化后 schemaVersion 升为 14', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(13)
+    expect(loadSettings(f).schemaVersion).toBe(14)
   })
 })
 
