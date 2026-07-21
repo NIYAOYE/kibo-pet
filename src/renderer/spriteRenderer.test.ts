@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextFrameIndex } from './spritePlayer'
+import { nextFrameIndex } from './spriteRenderer'
 
 describe('nextFrameIndex', () => {
   it('advances within range', () => {

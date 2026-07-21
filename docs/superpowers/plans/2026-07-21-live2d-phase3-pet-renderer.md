@@ -31,8 +31,9 @@
 - Modify: `src/preload/index.ts`(类型 import 调整)
 - Modify: `src/main/shell/petSession.ts:142`(`.manifest.voice` 访问需要按判别式收窄)
 - Modify: `src/main/shell/index.ts:753`(同上)
+- Modify: `src/renderer/dialog.ts`(`loadAvatar()` 直接调用 `getPet()` 并解构 `manifest.animations`/`manifest.sheet`/`spritesheetDataUrl` 裁剪聊天头像;写 plan 时漏查了这个消费点,由 Task 1 implementer 在 `pnpm typecheck` 时发现。修法与其它两处一致:`if (pet.type !== 'sprite') return`,复用函数已有的"裁不出就静默放弃、退回 CSS 占位"降级路径,不新增分支逻辑)
 
-**为什么这两处也在本任务范围内:** `PetManifest.voice?: PetVoice` 只存在于 sprite 分支;`Live2DManifest` 没有 `voice` 字段。`loadPet()` 的返回类型一旦从扁平结构改成判别式联合,这两处直接 `.manifest.voice` 的访问就会编译报错("属性 'voice' 在类型 'Live2DManifest' 上不存在")——这是本任务的类型改动直接导致的破坏,不修就无法让项目在本任务结束时保持可编译,因此和 Task 1 的其余改动绑在一起,不拆成单独任务。
+**为什么这些改动都在本任务范围内:** `PetManifest.voice?: PetVoice` 只存在于 sprite 分支;`Live2DManifest` 没有 `voice` 字段。`loadPet()` 的返回类型一旦从扁平结构改成判别式联合,这两处直接 `.manifest.voice` 的访问就会编译报错("属性 'voice' 在类型 'Live2DManifest' 上不存在")——这是本任务的类型改动直接导致的破坏,不修就无法让项目在本任务结束时保持可编译,因此和 Task 1 的其余改动绑在一起,不拆成单独任务。
 
 **Interfaces:**
 - Consumes: `src/shared/petPackage.ts` 已有的 `parsePetManifest`、`parseLive2DManifest`、`isLive2DManifestRaw`、`PetManifest`、`Live2DManifest`(全部已存在,无需改动)。
@@ -262,22 +263,52 @@ import type { PetRenderSource } from '@shared/petPackage'
       activePetVoice = loadedForVoice.type === 'sprite' ? loadedForVoice.manifest.voice : undefined
 ```
 
-- [ ] **Step 10: 全项目 typecheck**
+- [ ] **Step 10: 修 `src/renderer/dialog.ts` 的 `loadAvatar()`(写 plan 时漏查的第四处消费点)**
+
+把:
+
+```ts
+/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画)时静默放弃,
+ *  头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
+async function loadAvatar(): Promise<void> {
+  const pet = await window.petApi.getPet()
+  petNameEl.textContent = pet.manifest.displayName
+  const idle = pet.manifest.animations.idle
+  if (!idle) return
+```
+
+改成:
+
+```ts
+/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画,或宠物
+ *  是 live2d 类型)时静默放弃,头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
+async function loadAvatar(): Promise<void> {
+  const pet = await window.petApi.getPet()
+  petNameEl.textContent = pet.manifest.displayName
+  if (pet.type !== 'sprite') return
+  const idle = pet.manifest.animations.idle
+  if (!idle) return
+```
+
+函数其余部分(`frameRect(pet.manifest.sheet, ...)`、`img.src = pet.spritesheetDataUrl` 等)不用改——`pet` 在这行之后已经被收窄成 `{ type: 'sprite'; ... }` 分支,后续访问自动类型正确。
+
+- [ ] **Step 11: 全项目 typecheck**
 
 Run: `pnpm typecheck`
-Expected: 通过,无残留 `LoadedPet` 引用报错、无 `.manifest.voice` 判别式收窄报错。此时 `src/renderer/main.ts`/`src/renderer/petController.ts`/`src/renderer/spritePlayer.ts` 还没改,它们目前解构 `{ manifest, spritesheetDataUrl }`,在 `PetRenderSource` 是判别式联合类型后,这种解构会报"属性 `spritesheetDataUrl` 不存在于类型 `PetRenderSource`"的编译错误——这是预期的、留给 Task 3/4/5 处理,不是本任务的回归。确认报错只出现在这三个 renderer 文件里,`src/shared/*`、`src/main/*`、`src/preload/*` 应该全部干净。
+Expected: 通过,无残留 `LoadedPet` 引用报错、无 `.manifest.voice` 判别式收窄报错、`src/renderer/dialog.ts` 干净。此时 `src/renderer/main.ts`/`src/renderer/petController.ts`/`src/renderer/spritePlayer.ts` 还没改,它们目前解构 `{ manifest, spritesheetDataUrl }`,在 `PetRenderSource` 是判别式联合类型后,这种解构会报"属性 `spritesheetDataUrl` 不存在于类型 `PetRenderSource`"的编译错误——这是预期的、留给 Task 3/4/5 处理,不是本任务的回归。确认报错只出现在这三个 renderer 文件里,`src/shared/*`、`src/main/*`、`src/preload/*`、`src/renderer/dialog.ts` 应该全部干净。
 
-- [ ] **Step 11: 提交**
+- [ ] **Step 12: 提交**
 
 ```bash
-git add src/shared/petPackage.ts src/shared/ipc.ts src/main/petLoader.ts src/main/petLoader.test.ts src/preload/index.ts src/main/shell/petSession.ts src/main/shell/index.ts
+git add src/shared/petPackage.ts src/shared/ipc.ts src/main/petLoader.ts src/main/petLoader.test.ts src/preload/index.ts src/main/shell/petSession.ts src/main/shell/index.ts src/renderer/dialog.ts
 git commit -m "$(cat <<'EOF'
 feat(pets): PetRenderSource 判别式取代扁平 LoadedPet
 
 loadPet() 按 render.type 分流,live2d 分支只解析 manifest,不读任何
 模型文件(资源协议接线是 Phase 4 的事)。IPC/preload 类型贯穿更新;
-petSession.ts/shell/index.ts 两处 manifest.voice 访问按判别式收窄
-(voice 字段只存在于 sprite 分支)。
+petSession.ts/shell/index.ts/dialog.ts 三处直接消费 loadPet() 结果的
+sprite 专属字段访问按判别式收窄(voice/spritesheetDataUrl 等字段只
+存在于 sprite 分支)。
 EOF
 )"
 ```

@@ -51,7 +51,7 @@ import { loadSkills } from '../skills/skillLoader'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
-import { resolvePetHome } from '../pets/resolvePetHome'
+import { resolveEffectivePetHome } from '../pets/resolveEffectivePetHome'
 import { listPets, importPetFolder, cleanupStaleStaging } from '../pets/petCatalog'
 import { buildPetChatList } from '../pets/petChatList'
 import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
@@ -191,9 +191,10 @@ export function startShell(): void {
   // 任意可用宠物包"。两者判定口径不同,可能出现"resolvePetHome 判定 onboarding,但
   // noPetInstalled 为 false(因为磁盘上还留着一个无关的、之前导入过的宠物包)"这种边界情况——
   // 属于可接受的降级(用户在"宠物"页选中它、保存、重启即可正常进入),不是 bug。
-  const resolved = resolvePetHome({
+  const resolved = resolveEffectivePetHome({
     userDataDir: userData,
     bundledPetsDir: petCatalogDirs.bundledPetsDir,
+    userPetsDir: petCatalogDirs.userPetsDir,
     configuredPetId,
     defaultPetId,
     legacyMemoryDir
@@ -750,7 +751,8 @@ export function startShell(): void {
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => {
     let activePetVoice: PetVoice | undefined
     try {
-      activePetVoice = (await loadPet(session.petDir)).manifest.voice
+      const loadedForVoice = await loadPet(session.petDir)
+      activePetVoice = loadedForVoice.type === 'sprite' ? loadedForVoice.manifest.voice : undefined
     } catch {
       activePetVoice = undefined
     }

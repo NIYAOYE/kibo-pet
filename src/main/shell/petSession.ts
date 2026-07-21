@@ -139,7 +139,8 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     if (!s.tts.enabled) return
     let petVoice: PetVoice | undefined
     try {
-      petVoice = (await loadPet(petDir)).manifest.voice
+      const source = await loadPet(petDir)
+      petVoice = source.type === 'sprite' ? source.manifest.voice : undefined
     } catch {
       return
     }

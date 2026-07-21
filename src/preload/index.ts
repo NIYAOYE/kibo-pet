@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
-  IPC, type PetApi, type ChatApi, type LoadedPet, type MoveDelta,
+  IPC, type PetApi, type ChatApi, type MoveDelta,
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
@@ -10,9 +10,10 @@ import {
   type PetChatListItem, type PetSwitchedPayload
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
+import type { PetRenderSource } from '@shared/petPackage'
 
 const petApi: PetApi = {
-  getPet: (): Promise<LoadedPet> => ipcRenderer.invoke(IPC.GET_PET),
+  getPet: (): Promise<PetRenderSource> => ipcRenderer.invoke(IPC.GET_PET),
   moveWindow: (delta: MoveDelta): Promise<WindowBounds> => ipcRenderer.invoke(IPC.MOVE_WINDOW, delta),
   dragStart: (): void => ipcRenderer.send(IPC.DRAG_START),
   dragEnd: (): void => ipcRenderer.send(IPC.DRAG_END),

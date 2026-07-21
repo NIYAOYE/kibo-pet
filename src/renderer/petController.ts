@@ -1,4 +1,4 @@
-import { SpritePlayer } from './spritePlayer'
+import type { PetRenderer } from './petRenderer'
 import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@shared/petBrain'
 import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
 import type { ContextSignalKind } from '@shared/ipc'
@@ -20,7 +20,7 @@ export class PetController {
   private pendingReaction: ReactionTrigger | null = null
   private pendingContextSignal: ContextSignalKind | null = null
 
-  constructor(private player: SpritePlayer) {}
+  constructor(private renderer: PetRenderer) {}
 
   async start(): Promise<void> {
     try {
@@ -36,13 +36,10 @@ export class PetController {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
   }
 
-  /** 热切换宠物:重新拉取宠物数据、换掉 SpritePlayer 的图集/manifest,大脑复位到 idle。 */
+  /** 热切换宠物:重新拉取宠物数据,交给渲染器重新加载,大脑复位到 idle。 */
   async reload(): Promise<void> {
-    const { manifest, spritesheetDataUrl } = await window.petApi.getPet()
-    const sheet = new Image()
-    sheet.src = spritesheetDataUrl
-    await sheet.decode()
-    this.player.reload(sheet, manifest)
+    const source = await window.petApi.getPet()
+    await this.renderer.load(source)
     this.ctx = initBrain()
     this.currentAnim = ''
   }
@@ -94,7 +91,7 @@ export class PetController {
       // Re-sync the predicted windowX from the true OS position at each walk
       // start, so drift accumulated over the session doesn't skew edge-clamping.
       const startedWalking = effects.animation.startsWith('walk') && !this.currentAnim.startsWith('walk')
-      this.player.play(effects.animation)
+      this.renderer.playState(effects.animation)
       this.currentAnim = effects.animation
       if (startedWalking) void this.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     }

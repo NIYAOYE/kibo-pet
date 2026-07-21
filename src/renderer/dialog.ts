@@ -66,11 +66,12 @@ async function addFiles(files: Iterable<File>): Promise<void> {
   if (out.length) addPending(out)
 }
 
-/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画)时静默放弃,
- *  头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
+/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画,或宠物
+ *  是 live2d 类型)时静默放弃,头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
 async function loadAvatar(): Promise<void> {
   const pet = await window.petApi.getPet()
   petNameEl.textContent = pet.manifest.displayName
+  if (pet.type !== 'sprite') return
   const idle = pet.manifest.animations.idle
   if (!idle) return
   const rect = frameRect(pet.manifest.sheet, idle.row, 0)

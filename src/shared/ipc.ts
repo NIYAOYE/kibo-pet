@@ -1,4 +1,4 @@
-import type { PetManifest, PetVoice } from './petPackage'
+import type { PetVoice, PetRenderSource } from './petPackage'
 import type { PetEvent, Bounds } from './petBrain'
 import type { AppSettings, ProviderSettings } from './llm'
 import type { TodoItem } from './todo'
@@ -87,12 +87,6 @@ export const IPC = {
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
 export type ContextSignalKind = 'afk_leave' | 'break_reminder' | 'app_focus'
 
-export interface LoadedPet {
-  manifest: PetManifest
-  /** data: URL of the spritesheet (webp), so the renderer needs no file access */
-  spritesheetDataUrl: string
-}
-
 /** clamp:true keeps the window inside the display work area (autonomous walk);
  *  omitted/false lets it move freely (manual drag), matching MVP-01. */
 export interface MoveDelta { dx: number; dy: number; clamp?: boolean }
@@ -121,7 +115,7 @@ export interface OverlayApi {
 }
 
 export interface PetApi {
-  getPet(): Promise<LoadedPet>
+  getPet(): Promise<PetRenderSource>
   /** Resolves with the real post-move window/workArea bounds, so callers that
    *  track position (autonomous walk) can stay authoritative instead of
    *  predicting — main always applies clamping against the live display. */
@@ -143,7 +137,7 @@ export interface PetApi {
   /** 主进程情境信号(AFK 离开/久坐提醒):main→renderer 推送 */
   onContextSignal(cb: (kind: ContextSignalKind) => void): void
   quit(): void
-  /** 主进程通知宠物已换,渲染层重载精灵(重新 getPet + 重建 SpritePlayer) */
+  /** 主进程通知宠物已换,渲染层重载精灵(重新 getPet + renderer.load()) */
   onPetChanged(cb: () => void): void
 }
 
