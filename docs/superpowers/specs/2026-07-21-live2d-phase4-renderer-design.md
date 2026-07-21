@@ -166,6 +166,18 @@ export function applyCubismCoreCompatPatch(coreModel: unknown): void {
 - `switchPet()` 现有的 `!target.renderReady` 拦截不再命中 live2d 目标,热切换到 live2d 宠物应该真正生效(伴随一次可见闪烁,已在"非目标"里说明是本阶段接受的缺口)。
 - 寄养选择器/聊天列表/设置下拉框(Phase 2 已实现"live2d 条目可见但因 `renderReady:false` 置灰禁用切换")的置灰逻辑需要确认会自动因 `renderReady` 变 `true` 而解除——这些 UI 组件读的是 `PetSummary.renderReady`,不需要额外改动,但要有测试覆盖这条路径而不是假设它"自动就对了"。
 
+## 6.1 渲染器类型热切换(计划阶段发现的缺口)
+
+`src/renderer/petController.ts` 的 `reload()`(`await this.renderer.load(source)`)固定操作构造时传入的同一个渲染器实例,从不重新按 `source.type` 选择渲染器类型。Phase 3 时这是安全的死代码路径——`renderReady:false` 保证 `source.type` 永远不会在一次热切换里从 `sprite` 变成 `live2d`(反之亦然)。但 §6 把 `renderReady` 翻转为 `true` 后,`switchPet()` 在 sprite 宠物和 live2d 宠物之间切换会让 `reload()` 真正收到一个类型变了的 `PetRenderSource`,而 `SpriteRenderer.load()`/`Live2DPetRenderer.load()` 都会因为类型不匹配直接抛错——这是一次真正的崩溃,不是"非目标"里说的可接受的视觉闪烁。
+
+修复:`src/renderer/main.ts` 把 `createRenderer()` 工厂函数提出来给 `boot()` 和 `PetController` 共用(或等价地把工厂传给 `PetController` 构造函数)。`PetController.reload()` 改为:
+
+1. 拉取新 `source`。
+2. 若 `source.type` 与当前渲染器所属类型不一致:`await this.renderer.destroy()` 销毁旧实例,用工厂按新 `source.type` 构造一个新实例,替换 `this.renderer`(需要把该字段从构造时的 `private readonly` 改为可重新赋值),再 `await this.renderer.load(source)`。
+3. 类型一致时行为不变(直接复用现有实例 `load()`)。
+
+这段逻辑放在 `PetController` 内部而不是 `main.ts` 的事件处理器里,因为 `PetController` 已经是"知道当前渲染器是谁"的唯一权威位置,`main.ts` 只是事件转发。渲染器类型只有两种(sprite/live2d),`instanceof` 或者携带一个 `rendererType` 字段都能判断"是否需要换实例"——采用后者(`PetRenderer` 接口不适合塞一个跟渲染逻辑无关的类型标签,改为 `PetController` 自己记录"当前渲染器是用哪个 `source.type` 构造的",不侵入接口)。
+
 ## 7. 测试策略
 
 **纯逻辑 Vitest(不依赖真实 WebGL/canvas,延续项目现状):**
@@ -196,5 +208,6 @@ export function applyCubismCoreCompatPatch(coreModel: unknown): void {
 - [ ] `Live2DPetRenderer` 完整实现 `PetRenderer` 接口,`main.ts` 工厂函数接入,原有的"尚未实现"防御性抛出删除。
 - [ ] 引擎版本兼容 patch 落地且有自我禁用探测逻辑的单测。
 - [ ] `petCatalog.ts` 的 `renderReady` 翻转,`resolveEffectivePetHome`/`switchPet` 相关测试用例语义同步更新。
+- [ ] `PetController.reload()` 在 `source.type` 变化时销毁旧渲染器实例并构造新类型实例(§6.1),sprite↔live2d 热切换不再抛错,有测试覆盖。
 - [ ] `pnpm typecheck && pnpm test && pnpm build` 全绿。
 - [ ] 真机验证清单(§7 最后一节)全部走完并确认无阻断性问题。
