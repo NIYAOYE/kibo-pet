@@ -1,15 +1,15 @@
 # Live2D 呈现改造 — 剩余任务清单
 
-> 更新时间:2026-07-21。目的:把整个 8 阶段 Live2D 改造(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)截至目前"做完了什么 / 还剩什么"汇总到一处,供后续会话或用户直接对照执行,不必再翻散落在各 commit/ledger/memory 里的记录。
+> 更新时间:2026-07-21(Phase 2 完成后再次更新)。目的:把整个 8 阶段 Live2D 改造(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)截至目前"做完了什么 / 还剩什么"汇总到一处,供后续会话或用户直接对照执行,不必再翻散落在各 commit/ledger/memory 里的记录。
 
 ## 总览进度
 
 | 阶段 | 状态 |
 |---|---|
-| Phase 0:GPU reboot-degrade | **已 reconcile 并合并进 `main`(`01db719`,squash 单提交,本地未推送)** |
-| **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并 `main` 并推送 `origin/main`(`3b1f8bb`)。真机 GUI/安装验收待用户** |
-| Phase 2:宠物包 v2 + 导入器 + 资源协议 | 未开始(计划未写) |
-| Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | 未开始 |
+| Phase 0:GPU reboot-degrade | **已合并并推送 `origin/main`(`01db719`+`3c4535b`)** |
+| **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并并推送 `origin/main`(`3b1f8bb`)。GPU 双模式真机回归 2026-07-20 已通过。其余真机 GUI/安装验收清单(见 §1.1/§1.2)仍待用户** |
+| **Phase 2:宠物包 v2 + 导入器 + kibo-pet:// 资源协议** | **代码+测试完成,已 squash 合并进本地 `main`(`fb091bd`,尚未推送 `origin/main`)。11 任务 subagent-driven-development 全部完成,详见 §2b** |
+| Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | **下一步**,未开始(计划未写) |
 | Phase 4:PixiJS/Live2D 最小加载 | 本体未开始;**前置真实模型加载 spike 已完成并真机验证,结论见 spec §17** |
 | Phase 5:动态窗口/锚点/命中/无闪烁热切换 | 未开始 |
 | Phase 6:鼠标追踪/口型/设置预览 | 未开始 |
@@ -62,6 +62,16 @@
 
 ---
 
+## 2b. Phase 2(宠物包 v2 + 导入器 + kibo-pet:// 资源协议)——已完成
+
+- 设计文档:`docs/superpowers/specs/2026-07-21-live2d-phase2-pet-package-design.md`;实施计划:`docs/superpowers/plans/2026-07-21-live2d-phase2-pet-package.md`(11 任务)。
+- brainstorming 阶段定的关键决策(**偏离了主设计文档 §5 的字面描述,以这份为准**):导入改成整个宠物包文件夹入口(不是单选 `*.model3.json` 文件)、sprite/live2d 共用一套 staging+安全校验+原子移动、不做交互式动作映射向导(用户像写 `persona.md` 一样自己手写 `stateMap`)、live2d 条目导入后在选择器里可见但 `renderReady:false` 禁用切换。
+- 2026-07-21:subagent-driven-development 11 任务全部完成 + 逐任务审查 + 最终整分支审查(opus),squash 成单提交合并进本地 `main`(`fb091bd`,**尚未 push 到 `origin/main`**)。869/869 测试、typecheck、build 全绿。
+- 审查过程抓出 6 处真实 bug(均已修复+re-review 通过),详见 memory `live2d-presentation-initiative`——其中两处是安全相关(`scanImportSource` 目录未计入 5000 文件数硬限制被绕过;implementer 自查修复 `kibo-pet://` 的 `new URL()` 吃掉 `/../` 穿越检测时,顺手把安全的 `startsWith(root+sep)` 换成了有跨盘符/UNC 漏洞的 `path.relative()`,已 revert),值得作为后续 phase 审查时的参照案例。
+- [x] Phase 4/5/6 前置设计备忘录已写入 Phase 2 设计文档末尾(LLM 依据宠物包实际状态清单自主选状态、热切换 ACK 通道、`PET_WINDOW_SIZE` 写死、气泡锚点消费、语音端口串行化、引擎版本兼容 patch/esbuild 打包链路、`LoadedPet`/`loadPet` IPC 四件套改判别式)——写后续 phase 的 plan 时直接抄,不必重新推导。
+
+---
+
 ## 3. Phase 2-8——规划阶段的已知隐患(写 plan 前必须处理)
 
 审查 2026-07-20 设计文档(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)时发现、尚未被任何计划覆盖的问题,写后续 plan 时需处理:
@@ -69,11 +79,11 @@
 1. ~~🟠 引擎 API 未做深度验证~~ **✅ 已完成(2026-07-21 真实模型加载 spike)**:`Live2DModel.from()`/`hitTest()`/参数读写全部按假设的接口形状工作,但发现三处必须处理的真实坑——(a) 必须用 `untitled-pixi-live2d-engine/cubism` 子路径,不能用默认导出(会背上不需要的 Cubism 2 legacy 依赖);(b) Live2D 官方 Cubism Core 运行时不通过 npm 分发,需单独下载,直接印证了下面 Phase 8 隐患是真实的;(c) `untitled-pixi-live2d-engine@1.3.5` 和最新官方 Cubism Core 5 之间有一处版本不兼容(`drawables.renderOrders` 字段访问方式变了),已验证一个运行时 patch 能绕过,但 Phase 4 正式做之前要确认是升级引擎版本还是固定兼容的 Core 版本。另外发现贴图尺寸对帧率有实测 2-3 倍的影响(见下条)、购买模型可能自带需要额外处理的防盗版水印保护。完整结论见 `docs/superpowers/specs/2026-07-20-live2d-renderer-design.md` §17,过程记录见 `docs/superpowers/plans/2026-07-20-live2d-phase4-prespike.md`。
 2. **🟠 情绪状态凭空发明**:spec §4.1 的 `stateMap` 键列表里 `happy/sad/cry/surprised/love` 在当前代码里没有任何产出(`src/shared/petBrain.ts` 的 `PetLogicalState` 只有 `idle/walk/drag/sleep/greet/thinking/talk`)。**Phase 4/5 写 plan 时**:情绪态应 scope down 为"有对应 Expression 就用、否则回 idle",不新造状态机分支。另需解决 `setFacing()` 与 `walk-left/walk-right` stateMap 键重复表达朝向的歧义。
 3. **🟡 `PET_WINDOW_SIZE`(256×288)被写死在多处**:`src/main/shell/index.ts:651-655/665/671/673` 的 moveWindow 边界夹取逻辑 + `petController.ts` 默认值。**Phase 5 动态窗口改动面比设计文档描述的大**,且窗口尺寸只能在加载/切换时改一次,不能进每帧循环(参考记忆 `electron-isvisible-setresizable-drift` 的 `setResizable` 抖动教训)。
-4. **prepare-commit 热切换需要新 IPC**:当前 `PET_CHANGED`([src/shared/ipc.ts](src/shared/ipc.ts))是单向无回执推送,spec §11 的"旧模型显示中加载新模型、完成后再提交"需要新增 renderer→main 的"模型就绪"ACK 通道。
-5. **语音固定端口 × 重叠热切换需要串行化**:视觉模型可以重叠加载,但 `petSession.ts` 的语音 sidecar 用固定端口,必须严格"先拆旧再起新",不能像视觉那样重叠。
-6. **`LoadedPet`/`loadPet` 的 data-URL 内嵌是跨进程契约改动**:拓宽成 sprite/live2d 判别式需要同步改 `ipc.ts`/`main`/`preload`/`renderer` 四件套。
-7. **`.staging` 目录需要排除出 `petCatalog.ts` 的 `listPets` 扫描**。
-8. **气泡锚点**:当前贴宠物窗口上沿([bubbleWindow.ts](src/main/shell/bubbleWindow.ts)),spec 的 `bubbleAnchorX/Y` 要把锚点数据从 manifest thread 到主进程的 `bubblePlacement`。
+4. **prepare-commit 热切换需要新 IPC**:当前 `PET_CHANGED`([src/shared/ipc.ts](src/shared/ipc.ts))是单向无回执推送,spec §11 的"旧模型显示中加载新模型、完成后再提交"需要新增 renderer→main 的"模型就绪"ACK 通道。**Phase 2 未处理**(Phase 2 里 live2d 宠物 `renderReady:false`,压根不允许切换,不需要这条),留给 Phase 5,已写进 Phase 2 设计文档的前置备忘录。
+5. **语音固定端口 × 重叠热切换需要串行化**:视觉模型可以重叠加载,但 `petSession.ts` 的语音 sidecar 用固定端口,必须严格"先拆旧再起新",不能像视觉那样重叠。**Phase 2 未处理**,留给 Phase 5。
+6. ~~**`LoadedPet`/`loadPet` 的 data-URL 内嵌是跨进程契约改动**~~:**Phase 2 有意不动**(design doc 明确写"不改动 LoadedPet/loadPet/GET_PET IPC 四件套,留给 Phase 3 一次性做")。拓宽成 sprite/live2d 判别式,同步改 `ipc.ts`/`main`/`preload`/`renderer` 四件套,**是 Phase 3(PetRenderer 抽象)的核心工作之一**。
+7. ~~**`.staging` 目录需要排除出 `petCatalog.ts` 的 `listPets` 扫描**~~ **✅ 已完成(Phase 2 Task 7)**。
+8. **气泡锚点**:当前贴宠物窗口上沿([bubbleWindow.ts](src/main/shell/bubbleWindow.ts)),spec 的 `bubbleAnchorX/Y` 要把锚点数据从 manifest thread 到主进程的 `bubblePlacement`。**Phase 2 已把 schema 字段(`render.transform.bubbleAnchorX/Y`)落地,但接到 `bubbleWindow.ts` 的消费逻辑留给 Phase 5**。
 
 详细审查记录:`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md` 的审查结论(本次会话内已口头交付给用户,未单独存档为文档——如需要可整理成独立审查报告)。
 
@@ -84,4 +94,5 @@
 1. ~~Phase 0 reconcile~~ **已完成**,已 push。
 2. ~~Phase 1 真机验收清单(含 GPU 双模式回归)~~ **已完成**。
 3. ~~Phase 4 前置真实模型加载 spike~~ **已完成**(结论见 spec §17)。收尾:删除 `scripts/live2d-spike/` 一次性诊断代码、决定 worktree `live2d-phase4-prespike` 的合并/清理方式、决定是否 push 剩余的本地 spec/plan/结论提交到 `origin/main`。
-4. 就绪后,针对 Phase 2(宠物包 v2 + 导入器 + 资源协议)走 brainstorming → writing-plans 流程,把上面 §3 的隐患清单(含本次 spike 新确认的三条:引擎版本兼容性、Cubism Core 运行时获取、防盗版水印场景)一并纳入设计范围。
+4. ~~Phase 2(宠物包 v2 + 导入器 + kibo-pet:// 资源协议)~~ **已完成**,详见 §2b。**本地 `main` 尚未 push 到 `origin/main`**(含 Phase 2 之前积累的 spec/plan 提交,共 3 个本地提交领先)。
+5. 就绪后,针对 **Phase 3(PetRenderer 抽象 + 精灵兼容驱动)** 走 brainstorming → writing-plans 流程。核心工作:把上面 §3 隐患第 6 条(`LoadedPet`/`loadPet`/`GET_PET` IPC 拓宽成 sprite/live2d 判别式)落地,定义 `PetRenderer` 接口边界(见主设计文档 §7),现有 `SpritePlayer` 收编成精灵兼容驱动而不推倒重写。不涉及真实 Live2D 渲染(那是 Phase 4)。
