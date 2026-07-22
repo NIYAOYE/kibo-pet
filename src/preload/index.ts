@@ -49,6 +49,10 @@ const petApi: PetApi = {
     ipcRenderer.removeAllListeners(IPC.WINDOW_VISIBILITY_CHANGED)
     ipcRenderer.on(IPC.WINDOW_VISIBILITY_CHANGED, (_e, payload: WindowVisibilityPayload) => cb(payload))
   },
+  onMouseFocus: (cb: (payload: { x: number; y: number }) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.MOUSE_FOCUS)
+    ipcRenderer.on(IPC.MOUSE_FOCUS, (_e, payload: { x: number; y: number }) => cb(payload))
+  },
   updateLive2DTransform: (patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }> =>
     ipcRenderer.invoke(IPC.UPDATE_LIVE2D_TRANSFORM, patch)
 }
@@ -101,7 +105,9 @@ const settingsApi: SettingsApi = {
   openMemoryDir: (): void => ipcRenderer.send(IPC.OPEN_MEMORY_DIR),
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key }),
   listPets: () => ipcRenderer.invoke(IPC.LIST_PETS),
-  importPet: () => ipcRenderer.invoke(IPC.IMPORT_PET),
+  stageImportPet: () => ipcRenderer.invoke(IPC.STAGE_IMPORT_PET),
+  commitStagedImport: (stagingId: string, manifestId: string) => ipcRenderer.invoke(IPC.COMMIT_STAGED_IMPORT, { stagingId, manifestId }),
+  discardStagedImport: (stagingId: string) => ipcRenderer.invoke(IPC.DISCARD_STAGED_IMPORT, { stagingId }),
   relaunch: (): void => ipcRenderer.send(IPC.RELAUNCH_APP)
 }
 

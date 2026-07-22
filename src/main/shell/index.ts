@@ -31,7 +31,9 @@ import {
   type VoiceArchiveResult,
   type GenieRuntimeState,
   type PetChatListItem,
-  type Live2DTransformPatch
+  type Live2DTransformPatch,
+  type StageImportOutcome,
+  type CommitStagedImportResult
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice, PetRenderSource } from '@shared/petPackage'
@@ -54,7 +56,7 @@ import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
 import { resolveEffectivePetHome } from '../pets/resolveEffectivePetHome'
-import { listPets, importPetFolder, cleanupStaleStaging } from '../pets/petCatalog'
+import { listPets, stageImportPet, commitStagedPet, discardStagedPet, cleanupStaleStaging, STAGING_DIR_NAME, type StageImportResult } from '../pets/petCatalog'
 import { buildPetChatList } from '../pets/petChatList'
 import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
 import { patchLive2DTransform } from '../pets/live2dTransformPatch'
@@ -72,6 +74,7 @@ import {
   validatePrepareResult
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove, footAnchorPreservingBounds, windowSizeForSource } from '@shared/windowPlacement'
+import { computeMouseFocusTick, DEFAULT_MOUSE_TRACK_RADIUS_PX } from '@shared/mouseFocus'
 import { createPendingPrepareRequests } from './pendingPrepareRequests'
 import { randomUUID } from 'node:crypto'
 
@@ -87,6 +90,60 @@ let tray: Tray | null = null
  * 用户导入宠物包并点"立即重启"后,下次 startShell() 会通过 resolvePetHome 正常
  * 走 'ready' 分支。
  */
+/** COMMIT_STAGED_IMPORT/DISCARD_STAGED_IMPORT 的入参校验:两个字段都必须是字符串,manifestId
+ *  额外要求非空(commitStagedPet 内部会再校验一次 isValidPetId,这里只挡明显不是字符串的输入,
+ *  避免 undefined 一路传到 kiboPetRegistry.revokeToken() 出现难查的行为)。 */
+function validateStagedImportArg(raw: unknown): { stagingId: string; manifestId: string } {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return {
+    stagingId: typeof r.stagingId === 'string' ? r.stagingId : '',
+    manifestId: typeof r.manifestId === 'string' ? r.manifestId : ''
+  }
+}
+
+/** stagingId → kiboPetRegistry 发的预览 token 的对应表。`registry.registerToken()` 自己生成
+ *  一个独立随机 token 作为 map 的 key,与 16 位十六进制的 stagingId 是两个完全不相关的随机串——
+ *  commit/discard 阶段只从渲染层收到 stagingId,必须靠这张表才能查出当年 toStageImportOutcome()
+ *  真正注册的那个 token 来 revoke;直接把 stagingId 传给 revokeToken() 永远命中不到任何已注册
+ *  的条目,会让预览 token 一直残留在 kiboPetRegistry 内部的 Map 里(见 kiboPetProtocol.ts)。
+ *  两处 IMPORT 注册点(onboarding / 正常流程)互斥,同一进程内只有一个会跑,模块级单例足够。 */
+const previewTokensByStagingId = new Map<string, string>()
+
+/** petCatalog.stageImportPet() 的结果不知道 kiboPetRegistry(main-only 的运行时状态,
+ *  petCatalog.ts 是纯磁盘/校验逻辑,不该知道 token 这个概念),live2d 预览分支需要在这里
+ *  补上 previewSource——给 staging 目录单开一个 token,与当前激活宠物的 token 完全独立,
+ *  commit/discard 时会各自 revoke(通过 previewTokensByStagingId 查回真正的 token)。 */
+function toStageImportOutcome(
+  result: StageImportResult,
+  userPetsDir: string,
+  kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>
+): StageImportOutcome {
+  if (!result.ok) return result
+  if (result.committed) return result
+  const stagingDir = join(userPetsDir, STAGING_DIR_NAME, result.stagingId)
+  const token = kiboPetRegistry.registerToken(stagingDir)
+  previewTokensByStagingId.set(result.stagingId, token)
+  return {
+    ok: true,
+    committed: false,
+    stagingId: result.stagingId,
+    manifestId: result.manifest.id,
+    displayName: result.manifest.displayName,
+    warnings: result.warnings,
+    previewSource: { type: 'live2d', manifest: result.manifest, resourceBaseUrl: `kibo-pet://${token}/` }
+  }
+}
+
+/** COMMIT_STAGED_IMPORT/DISCARD_STAGED_IMPORT 共用:凭 stagingId 撤销 toStageImportOutcome()
+ *  当时注册的预览 token。查不到(从未 stage 过 / 已经 revoke 过一次)就静默跳过,不抛错——
+ *  两个 handler 都是"尽力清理",不应该因为 token 已经不存在就让 commit/discard 本身失败。 */
+function revokePreviewToken(stagingId: string, kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>): void {
+  const token = previewTokensByStagingId.get(stagingId)
+  if (!token) return
+  kiboPetRegistry.revokeToken(token)
+  previewTokensByStagingId.delete(stagingId)
+}
+
 function startOnboarding(opts: {
   appRoot: string
   preload: string
@@ -95,8 +152,9 @@ function startOnboarding(opts: {
   userData: string
   settingsFile: string
   petCatalogDirs: { bundledPetsDir: string; userPetsDir: string }
+  kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>
 }): void {
-  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs } = opts
+  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, kiboPetRegistry } = opts
 
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
@@ -142,10 +200,20 @@ function startOnboarding(opts: {
     return testConnection(arg.provider, arg.key)
   })
   ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
-  ipcMain.handle(IPC.IMPORT_PET, async () => {
+  ipcMain.handle(IPC.STAGE_IMPORT_PET, async (): Promise<StageImportOutcome | null> => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
     if (r.canceled || r.filePaths.length === 0) return null
-    return importPetFolder(r.filePaths[0], petCatalogDirs)
+    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, kiboPetRegistry)
+  })
+  ipcMain.handle(IPC.COMMIT_STAGED_IMPORT, async (_e, raw): Promise<CommitStagedImportResult> => {
+    const { stagingId, manifestId } = validateStagedImportArg(raw)
+    revokePreviewToken(stagingId, kiboPetRegistry)
+    return commitStagedPet(stagingId, manifestId, petCatalogDirs)
+  })
+  ipcMain.handle(IPC.DISCARD_STAGED_IMPORT, async (_e, raw): Promise<void> => {
+    const { stagingId } = validateStagedImportArg(raw)
+    revokePreviewToken(stagingId, kiboPetRegistry)
+    discardStagedPet(stagingId, petCatalogDirs.userPetsDir)
   })
   ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
   ipcMain.on(IPC.OPEN_SETTINGS, () => settings.open())
@@ -208,7 +276,7 @@ export async function startShell(): Promise<void> {
     legacyMemoryDir
   })
   if (resolved.mode === 'onboarding') {
-    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs })
+    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, kiboPetRegistry })
     return
   }
   // resolvePetHome 可能因 configuredPetId 无对应包而回退到 defaultPetId,故真正落地的宠物
@@ -232,6 +300,14 @@ export async function startShell(): Promise<void> {
   // 游走这类高频调用里逐帧累积增长,本项目已经在宠物窗口位置累积器(walkPreciseX/Y)和
   // 气泡窗尺寸(bubbleWindow.ts 的 place())上踩过两次几乎同款的坑。
   let currentPetSize = windowSizeForSource(initialSizeSource)
+  // 鼠标追踪轮询循环(下方 MOUSE_FOCUS 定时器)用的缓存:只在初始加载和 switchPet() 提交时
+  // 更新,避免 30Hz 轮询每 tick 都重新读盘解析 pet.json。
+  let activeLive2DTrackingCapable: boolean =
+    initialSource.type === 'live2d' && initialSource.manifest.render.interaction.mouseTracking
+  // 同一轮询循环用的另一份缓存:用户在设置里的"启用鼠标追踪"开关,只在启动时读一次、
+  // 在下面 SET_SETTINGS handler 保存新设置后同步刷新一次,避免 30Hz 轮询每 tick 都重新
+  // 读盘解析 settings.json(与上面 activeLive2DTrackingCapable 缓存 pet.json 同理)。
+  let mouseTrackingSettingEnabled: boolean = loadSettings(settingsFile).live2d.mouseTrackingEnabled
   const petWin = createPetWindow({
     preload, url: rendererUrl, indexHtml: petHtml,
     initialSize: currentPetSize
@@ -589,6 +665,7 @@ export async function startShell(): Promise<void> {
       session = next
       session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
       saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
+      activeLive2DTrackingCapable = source.type === 'live2d' && source.manifest.render.interaction.mouseTracking
 
       // 先按旧尺寸取一次 bounds/workArea 再更新 currentPetSize——footAnchorPreservingBounds
       // 需要"旧窗口"的真实旧尺寸才能算对锚点平移量,顺序反了 petBoundsFull() 会提前吐出新尺寸。
@@ -684,6 +761,24 @@ export async function startShell(): Promise<void> {
   // cursor, further the longer you drag). Re-deriving the delta from a
   // single fixed anchor each move eliminates the compounding.
   let dragAnchor: { cursorX: number; cursorY: number; winX: number; winY: number } | null = null
+
+  // 鼠标追踪:30Hz 轮询全局光标位置,算出 [-1,1] 目标方向推给渲染进程。持续运行(不按
+  // 开关/可见性单独启停这个 setInterval)——computeMouseFocusTick() 在条件不满足时早退,
+  // 代价是几次布尔判断,不做 screen.getCursorScreenPoint() 之外的开销。
+  const MOUSE_TRACK_TICK_MS = 33
+  setInterval(() => {
+    const target = computeMouseFocusTick({
+      cursor: screen.getCursorScreenPoint(),
+      windowBounds: petBoundsFull(),
+      dragging: dragAnchor !== null,
+      windowVisible: petWin.isVisible(),
+      trackingCapable: activeLive2DTrackingCapable,
+      trackingSettingEnabled: mouseTrackingSettingEnabled,
+      radiusPx: DEFAULT_MOUSE_TRACK_RADIUS_PX
+    })
+    if (target) petWin.webContents.send(IPC.MOUSE_FOCUS, target)
+  }, MOUSE_TRACK_TICK_MS)
+
   // Autonomous walk's precise (unrounded) intended position. Seeded from
   // petWin.getPosition() once, then advanced purely by adding each tick's
   // delta in JS float math — never re-derived from a fresh getPosition()
@@ -884,6 +979,7 @@ export async function startShell(): Promise<void> {
     const prev = loadSettings(settingsFile)
     const next = normalizeSettings(raw)
     saveSettings(settingsFile, next)
+    mouseTrackingSettingEnabled = next.live2d.mouseTrackingEnabled
     if (prev.browserControl.enabled && !next.browserControl.enabled) void browserControl.close()
   })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
@@ -950,10 +1046,20 @@ export async function startShell(): Promise<void> {
     return testConnection(arg.provider, arg.key)
   })
   ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
-  ipcMain.handle(IPC.IMPORT_PET, async () => {
+  ipcMain.handle(IPC.STAGE_IMPORT_PET, async (): Promise<StageImportOutcome | null> => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
     if (r.canceled || r.filePaths.length === 0) return null
-    return importPetFolder(r.filePaths[0], petCatalogDirs)
+    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, kiboPetRegistry)
+  })
+  ipcMain.handle(IPC.COMMIT_STAGED_IMPORT, async (_e, raw): Promise<CommitStagedImportResult> => {
+    const { stagingId, manifestId } = validateStagedImportArg(raw)
+    revokePreviewToken(stagingId, kiboPetRegistry)
+    return commitStagedPet(stagingId, manifestId, petCatalogDirs)
+  })
+  ipcMain.handle(IPC.DISCARD_STAGED_IMPORT, async (_e, raw): Promise<void> => {
+    const { stagingId } = validateStagedImportArg(raw)
+    revokePreviewToken(stagingId, kiboPetRegistry)
+    discardStagedPet(stagingId, petCatalogDirs.userPetsDir)
   })
   ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
 

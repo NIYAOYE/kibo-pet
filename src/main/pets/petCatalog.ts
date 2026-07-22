@@ -1,8 +1,8 @@
 import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { parsePetManifest, parseLive2DManifest, isLive2DManifestRaw } from '@shared/petPackage'
-import type { PetSummary, ImportResult } from '@shared/ipc'
+import { parsePetManifest, parseLive2DManifest, isLive2DManifestRaw, type Live2DManifest } from '@shared/petPackage'
+import type { PetSummary, ImportResult, ImportReason } from '@shared/ipc'
 import { scanImportSource, isPathSafe } from './importSecurity'
 import { readTextureInfos, evaluateTextureBudget } from './live2dTextureBudget'
 import {
@@ -13,6 +13,7 @@ import {
 } from './live2dOrphanResources'
 
 export const STAGING_DIR_NAME = '.staging'
+const STAGING_ID_PATTERN = /^[0-9a-f]{16}$/
 
 /** 合法宠物 id:仅字母数字下划线连字符,拒绝路径分隔/穿越。与 config/settings.ts 的正则同源。 */
 export function isValidPetId(v: unknown): boolean {
@@ -66,10 +67,6 @@ export function listPets(dirs: { bundledPetsDir: string; userPetsDir: string }):
   return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en'))
 }
 
-function newStagingDir(userPetsDir: string): string {
-  return join(userPetsDir, STAGING_DIR_NAME, randomBytes(8).toString('hex'))
-}
-
 /** sprite 包校验链(与改造前逐字节一致),复制到 staging 后打上 v2 标记再交给调用方原子提交。 */
 function importSpritePet(
   raw: unknown,
@@ -119,7 +116,7 @@ function importLive2DPet(
   srcDir: string,
   stagingDir: string,
   dirs: { bundledPetsDir: string; userPetsDir: string }
-): ImportResult {
+): { ok: true; manifest: Live2DManifest; warnings: string[] } | { ok: false; reason: ImportReason; message: string } {
   let manifest
   try {
     manifest = parseLive2DManifest(raw)
@@ -230,39 +227,38 @@ function importLive2DPet(
     }
   }
 
+  let finalManifest: Live2DManifest = manifest
   try {
     cpSync(srcDir, stagingDir, { recursive: true })
     const modelJsonStagingPath = join(stagingDir, manifest.render.model)
     writeFileSync(modelJsonStagingPath, JSON.stringify(patchedModel3Json, null, 2), 'utf-8')
     if (possibleWatermark) {
-      const petJsonStagingPath = join(stagingDir, 'pet.json')
-      const patchedManifest = { ...manifest, render: { ...manifest.render, possibleWatermark: true } }
-      writeFileSync(petJsonStagingPath, JSON.stringify(patchedManifest, null, 2), 'utf-8')
+      finalManifest = { ...manifest, render: { ...manifest.render, possibleWatermark: true } }
+      writeFileSync(join(stagingDir, 'pet.json'), JSON.stringify(finalManifest, null, 2), 'utf-8')
     }
-    const finalDir = join(dirs.userPetsDir, manifest.id)
-    renameSync(stagingDir, finalDir)
   } catch (e) {
     rmSync(stagingDir, { recursive: true, force: true })
     return { ok: false, reason: 'copy-failed', message: `导入失败:${(e as Error).message}` }
   }
 
-  return {
-    ok: true,
-    pet: { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'live2d', renderReady: true },
-    ...(warnings.length > 0 ? { warnings } : {})
-  }
+  return { ok: true, manifest: finalManifest, warnings }
 }
 
+export type StageImportResult =
+  | { ok: true; committed: true; pet: PetSummary; warnings?: string[] }
+  | { ok: true; committed: false; stagingId: string; manifest: Live2DManifest; warnings: string[] }
+  | { ok: false; reason: ImportReason; message: string }
+
 /**
- * 校验外部宠物文件夹并导入到 userData/pets/<id>。统一 staging + 安全校验 + 原子移动:
- * 两种包共用路径安全校验和 staging/提交流程,live2d 专属校验(引用完整性/纹理预算/
- * 游离资源找回/水印提示)只在 render.type===live2d 时跑。任一环节失败都清理 staging 残留,
- * 不触碰最终目录;冲突(id 已存在)一律拒绝,绝不覆盖。
+ * 校验外部宠物文件夹并复制到 `.staging`。sprite 包不经过预览,校验通过后立即原子提交到
+ * userData/pets/<id>(`committed:true`);live2d 包停在 staging,等待调用方(设置页预览面板)
+ * 调 commitStagedPet()/discardStagedPet() 决定去留(`committed:false`)。任一校验环节失败都
+ * 清理 staging 残留,不触碰最终目录。
  */
-export function importPetFolder(
+export function stageImportPet(
   srcDir: string,
   dirs: { bundledPetsDir: string; userPetsDir: string }
-): ImportResult {
+): StageImportResult {
   const manifestPath = join(srcDir, 'pet.json')
   if (!existsSync(manifestPath)) {
     return { ok: false, reason: 'no-manifest', message: '所选文件夹里没有 pet.json' }
@@ -277,15 +273,60 @@ export function importPetFolder(
   const violation = scanImportSource(srcDir)
   if (violation) return { ok: false, reason: violation.reason, message: violation.message }
 
-  const stagingDir = newStagingDir(dirs.userPetsDir)
-  const result = isLive2DManifestRaw(raw)
-    ? importLive2DPet(raw, srcDir, stagingDir, dirs)
-    : importSpritePet(raw, srcDir, stagingDir, dirs)
+  const stagingId = randomBytes(8).toString('hex')
+  const stagingDir = join(dirs.userPetsDir, STAGING_DIR_NAME, stagingId)
 
+  if (isLive2DManifestRaw(raw)) {
+    const result = importLive2DPet(raw, srcDir, stagingDir, dirs)
+    if (!result.ok) {
+      rmSync(stagingDir, { recursive: true, force: true })
+      return result
+    }
+    return { ok: true, committed: false, stagingId, manifest: result.manifest, warnings: result.warnings }
+  }
+
+  const result: ImportResult = importSpritePet(raw, srcDir, stagingDir, dirs)
   if (!result.ok) {
     rmSync(stagingDir, { recursive: true, force: true })
+    return result
   }
-  return result
+  return { ok: true, committed: true, pet: result.pet, warnings: result.warnings }
+}
+
+/** 用户在预览面板点"确认导入":把 staging 目录原子移到最终目录。stagingId 必须是
+ *  stageImportPet() 返回过的十六进制串(16 个字符),不接受任意路径——防止渲染进程
+ *  (信任边界较低的一侧)喂一个精心构造的字符串跑出 .staging 目录之外。 */
+export function commitStagedPet(
+  stagingId: string,
+  manifestId: string,
+  dirs: { bundledPetsDir: string; userPetsDir: string }
+): { ok: true; pet: PetSummary } | { ok: false; message: string } {
+  if (!STAGING_ID_PATTERN.test(stagingId)) return { ok: false, message: '非法的 stagingId' }
+  const stagingDir = join(dirs.userPetsDir, STAGING_DIR_NAME, stagingId)
+  if (!existsSync(stagingDir)) return { ok: false, message: '预览已过期或已被清理,请重新导入' }
+  if (!isValidPetId(manifestId)) {
+    rmSync(stagingDir, { recursive: true, force: true })
+    return { ok: false, message: `非法的宠物 id:${manifestId}` }
+  }
+  const finalDir = join(dirs.userPetsDir, manifestId)
+  if (existsSync(join(dirs.bundledPetsDir, manifestId)) || existsSync(finalDir)) {
+    rmSync(stagingDir, { recursive: true, force: true })
+    return { ok: false, message: `id「${manifestId}」已存在,请修改宠物包 pet.json 的 id 后重试` }
+  }
+  try {
+    renameSync(stagingDir, finalDir)
+  } catch (e) {
+    return { ok: false, message: `导入失败:${(e as Error).message}` }
+  }
+  const pet = readSummary(finalDir)
+  if (!pet) return { ok: false, message: '提交后读取宠物包失败' }
+  return { ok: true, pet }
+}
+
+/** 用户在预览面板点"取消":删掉 staging 目录,不留痕迹。stagingId 校验同 commitStagedPet()。 */
+export function discardStagedPet(stagingId: string, userPetsDir: string): void {
+  if (!STAGING_ID_PATTERN.test(stagingId)) return
+  rmSync(join(userPetsDir, STAGING_DIR_NAME, stagingId), { recursive: true, force: true })
 }
 
 /** 应用启动时调用:清掉上次崩溃/中断导入残留的 .staging 子目录(未完整提交的导入不会"复活")。 */

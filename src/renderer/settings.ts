@@ -1,5 +1,6 @@
 import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend } from '@shared/llm'
-import type { VoiceRuntimeState } from '@shared/ipc'
+import type { VoiceRuntimeState, StageImportOutcome } from '@shared/ipc'
+import { Live2DPetRenderer } from './live2dRenderer'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -22,13 +23,51 @@ const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
 const appFocusLlmOpenerEnabled = $<HTMLInputElement>('appFocusLlmOpenerEnabled')
 const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const gpuAccelerationExperimental = $<HTMLInputElement>('gpuAccelerationExperimental')
+const live2dMouseTrackingEnabled = $<HTMLInputElement>('live2dMouseTrackingEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const importDetail = $<HTMLElement>('importDetail')
+const importPreview = $<HTMLElement>('importPreview')
+const importPreviewCanvas = $<HTMLCanvasElement>('importPreviewCanvas')
+const importPreviewName = $<HTMLElement>('importPreviewName')
+const importPreviewWarnings = $<HTMLElement>('importPreviewWarnings')
+const importPreviewConfirm = $<HTMLButtonElement>('importPreviewConfirm')
+const importPreviewCancel = $<HTMLButtonElement>('importPreviewCancel')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 const noPetBanner = $<HTMLElement>('noPetBanner')
 const closeBtn = $<HTMLButtonElement>('closeBtn')
 closeBtn.addEventListener('click', () => window.close())
+
+// 设置窗口是独立的 BrowserWindow(独立 JS 全局),这里覆盖 window.petApi.updateLive2DTransform
+// 只影响本窗口——不会影响宠物窗口里真实的 window.petApi。Live2DPetRenderer.load() 首次
+// 自动对齐模型尺寸时会无条件调用这个方法持久化结果;预览的是尚未提交的 staging 包,
+// 绝不能借这个调用误写当前激活宠物的 pet.json,所以在本窗口里整体 stub 掉。
+window.petApi.updateLive2DTransform = async () => ({ ok: true })
+
+let pendingStaging: { stagingId: string; manifestId: string } | null = null
+let previewRenderer: Live2DPetRenderer | null = null
+
+function appendWarnings(target: HTMLElement, warnings: string[] | undefined): void {
+  if (!warnings || warnings.length === 0) return
+  target.style.display = 'block'
+  for (const w of warnings) {
+    const line = document.createElement('div')
+    line.textContent = `· ${w}`
+    target.appendChild(line)
+  }
+}
+
+async function closeImportPreview(): Promise<void> {
+  if (previewRenderer) {
+    await previewRenderer.destroy()
+    previewRenderer = null
+  }
+  importPreview.style.display = 'none'
+  importPreviewWarnings.innerHTML = ''
+  importPreviewWarnings.style.display = 'none'
+  importPreviewName.textContent = ''
+  pendingStaging = null
+}
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
 // 本页是否是在"引导模式(无任何已装宠物包)"下打开的——见 save 按钮处理里的用法:
 // 这种情况下即便用户选中的宠物 id 恰好等于 savedActivePetId 的默认值(比如重新导入了
@@ -351,27 +390,64 @@ async function refreshPets(selectId: string): Promise<void> {
 importPetBtn.addEventListener('click', async () => {
   importDetail.style.display = 'none'
   importDetail.innerHTML = ''
+  await closeImportPreview()
   try {
-    const res = await window.settingsApi.importPet()
+    const res: StageImportOutcome | null = await window.settingsApi.stageImportPet()
     if (!res) return // 用户取消,静默
+    if (!res.ok) {
+      status.textContent = `✗ ${res.message}`
+      return
+    }
+    if (res.committed) {
+      await refreshPets(res.pet.id)
+      noPetBanner.style.display = 'none'
+      status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
+      appendWarnings(importDetail, res.warnings)
+      return
+    }
+    pendingStaging = { stagingId: res.stagingId, manifestId: res.manifestId }
+    importPreviewName.textContent = res.displayName
+    appendWarnings(importPreviewWarnings, res.warnings)
+    importPreview.style.display = 'block'
+    previewRenderer = new Live2DPetRenderer(importPreviewCanvas)
+    try {
+      await previewRenderer.load(res.previewSource)
+    } catch (loadErr) {
+      // 预览渲染失败(损坏的 moc3/贴图、WebGL 问题等)——staging 通过了结构性检查,
+      // 但实际渲染不出来。绝不能让确认按钮留在可点状态去提交一个自己都没渲染成功的包,
+      // 所以这里必须像用户主动取消一样,立刻丢弃 staging + 关闭预览面板,而不是只在
+      // status 里报错(那样 pendingStaging/预览面板都还在,用户仍能点"确认导入")。
+      await window.settingsApi.discardStagedImport(res.stagingId)
+      await closeImportPreview()
+      status.textContent = `✗ 预览渲染失败,已自动放弃本次导入:${(loadErr as Error)?.message ?? '未知错误'}`
+      return
+    }
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+importPreviewConfirm.addEventListener('click', async () => {
+  if (!pendingStaging) return
+  const { stagingId, manifestId } = pendingStaging
+  try {
+    const res = await window.settingsApi.commitStagedImport(stagingId, manifestId)
+    await closeImportPreview()
     if (res.ok) {
       await refreshPets(res.pet.id)
       noPetBanner.style.display = 'none'
       status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
-      if (res.warnings && res.warnings.length > 0) {
-        importDetail.style.display = 'block'
-        for (const w of res.warnings) {
-          const line = document.createElement('div')
-          line.textContent = `· ${w}`
-          importDetail.appendChild(line)
-        }
-      }
     } else {
       status.textContent = `✗ ${res.message}`
     }
   } catch (err) {
     status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
   }
+})
+
+importPreviewCancel.addEventListener('click', async () => {
+  if (pendingStaging) await window.settingsApi.discardStagedImport(pendingStaging.stagingId)
+  await closeImportPreview()
 })
 
 relaunchBtn.addEventListener('click', () => window.settingsApi.relaunch())
@@ -437,7 +513,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
       gpuAcceleration: { experimental: gpuAccelerationExperimental.checked },
       tts: currentTts(),
-      ttsGenie: currentTtsGenie()
+      ttsGenie: currentTtsGenie(),
+      live2d: { mouseTrackingEnabled: live2dMouseTrackingEnabled.checked }
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
@@ -480,6 +557,7 @@ void (async () => {
   syncFirecrawlRows()
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   gpuAccelerationExperimental.checked = snap.settings.gpuAcceleration.experimental
+  live2dMouseTrackingEnabled.checked = snap.settings.live2d.mouseTrackingEnabled
   browserControlEnabled.checked = snap.settings.browserControl.enabled
   browserControlMode.value = snap.settings.browserControl.mode
   browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''

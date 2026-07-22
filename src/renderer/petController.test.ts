@@ -10,15 +10,21 @@ function makeFakeRenderer(): PetRenderer & {
   commitSwapCalled: boolean
   discardSwapCalled: boolean
   shouldFailPrepare?: boolean
+  lipSyncLevels: number[]
+  lookTargets: { x: number; y: number }[]
 } {
   const loadedWith: PetRenderSource[] = []
   const prepareSwapWith: PetRenderSource[] = []
+  const lipSyncLevels: number[] = []
+  const lookTargets: { x: number; y: number }[] = []
   return {
     destroyed: false,
     loadedWith,
     prepareSwapWith,
     commitSwapCalled: false,
     discardSwapCalled: false,
+    lipSyncLevels,
+    lookTargets,
     async load(source) { loadedWith.push(source) },
     async prepareSwap(source) {
       if (this.shouldFailPrepare) throw new Error('prepare failed')
@@ -28,7 +34,8 @@ function makeFakeRenderer(): PetRenderer & {
     discardSwap() { this.discardSwapCalled = true },
     playState() {},
     setFacing() {},
-    setLipSync() {},
+    setLipSync(level: number) { this.lipSyncLevels.push(level) },
+    setLookTarget(x: number, y: number) { this.lookTargets.push({ x, y }) },
     hitTest(): PetHitResult { return { hit: false } },
     resize() {},
     setVisible() {},
@@ -207,5 +214,23 @@ describe('PetController 行为模块按 rendererType 选择', () => {
 
     expect(playState).toHaveBeenCalledWith('idle')
     expect(moveWindow).not.toHaveBeenCalled()
+  })
+})
+
+describe('PetController.setLipSync', () => {
+  it('直接转发给当前 renderer.setLipSync()', () => {
+    const renderer = makeFakeRenderer()
+    const controller = new PetController(renderer, 'live2d', vi.fn())
+    controller.setLipSync(0.7)
+    expect(renderer.lipSyncLevels).toEqual([0.7])
+  })
+})
+
+describe('PetController.setMouseFocus', () => {
+  it('非睡眠状态(初始状态就是 idle,不是 sleep):原样转发给 renderer.setLookTarget()', () => {
+    const renderer = makeFakeRenderer()
+    const controller = new PetController(renderer, 'live2d', vi.fn())
+    controller.setMouseFocus(0.4, -0.2)
+    expect(renderer.lookTargets).toEqual([{ x: 0.4, y: -0.2 }])
   })
 })

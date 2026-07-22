@@ -77,6 +77,10 @@ export class SpriteRenderer implements PetRenderer {
     // no-op:精灵格式没有可驱动的口型参数,这是格式本身的固有限制,不是遗漏。
   }
 
+  setLookTarget(_x: number, _y: number): void {
+    // no-op
+  }
+
   hitTest(clientX: number, clientY: number): PetHitResult {
     return { hit: this.isPetPixel(clientX, clientY) }
   }

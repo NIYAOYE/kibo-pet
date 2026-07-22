@@ -123,6 +123,20 @@ export class PetController {
     return this.renderer.hitTest(clientX, clientY)
   }
 
+  setLipSync(level: number): void {
+    this.renderer.setLipSync(level)
+  }
+
+  /** 主进程推来的鼠标追踪目标:非睡眠状态原样转发;睡眠时强制回正,不使用传入目标——
+   *  是否在睡眠这件事只有渲染进程的行为状态机知道,主进程算不出来。 */
+  setMouseFocus(x: number, y: number): void {
+    if (this.behavior.kind === 'live2d' && this.behavior.ctx.state === 'sleep') {
+      this.renderer.setLookTarget(0, 0)
+      return
+    }
+    this.renderer.setLookTarget(x, y)
+  }
+
   send(event: PetEvent): void { this.pending.push(event) }
 
   /** 双击=戳：下一 tick 喂给反应规划器 */

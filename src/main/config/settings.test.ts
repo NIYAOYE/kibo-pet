@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, gpuAcceleration: { experimental: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, textTools: { autoCopyResult: false }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, gpuAcceleration: { experimental: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie, live2d: { mouseTrackingEnabled: true } }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -61,9 +61,9 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 14', () => {
+  it('归一化后 schemaVersion 升为 15', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(14)
+    expect(loadSettings(f).schemaVersion).toBe(15)
   })
 })
 
@@ -89,9 +89,9 @@ describe('browserControl', () => {
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '   ' } })).browserControl.chromePath).toBeUndefined()
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: 123 } })).browserControl.chromePath).toBeUndefined()
   })
-  it('归一化后 schemaVersion 升为 14', () => {
+  it('归一化后 schemaVersion 升为 15', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(14)
+    expect(loadSettings(f).schemaVersion).toBe(15)
   })
 })
 
@@ -138,9 +138,9 @@ describe('ttsGenie', () => {
     const f = tmpSettingsFile({ ttsGenie: { runtimeInstallPath: 123 } })
     expect(loadSettings(f).ttsGenie).toEqual({ runtimeInstallPath: '' })
   })
-  it('归一化后 schemaVersion 升为 14', () => {
+  it('归一化后 schemaVersion 升为 15', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(14)
+    expect(loadSettings(f).schemaVersion).toBe(15)
   })
 })
 
@@ -156,5 +156,22 @@ describe('tts.backend', () => {
   it('非法值 → 回退默认 gsv-tts-lite', () => {
     const f = tmpSettingsFile({ tts: { backend: 'not-a-real-backend' } })
     expect(loadSettings(f).tts.backend).toBe('gsv-tts-lite')
+  })
+})
+
+describe('live2d.mouseTrackingEnabled', () => {
+  it('缺省时默认 true', () => {
+    const f = tmpSettingsFile({ schemaVersion: 1 })
+    expect(loadSettings(f).live2d.mouseTrackingEnabled).toBe(true)
+  })
+
+  it('显式 false 时保留 false', () => {
+    const f = tmpSettingsFile({ schemaVersion: 1, live2d: { mouseTrackingEnabled: false } })
+    expect(loadSettings(f).live2d.mouseTrackingEnabled).toBe(false)
+  })
+
+  it('非法值(非 boolean)时回落默认 true', () => {
+    const f = tmpSettingsFile({ schemaVersion: 1, live2d: { mouseTrackingEnabled: 'yes' } })
+    expect(loadSettings(f).live2d.mouseTrackingEnabled).toBe(true)
   })
 })

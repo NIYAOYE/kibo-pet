@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend, type GenieTtsSettings } from '@shared/llm'
+import { AppSettings, DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION, ProviderKind, SearchBackendKind, type MemorySettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend, type GenieTtsSettings, type Live2DSettings } from '@shared/llm'
 
 const KINDS: ProviderKind[] = ['fake', 'anthropic', 'openai-compat']
 const BACKENDS: SearchBackendKind[] = ['duckduckgo', 'tavily']
@@ -81,6 +81,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
   const ttsGenie: GenieTtsSettings = {
     runtimeInstallPath: typeof tg.runtimeInstallPath === 'string' ? tg.runtimeInstallPath : DEFAULT_SETTINGS.ttsGenie.runtimeInstallPath
   }
+  const l2d = (r.live2d ?? {}) as Record<string, unknown>
+  const live2d: Live2DSettings = { mouseTrackingEnabled: typeof l2d.mouseTrackingEnabled === 'boolean' ? l2d.mouseTrackingEnabled : DEFAULT_SETTINGS.live2d.mouseTrackingEnabled }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
@@ -94,7 +96,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     appFocusLlmOpener,
     gpuAcceleration,
     tts,
-    ttsGenie
+    ttsGenie,
+    live2d
   }
 }
 

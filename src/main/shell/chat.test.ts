@@ -23,7 +23,8 @@ const settings: AppSettings = {
   appFocusLlmOpener: { enabled: false },
   tts: DEFAULT_TTS_SETTINGS,
   ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
-  gpuAcceleration: { experimental: false }
+  gpuAcceleration: { experimental: false },
+  live2d: { mouseTrackingEnabled: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

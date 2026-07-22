@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: kibo-pet:; connect-src 'self' data: kibo-pet:; media-src 'self' kibo-pet:; worker-src 'self' blob:" />
     <link rel="stylesheet" href="./theme.css" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
@@ -107,9 +107,22 @@
               <button id="relaunch" class="secondary" style="display:none">立即重启</button>
             </div>
             <div id="importDetail" class="hint" style="display:none;border:1px solid var(--border);border-radius:var(--radius-control);padding:8px 10px"></div>
+            <div id="importPreview" style="display:none;border:1px solid var(--border);border-radius:var(--radius-control);padding:10px;margin-top:8px">
+              <canvas id="importPreviewCanvas" width="240" height="300" style="display:block;margin:0 auto;background:transparent"></canvas>
+              <div id="importPreviewName" style="text-align:center;font-weight:600;margin-top:6px"></div>
+              <div id="importPreviewWarnings" class="hint"></div>
+              <div class="row" style="margin-top:8px;justify-content:center">
+                <button id="importPreviewConfirm" class="secondary" type="button">确认导入</button>
+                <button id="importPreviewCancel" class="secondary" type="button">取消</button>
+              </div>
+            </div>
             <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
               <input id="gpuAccelerationExperimental" type="checkbox" style="width:auto" />
               <span>尝试启用硬件加速渲染(实验性,重启后生效)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+              <input id="live2dMouseTrackingEnabled" type="checkbox" style="width:auto" />
+              <span>启用鼠标追踪(Live2D 宠物的眼睛/头部看向鼠标,关闭后保持居中)</span>
             </label>
           </section>
 

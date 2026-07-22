@@ -33,6 +33,8 @@ export interface PetRenderer {
   /** live2d 用的镜像朝向;sprite 渲染器上是 no-op(朝向由 playState 的 walk-left/walk-right 决定)。 */
   setFacing(direction: 'left' | 'right'): void
   setLipSync(level: number): void
+  /** 视线/头部跟随目标,x/y 是 [-1,1] 的方向,(0,0) 表示回正。sprite 渲染器上是 no-op。 */
+  setLookTarget(x: number, y: number): void
   hitTest(x: number, y: number): PetHitResult
   resize(viewport: PetViewport): void
   setVisible(visible: boolean): void

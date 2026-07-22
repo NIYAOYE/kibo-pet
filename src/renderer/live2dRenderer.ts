@@ -225,6 +225,10 @@ export class Live2DPetRenderer implements PetRenderer {
     }
   }
 
+  setLookTarget(x: number, y: number): void {
+    this.model?.focus(x, y)
+  }
+
   hitTest(clientX: number, clientY: number): PetHitResult {
     if (!this.model) return { hit: false }
     const { x, y } = toCanvasCoords(this.canvas, clientX, clientY)

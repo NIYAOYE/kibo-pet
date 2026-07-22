@@ -66,7 +66,8 @@ describe('resolveEmbeddingKey', () => {
     appFocusLlmOpener: { enabled: false },
     tts: DEFAULT_TTS_SETTINGS,
     ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
-    gpuAcceleration: { experimental: false }
+    gpuAcceleration: { experimental: false },
+    live2d: { mouseTrackingEnabled: false }
   })
   it('有独立 key 优先用', () => {
     expect(resolveEmbeddingKey(base('https://a/v1', 'https://a/v1'), 'ek', 'ck')).toBe('ek')

@@ -2,6 +2,7 @@ import { SpriteRenderer } from './spriteRenderer'
 import { Live2DPetRenderer } from './live2dRenderer'
 import { PetController } from './petController'
 import { createPcmPlayer } from './voice/pcmPlayer'
+import { createLipSyncSmoother, DEFAULT_LIP_SYNC_ATTACK_MS, DEFAULT_LIP_SYNC_RELEASE_MS } from './voice/lipSyncEnvelope'
 import type { PetRenderer } from './petRenderer'
 import type { PetRenderSource } from '@shared/petPackage'
 
@@ -82,9 +83,25 @@ async function boot(): Promise<void> {
     try { controller.discardReload() } catch (err) { console.warn('discardReload failed', err) }
   })
   window.petApi.onWindowVisibilityChanged((payload) => controller.setVisible(payload.visible))
+  window.petApi.onMouseFocus((payload) => controller.setMouseFocus(payload.x, payload.y))
   window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
   window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())
+
+  // 口型驱动循环:与 PetController 的 33ms 业务 tick 解耦,用 rAF 跟渲染帧率对齐。
+  // 没有语音播放时 pcmPlayer.getCurrentLevel() 恒返回 0,smoother 很快收敛到 0 不再变化,
+  // 常驻运行的代价可以忽略——不需要在 TTS 开关/播放状态变化时单独启停这个循环。
+  const lipSyncSmoother = createLipSyncSmoother(DEFAULT_LIP_SYNC_ATTACK_MS, DEFAULT_LIP_SYNC_RELEASE_MS)
+  let lastLipSyncTickMs = performance.now()
+  function tickLipSync(): void {
+    const now = performance.now()
+    const dtMs = now - lastLipSyncTickMs
+    lastLipSyncTickMs = now
+    const level = lipSyncSmoother.step(pcmPlayer.getCurrentLevel(), dtMs)
+    controller.setLipSync(level)
+    requestAnimationFrame(tickLipSync)
+  }
+  requestAnimationFrame(tickLipSync)
 
   window.addEventListener('mousemove', (e: MouseEvent) => {
     if (dragging) {

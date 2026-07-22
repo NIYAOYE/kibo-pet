@@ -43,7 +43,9 @@ export const IPC = {
   OVERLAY_SUBMIT: 'overlay:submit',
   OVERLAY_CANCEL: 'overlay:cancel',
   LIST_PETS: 'pets:list',
-  IMPORT_PET: 'pets:import',
+  STAGE_IMPORT_PET: 'pets:stage-import',
+  COMMIT_STAGED_IMPORT: 'pets:commit-staged-import',
+  DISCARD_STAGED_IMPORT: 'pets:discard-staged-import',
   RELAUNCH_APP: 'app:relaunch',
   LIST_TODOS: 'todos:list',
   ADD_TODO: 'todos:add',
@@ -86,7 +88,8 @@ export const IPC = {
   PET_PREPARE_RESULT: 'pet:prepare-result',
   PET_COMMIT: 'pet:commit',
   PET_DISCARD: 'pet:discard',
-  WINDOW_VISIBILITY_CHANGED: 'window:visibility-changed'
+  WINDOW_VISIBILITY_CHANGED: 'window:visibility-changed',
+  MOUSE_FOCUS: 'pet:mouse-focus'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
@@ -162,6 +165,9 @@ export interface PetApi {
   onPetDiscard(cb: (payload: PetDiscardPayload) => void): void
   /** 主进程窗口可见性变化(最小化/恢复/锁屏/解锁)推送,驱动 Live2D 场景帧率节流 */
   onWindowVisibilityChanged(cb: (payload: WindowVisibilityPayload) => void): void
+  /** 主进程推送的鼠标追踪目标([-1,1] 方向;(0,0) 表示回正),仅当当前宠物是 live2d 且
+   *  设置里开启追踪时才会收到非空推送——见 §2 主进程轮询循环。 */
+  onMouseFocus(cb: (payload: { x: number; y: number }) => void): void
   /** 把 scale/offsetX/offsetY/autoFitted 写回当前宠物的 pet.json(只覆盖这四个字段,
    *  anchorX/anchorY/bubbleAnchorX/bubbleAnchorY 不变)。两个调用方:Live2DPetRenderer.load()
    *  首次加载时的自动对齐,以及 window.__kiboLive2D 调试挂钩的人工核对/覆盖。
@@ -208,6 +214,16 @@ export type ImportResult =
   | { ok: true; pet: PetSummary; warnings?: string[] }
   | { ok: false; reason: ImportReason; message: string }
 
+/** STAGE_IMPORT_PET 的返回形状:sprite 包一步提交(committed:true,与 ImportResult 的成功分支
+ *  同形);live2d 包停在预览阶段(committed:false),附带渲染预览要用的 previewSource——
+ *  复用现有 PetRenderSource,设置窗口拿到后可以直接喂给 Live2DPetRenderer.load()。 */
+export type StageImportOutcome =
+  | { ok: true; committed: true; pet: PetSummary; warnings?: string[] }
+  | { ok: true; committed: false; stagingId: string; manifestId: string; displayName: string; warnings: string[]; previewSource: PetRenderSource }
+  | { ok: false; reason: ImportReason; message: string }
+
+export type CommitStagedImportResult = { ok: true; pet: PetSummary } | { ok: false; message: string }
+
 export interface PetChatListItem {
   id: string
   displayName: string
@@ -239,7 +255,12 @@ export interface SettingsApi {
   openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
   listPets(): Promise<PetSummary[]>
-  importPet(): Promise<ImportResult | null>
+  /** 弹文件夹选择器 → 校验 → 复制到 .staging。sprite 包在这一步内部就直接提交完了
+   *  (committed:true);live2d 包停在预览阶段(committed:false),需要接着调
+   *  commitStagedImport()/discardStagedImport() 决定去留。用户取消选择返回 null。 */
+  stageImportPet(): Promise<StageImportOutcome | null>
+  commitStagedImport(stagingId: string, manifestId: string): Promise<CommitStagedImportResult>
+  discardStagedImport(stagingId: string): Promise<void>
   relaunch(): void
 }
 
