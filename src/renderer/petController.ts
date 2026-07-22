@@ -21,15 +21,12 @@ export class PetController {
   private pendingReaction: ReactionTrigger | null = null
   private pendingContextSignal: ContextSignalKind | null = null
   private renderer: PetRenderer
-  private rendererType: PetRenderSource['type']
 
   constructor(
     initialRenderer: PetRenderer,
-    initialSourceType: PetRenderSource['type'],
     private readonly createRenderer: (source: PetRenderSource) => PetRenderer
   ) {
     this.renderer = initialRenderer
-    this.rendererType = initialSourceType
   }
 
   async start(): Promise<void> {
@@ -46,17 +43,16 @@ export class PetController {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
   }
 
-  /** 热切换宠物:重新拉取宠物数据。若新宠物的渲染器类型(sprite/live2d)和当前不一样,
-   *  先销毁旧渲染器实例、用工厂按新类型构造一个新实例再替换——不能对着一个类型不匹配的
-   *  渲染器直接调 load(),SpriteRenderer/Live2DPetRenderer 的 load() 都会因为类型断言失败
-   *  而抛错。类型相同时行为不变,直接复用现有实例。 */
+  /** 热切换宠物:重新拉取宠物数据,总是销毁旧渲染器实例、用工厂构造一个新实例再加载——
+   *  即使新旧宠物渲染器类型相同也不能对着旧实例直接调 load() 复用。原因不是类型断言,而是
+   *  Live2D 依赖的 WebGL context 一旦 destroy() 就被 pixi.js 强制 lose 掉(GlContextSystem
+   *  无条件调用 loseContext()),同一个 canvas 元素之后再也拿不到能用的 context;sprite/live2d
+   *  混用同一个 canvas 更是直接不可能(2D 和 WebGL context 一旦绑定就不能互换,规范如此)。
+   *  factory 由 main.ts 提供,负责在构造新渲染器前先换一个全新的 canvas 元素。 */
   async reload(): Promise<void> {
     const source = await window.petApi.getPet()
-    if (source.type !== this.rendererType) {
-      await this.renderer.destroy()
-      this.renderer = this.createRenderer(source)
-      this.rendererType = source.type
-    }
+    await this.renderer.destroy()
+    this.renderer = this.createRenderer(source)
     await this.renderer.load(source)
     this.ctx = initBrain()
     this.currentAnim = ''

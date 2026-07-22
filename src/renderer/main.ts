@@ -8,32 +8,26 @@ import type { PetRenderSource } from '@shared/petPackage'
 const DRAG_THRESHOLD = 4
 const DBLCLICK_MS = 280
 
+/** 一旦某个 canvas 元素被绑定过某种 context(2D 或 WebGL),规范上就再也不能换成另一种类型;
+ *  而 pixi.js 的 Application.destroy() 还会无条件强制 lose 掉 WebGL context(GlContextSystem.
+ *  destroy() 内部调用 loseContext(),没有选项能跳过),之后同一个 canvas 再 getContext('webgl')
+ *  拿到的还是那个已经废弃的 context——所以每次(重新)构造渲染器都必须换一个全新的 canvas 元素,
+ *  不能复用旧的,不管前后渲染器类型是否相同。 */
+function replacePetCanvas(current: HTMLCanvasElement): HTMLCanvasElement {
+  const fresh = document.createElement('canvas')
+  fresh.id = current.id
+  current.replaceWith(fresh)
+  return fresh
+}
+
 function createRenderer(canvas: HTMLCanvasElement, source: PetRenderSource): PetRenderer {
   if (source.type === 'sprite') return new SpriteRenderer(canvas)
   return new Live2DPetRenderer(canvas)
 }
 
 async function boot(): Promise<void> {
-  const canvas = document.getElementById('pet') as HTMLCanvasElement
+  let canvas = document.getElementById('pet') as HTMLCanvasElement
   const source = await window.petApi.getPet()
-
-  const renderer = createRenderer(canvas, source)
-  await renderer.load(source)
-  const controller = new PetController(renderer, source.type, (s) => createRenderer(canvas, s))
-  await controller.start()
-  const pcmPlayer = createPcmPlayer()
-  window.petApi.onPetEvent((event) => {
-    controller.send(event)
-    // 新消息发送即打断正在朗读的语音(参照 opts.emitPetEvent('messageSent') 的既有约定)。
-    if (event === 'messageSent') pcmPlayer.stop()
-  })
-  window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
-  window.petApi.onPetChanged(() => {
-    void controller.reload().catch((err) => console.warn('pet reload failed', err))
-  })
-  window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
-  window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
-  window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())
 
   let dragging = false
   let moved = false
@@ -50,13 +44,39 @@ async function boot(): Promise<void> {
     window.petApi.setIgnoreMouseEvents(ignore)
   }
 
-  canvas.addEventListener('mousedown', (e: MouseEvent) => {
+  function onCanvasMouseDown(e: MouseEvent): void {
     dragging = true
     moved = false
     lastX = e.screenX; lastY = e.screenY
     downX = e.screenX; downY = e.screenY
     canvas.style.cursor = 'grabbing'
+  }
+
+  // canvas 每次热切换都会被换成一个全新元素(见 replacePetCanvas 的注释),旧元素上的监听器
+  // 跟着旧节点一起被丢弃,所以每次换 canvas 都要在新元素上重新挂一次 mousedown。
+  canvas.addEventListener('mousedown', onCanvasMouseDown)
+
+  const renderer = createRenderer(canvas, source)
+  await renderer.load(source)
+  const controller = new PetController(renderer, (s) => {
+    canvas = replacePetCanvas(canvas)
+    canvas.addEventListener('mousedown', onCanvasMouseDown)
+    return createRenderer(canvas, s)
   })
+  await controller.start()
+  const pcmPlayer = createPcmPlayer()
+  window.petApi.onPetEvent((event) => {
+    controller.send(event)
+    // 新消息发送即打断正在朗读的语音(参照 opts.emitPetEvent('messageSent') 的既有约定)。
+    if (event === 'messageSent') pcmPlayer.stop()
+  })
+  window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
+  window.petApi.onPetChanged(() => {
+    void controller.reload().catch((err) => console.warn('pet reload failed', err))
+  })
+  window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
+  window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
+  window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())
 
   window.addEventListener('mousemove', (e: MouseEvent) => {
     if (dragging) {
