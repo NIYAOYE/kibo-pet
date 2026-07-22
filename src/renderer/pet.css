@@ -1,0 +1,2 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+#pet { -webkit-app-region: no-drag; cursor: grab; display: block; }
