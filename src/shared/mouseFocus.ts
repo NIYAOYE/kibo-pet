@@ -1,7 +1,12 @@
 import type { Bounds } from './petBrain'
 
-/** 光标离宠物窗口中心多远以内才追踪,屏幕像素,常量不做成设置项(YAGNI,已与用户确认)。 */
-export const DEFAULT_MOUSE_TRACK_RADIUS_PX = 900
+/** 光标离宠物窗口中心多远以内才追踪,屏幕像素,常量不做成设置项(YAGNI,已与用户确认)。
+ *  这个数字同时是"多远之外完全不追踪"的截断半径,也是归一化除数(见下面 computeMouseFocusTarget
+ *  的 dx/radiusPx)——两者用同一个数会让"鼠标就在宠物旁边"时的偏移量反而很小(比如半径 900px 时
+ *  鼠标离宠物 100px,算出来的目标只有 100/900≈0.11,几乎看不出在看鼠标),鼠标越接近截断边界
+ *  反而越像"全力看过去"。真机反馈过这个问题(鼠标很近但静止时视线几乎不动,鼠标很远时反而
+ *  偏移明显),所以这个数字要选得足够小,鼠标贴近时就能算出接近 ±1 的目标。 */
+export const DEFAULT_MOUSE_TRACK_RADIUS_PX = 300
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))

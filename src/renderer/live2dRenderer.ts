@@ -12,7 +12,6 @@ import { pointInBounds, toCanvasCoords } from './live2dHitTestFallback'
 import { applyCubismCoreCompatPatch } from './live2dCubismCoreCompat'
 import { needsAutoFit, pickWatermarkBreakExpressionName, type ExpressionDefinition } from './live2dAutoSetup'
 import { clampLive2DViewport } from '@shared/windowPlacement'
-import { fpsForState } from './live2dFps'
 
 const MOTION_PRIORITY_NORMAL = 2 // untitled-pixi-live2d-engine: 0 无优先级/1 IDLE/2 NORMAL/3 FORCE
 
@@ -181,7 +180,6 @@ export class Live2DPetRenderer implements PetRenderer {
 
   playState(state: PetVisualState): void {
     if (!this.manifest || !this.model) return
-    if (this.app) this.app.ticker.maxFPS = fpsForState(state)
     const resolved = resolveStateMotion(this.manifest.render.stateMap, state)
     if (!resolved) return
     void this.playResolved(resolved, state)
