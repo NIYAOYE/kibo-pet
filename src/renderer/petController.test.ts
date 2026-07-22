@@ -143,3 +143,69 @@ describe('PetController.hitTest()', () => {
     expect(controller.hitTest(1, 2)).toEqual({ hit: true, area: 'Head' })
   })
 })
+
+describe('PetController 行为模块按 rendererType 选择', () => {
+  it('构造时 rendererType=sprite → 内部使用 petBrain(idle 初始状态,walk 相关 effects 字段存在)', () => {
+    const renderer = makeFakeRenderer()
+    const controller = new PetController(renderer, 'sprite', vi.fn()) as any
+    expect(controller.behavior.kind).toBe('sprite')
+    expect(controller.behavior.ctx.state).toBe('idle')
+    expect(controller.behavior.ctx.dir).toBe('right') // sprite-only field — proves petBrain.initBrain() ran
+  })
+
+  it('构造时 rendererType=live2d → 内部使用 live2dPetBrain(idle 初始状态,不含 dir/dwellMs 等 walk 字段)', () => {
+    const renderer = makeFakeRenderer()
+    const controller = new PetController(renderer, 'live2d', vi.fn()) as any
+    expect(controller.behavior.kind).toBe('live2d')
+    expect(controller.behavior.ctx.state).toBe('idle')
+    expect(controller.behavior.ctx.dir).toBeUndefined() // live2dPetBrain.initLive2DBrain() has no dir field
+    expect(controller.behavior.ctx.dwellMs).toBeUndefined()
+  })
+
+  it('跨类型热切换(sprite→live2d)commitReload 后 behavior 切到 live2d;反向切换切回 sprite', async () => {
+    const oldRenderer = makeFakeRenderer()
+    const newRenderer = makeFakeRenderer()
+    const factory = vi.fn(() => ({ renderer: newRenderer, attach: vi.fn() }))
+    const controller = new PetController(oldRenderer, 'sprite', factory) as any
+    expect(controller.behavior.kind).toBe('sprite')
+
+    await controller.prepareReload(live2dSource)
+    controller.commitReload()
+    expect(controller.behavior.kind).toBe('live2d')
+    expect(controller.behavior.ctx.state).toBe('idle')
+
+    const backFactory = vi.fn(() => ({ renderer: oldRenderer, attach: vi.fn() }))
+    const controller2 = new PetController(newRenderer, 'live2d', backFactory) as any
+    await controller2.prepareReload(spriteSource)
+    controller2.commitReload()
+    expect(controller2.behavior.kind).toBe('sprite')
+  })
+
+  it('live2d 控制器执行 tick():renderer.playState 收到 live2d 初始状态动画,moveWindow 从未被调用(Live2D 宠物结构上不产出自主位移)', async () => {
+    const renderer = makeFakeRenderer()
+    const playState = vi.fn()
+    renderer.playState = playState
+    const moveWindow = vi.fn()
+    const bounds = {
+      workArea: { x: 0, y: 0, width: 1920, height: 1080 },
+      window: { x: 100, y: 100, width: 256, height: 288 }
+    }
+    ;(globalThis as any).window = {
+      petApi: {
+        getWindowBounds: vi.fn().mockResolvedValue(bounds),
+        moveWindow,
+        petSpeak: vi.fn()
+      }
+    }
+    const controller = new PetController(renderer, 'live2d', vi.fn()) as any
+
+    await controller.syncBounds()
+    // 避免 lastTs 默认值 0 导致 dtMs 被算成"进程启动至今"的巨大值,意外把
+    // live2d idle 推进到 sleep 分支——只测 tick() 本身对 moveWindow/playState 的调用。
+    controller.lastTs = performance.now()
+    controller.tick()
+
+    expect(playState).toHaveBeenCalledWith('idle')
+    expect(moveWindow).not.toHaveBeenCalled()
+  })
+})

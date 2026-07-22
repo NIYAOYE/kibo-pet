@@ -1,13 +1,22 @@
 import type { PetRenderer, PetHitResult } from './petRenderer'
 import type { PetRenderSource } from '@shared/petPackage'
 import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@shared/petBrain'
+import { initLive2DBrain, stepLive2D, type Live2DBrainCtx } from '@shared/live2dPetBrain'
 import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
 import type { ContextSignalKind } from '@shared/ipc'
 
 const TICK_MS = 33
 
+type BehaviorState =
+  | { kind: 'sprite'; ctx: PetBrainCtx }
+  | { kind: 'live2d'; ctx: Live2DBrainCtx }
+
+function initBehaviorFor(type: PetRenderSource['type']): BehaviorState {
+  return type === 'live2d' ? { kind: 'live2d', ctx: initLive2DBrain() } : { kind: 'sprite', ctx: initBrain() }
+}
+
 export class PetController {
-  private ctx: PetBrainCtx = initBrain()
+  private behavior: BehaviorState
   private lastTs = 0
   private timer: number | null = null
   private pending: PetEvent[] = []
@@ -33,6 +42,7 @@ export class PetController {
   ) {
     this.renderer = initialRenderer
     this.rendererType = initialType
+    this.behavior = initBehaviorFor(initialType)
   }
 
   async start(): Promise<void> {
@@ -82,12 +92,12 @@ export class PetController {
       this.pendingRenderer = null
       this.pendingRendererType = null
       this.pendingAttach = null
-      this.ctx = initBrain()
+      this.behavior = initBehaviorFor(this.rendererType)
       this.currentAnim = ''
       return
     }
     this.renderer.commitSwap()
-    this.ctx = initBrain()
+    this.behavior = initBehaviorFor(this.rendererType)
     this.currentAnim = ''
   }
 
@@ -142,33 +152,46 @@ export class PetController {
     if (event === 'pickup') this.pendingReaction = 'drag' // 拖起 → drag 台词
     // 久坐提醒/应用焦点感知命中且宠物在睡：同一 tick 内强制叫醒，避免下一 tick 的
     // wokeUp 派生把更具体的台词覆盖成通用 wake 台词（见设计文档 §7 时序陷阱）。
-    if ((contextSignal === 'break_reminder' || contextSignal === 'app_focus') && this.ctx.state === 'sleep') event = 'wake'
+    if ((contextSignal === 'break_reminder' || contextSignal === 'app_focus') && this.behavior.ctx.state === 'sleep') event = 'wake'
 
-    const prevState = this.ctx.state
-    const { ctx, effects } = step(this.ctx, {
-      dtMs,
-      event,
-      bounds: this.workArea,
-      windowX: this.windowX,
-      windowWidth: this.windowWidth,
-      windowY: this.windowY,
-      windowHeight: this.windowHeight,
-      rng: Math.random
-    })
-    this.ctx = ctx
-    if (effects.animation !== this.currentAnim) {
+    const prevState = this.behavior.ctx.state
+    let animation: string
+    let moveX = 0
+    let moveY = 0
+    if (this.behavior.kind === 'sprite') {
+      const { ctx, effects } = step(this.behavior.ctx, {
+        dtMs,
+        event,
+        bounds: this.workArea,
+        windowX: this.windowX,
+        windowWidth: this.windowWidth,
+        windowY: this.windowY,
+        windowHeight: this.windowHeight,
+        rng: Math.random
+      })
+      this.behavior = { kind: 'sprite', ctx }
+      animation = effects.animation
+      moveX = effects.moveX
+      moveY = effects.moveY
+    } else {
+      const { ctx, effects } = stepLive2D(this.behavior.ctx, { dtMs, event, rng: Math.random })
+      this.behavior = { kind: 'live2d', ctx }
+      animation = effects.animation
+    }
+
+    if (animation !== this.currentAnim) {
       // Re-sync the predicted windowX from the true OS position at each walk
       // start, so drift accumulated over the session doesn't skew edge-clamping.
-      const startedWalking = effects.animation.startsWith('walk') && !this.currentAnim.startsWith('walk')
-      this.renderer.playState(effects.animation)
-      this.currentAnim = effects.animation
+      const startedWalking = animation.startsWith('walk') && !this.currentAnim.startsWith('walk')
+      this.renderer.playState(animation)
+      this.currentAnim = animation
       if (startedWalking) void this.syncBounds().catch((err) => console.warn('syncBounds failed', err))
     }
-    if (effects.moveX !== 0 || effects.moveY !== 0) {
+    if (moveX !== 0 || moveY !== 0) {
       // clamp:true — autonomous walk stays on-screen (main enforces the edge).
-      this.windowX += effects.moveX // optimistic; corrected below once main replies
-      this.windowY += effects.moveY
-      void window.petApi.moveWindow({ dx: effects.moveX, dy: effects.moveY, clamp: true }).then((result) => {
+      this.windowX += moveX // optimistic; corrected below once main replies
+      this.windowY += moveY
+      void window.petApi.moveWindow({ dx: moveX, dy: moveY, clamp: true }).then((result) => {
         if (!result) return
         // Main is authoritative (it clamps against the live, per-tick display
         // work area). Re-sync every tick — not just at walk-start — so a
@@ -184,15 +207,15 @@ export class PetController {
     }
 
     // 反应规划器:每 tick 一个触发。优先级:主进程情境信号 > 睡→醒(wake)派生 > 手势触发(poke/drag)。
-    const wokeUp = prevState === 'sleep' && this.ctx.state !== 'sleep'
+    const wokeUp = prevState === 'sleep' && this.behavior.ctx.state !== 'sleep'
     const trigger: ReactionTrigger | undefined =
       contextSignal ?? (wokeUp ? 'wake' : (this.pendingReaction ?? undefined))
     this.pendingReaction = null
-    const sleeping = this.ctx.state === 'sleep'
+    const sleeping = this.behavior.ctx.state === 'sleep'
     const r = stepReaction(this.reactionCtx, {
       dtMs,
       trigger,
-      pausedByDialog: this.ctx.paused,
+      pausedByDialog: this.behavior.ctx.paused,
       sleeping,
       nowMs: Date.now(),
       rng: Math.random
