@@ -50,5 +50,7 @@ pets/shiraishi-mio
 pets/juwang
 pets/alice
 pets/alice_0
+pets/yyz
+GenieData
 # 子代理开发用隔离工作区(手动 git worktree,非 EnterWorktree,见会话记录)
 .worktrees/
