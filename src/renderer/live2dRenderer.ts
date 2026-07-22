@@ -234,7 +234,12 @@ export class Live2DPetRenderer implements PetRenderer {
   }
 
   setLookTarget(x: number, y: number): void {
-    this.model?.focus(x, y)
+    // 不能用 Live2DModel.focus(x,y)——那是给"传真实世界/像素坐标"用的公开便捷方法(内部会
+    // 用 toModelPosition()+atan2 把像素坐标换算成角度,再调下面这行),我们已经算好了 [-1,1]
+    // 的归一化方向,直接传给它会被当成一个几乎贴在模型原点的像素点,换算出一个和鼠标实际
+    // 位置无关的固定角度——真机反馈"无论鼠标在哪视线都固定朝左上"就是这个误用导致的。
+    // FocusController.focus(x,y) 才是真正接受 [-1,1] 归一化方向、不做任何坐标变换的那一层。
+    this.model?.internalModel.focusController.focus(x, y)
   }
 
   hitTest(clientX: number, clientY: number): PetHitResult {
