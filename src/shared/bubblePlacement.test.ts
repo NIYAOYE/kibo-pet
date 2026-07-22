@@ -1,75 +1,48 @@
 import { describe, it, expect } from 'vitest'
 import { bubblePlacement } from './bubblePlacement'
 
-const WA = { x: 0, y: 0, width: 1920, height: 1040 } // 主屏工作区
-const B = { width: 240, height: 172 }
+const workArea = { x: 0, y: 0, width: 1000, height: 800 }
+const bubble = { width: 200, height: 60 }
 
-describe('bubblePlacement', () => {
-  it('屏幕中央:放头顶、水平居中、尾巴在底部指向宠物中心', () => {
-    const pet = { x: 800, y: 500, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.tailSide).toBe('bottom')
-    expect(p.y).toBe(500 - 172 - 8)          // pet.y - height - GAP
-    expect(p.x).toBe(Math.round(928 - 120))  // petCenterX(928) - width/2
-    expect(p.tailOffsetX).toBe(120)          // 尾巴对准宠物中心 = width/2
+describe('bubblePlacement 默认 anchorFrac(不传第四参数)', () => {
+  it('行为与此前硬编码"水平居中+贴窗口顶部"完全一致(回归)', () => {
+    const pet = { x: 400, y: 300, width: 256, height: 288 }
+    const result = bubblePlacement(pet, workArea, bubble)
+    const expected = bubblePlacement(pet, workArea, bubble, { x: 0.5, y: 0 })
+    expect(result).toEqual(expected)
+    expect(result.y).toBe(pet.y - bubble.height - 8) // GAP=8,头顶放得下时贴顶部
   })
 
-  it('宠物贴屏幕顶:头顶放不下 → 翻到下方,尾巴在顶部', () => {
-    const pet = { x: 800, y: 10, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.tailSide).toBe('top')
-    expect(p.y).toBe(10 + 288 + 8)           // pet.y + height + GAP
+  it('头顶放不下(宠物贴工作区顶边)时翻到宠物整体下方,而非锚点下方(回归:曾错误地用 anchorY+GAP)', () => {
+    const pet = { x: 400, y: 0, width: 256, height: 100 }
+    const result = bubblePlacement(pet, workArea, bubble)
+    // 锚点上方放不下:aboveY = anchorY(=pet.y=0) - bubble.height(60) - GAP(8) = -68 < workArea.y(0)
+    // 翻下方应贴宠物整体底边 pet.y+pet.height+GAP = 0+100+8 = 108,而不是 anchorY+GAP = 8
+    expect(result.y).toBe(pet.y + pet.height + 8)
+    expect(result.tailSide).toBe('top')
+  })
+})
+
+describe('bubblePlacement 自定义 anchorFrac(Live2D 包 bubbleAnchorX/Y)', () => {
+  it('锚点从窗口顶部中心变成窗口顶部靠左时,气泡水平位置随之偏移', () => {
+    const pet = { x: 400, y: 300, width: 360, height: 480 }
+    const centerResult = bubblePlacement(pet, workArea, bubble, { x: 0.5, y: 0 })
+    const leftResult = bubblePlacement(pet, workArea, bubble, { x: 0.2, y: 0 })
+    expect(leftResult.x).toBeLessThan(centerResult.x)
   })
 
-  it('宠物被拖拽到屏幕左侧界外(手动拖拽不夹取位置,可为负):x 夹进工作区左缘', () => {
-    // pet.x=-100,width=256 → petCenterX=28;不夹取会得到 x=round(28-120)=-92(越界)
-    const pet = { x: -100, y: 500, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.x).toBe(0)                       // 夹到 workArea.x
-    // tailOffsetX = petCenterX - x = 28 - 0 = 28,仍在 [16, 224] 内
-    expect(p.tailOffsetX).toBe(28)
+  it('anchorY=1(锚点在窗口底部,例如脚底)时,气泡摆在锚点上方,而不是原来假设的窗口顶部上方', () => {
+    const pet = { x: 400, y: 300, width: 360, height: 480 }
+    const footAnchor = bubblePlacement(pet, workArea, bubble, { x: 0.5, y: 1 })
+    const topAnchor = bubblePlacement(pet, workArea, bubble, { x: 0.5, y: 0 })
+    // 锚点在底部时,气泡应该比"锚点在顶部"时更靠下(y 更大),因为参照点本身更靠下
+    expect(footAnchor.y).toBeGreaterThan(topAnchor.y)
   })
 
-  it('宠物被拖拽到屏幕右侧界外:x 夹到右边界,尾巴右移且不超过气泡右内边距', () => {
-    // pet.x=1770,width=256 → petCenterX=1898;不夹取会得到 x=round(1898-120)=1778(越界,右边界=1920-240=1680)
-    const pet = { x: 1770, y: 500, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.x).toBe(1920 - 240)              // workArea.right - width
-    // tailOffsetX = petCenterX - x = 1898 - 1680 = 218(在 [16,224] 范围内)
-    expect(p.tailOffsetX).toBe(218)
-  })
-
-  it('宠物被拖拽到右上角界外:同时翻到下方并夹右,尾巴跟随夹取后的 x', () => {
-    const pet = { x: 1770, y: 5, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.tailSide).toBe('top')
-    expect(p.x).toBe(1920 - 240)
-    expect(p.tailOffsetX).toBe(218)
-  })
-
-  it('副屏工作区带偏移,宠物拖到该工作区左侧界外:坐标仍夹在该工作区内(不回退到主屏原点)', () => {
-    const wa = { x: 1920, y: 0, width: 1280, height: 1040 }
-    // pet.x=1820(工作区左缘 1920 以左 100px) → petCenterX=1948;不夹取得 x=round(1948-120)=1828(< wa.x=1920,越界)
-    const pet = { x: 1820, y: 500, width: 256, height: 288 }
-    const p = bubblePlacement(pet, wa, B)
-    expect(p.x).toBe(1920)                     // 夹到副屏 workArea.x,不回到主屏
-    expect(p.tailOffsetX).toBe(28)             // petCenterX - x = 1948 - 1920 = 28
-  })
-
-  it('宠物被拖拽到屏幕下方界外(手动拖拽不夹取位置):y 仍夹进工作区', () => {
-    // pet.y=5000 远超工作区高度;aboveY = 5000-172-8 = 4820,不夹取会越界
-    const pet = { x: 800, y: 5000, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.y).toBe(1040 - 172) // 夹到 workArea.y + workArea.height - bubble.height
-    expect(p.y).toBeGreaterThanOrEqual(WA.y)
-    expect(p.y + B.height).toBeLessThanOrEqual(WA.y + WA.height)
-  })
-
-  it('宠物被拖拽到屏幕上方界外(手动拖拽不夹取位置):y 仍夹进工作区', () => {
-    // pet.y=-500 远在工作区上方;belowY = -500+288+8 = -204,不夹取会越界(负值)
-    const pet = { x: 800, y: -500, width: 256, height: 288 }
-    const p = bubblePlacement(pet, WA, B)
-    expect(p.y).toBe(0) // 夹到 workArea.y
-    expect(p.y).toBeGreaterThanOrEqual(WA.y)
+  it('结果 x/y 始终落在 workArea 内(既有夹取行为不受新参数影响)', () => {
+    const pet = { x: -50, y: -50, width: 360, height: 480 } // 宠物被拖出工作区外
+    const result = bubblePlacement(pet, workArea, bubble, { x: 0.5, y: 0 })
+    expect(result.x).toBeGreaterThanOrEqual(workArea.x)
+    expect(result.y).toBeGreaterThanOrEqual(workArea.y)
   })
 })

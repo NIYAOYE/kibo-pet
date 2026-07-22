@@ -21,12 +21,18 @@ export class PetController {
   private pendingReaction: ReactionTrigger | null = null
   private pendingContextSignal: ContextSignalKind | null = null
   private renderer: PetRenderer
+  private rendererType: PetRenderSource['type']
+  private pendingRenderer: PetRenderer | null = null
+  private pendingRendererType: PetRenderSource['type'] | null = null
+  private pendingAttach: (() => void) | null = null
 
   constructor(
     initialRenderer: PetRenderer,
-    private readonly createRenderer: (source: PetRenderSource) => PetRenderer
+    initialType: PetRenderSource['type'],
+    private readonly createRenderer: (source: PetRenderSource) => { renderer: PetRenderer; attach: () => void }
   ) {
     this.renderer = initialRenderer
+    this.rendererType = initialType
   }
 
   async start(): Promise<void> {
@@ -43,23 +49,66 @@ export class PetController {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
   }
 
-  /** 热切换宠物:重新拉取宠物数据,总是销毁旧渲染器实例、用工厂构造一个新实例再加载——
-   *  即使新旧宠物渲染器类型相同也不能对着旧实例直接调 load() 复用。原因不是类型断言,而是
-   *  Live2D 依赖的 WebGL context 一旦 destroy() 就被 pixi.js 强制 lose 掉(GlContextSystem
-   *  无条件调用 loseContext()),同一个 canvas 元素之后再也拿不到能用的 context;sprite/live2d
-   *  混用同一个 canvas 更是直接不可能(2D 和 WebGL context 一旦绑定就不能互换,规范如此)。
-   *  factory 由 main.ts 提供,负责在构造新渲染器前先换一个全新的 canvas 元素。 */
-  async reload(): Promise<void> {
-    const source = await window.petApi.getPet()
-    await this.renderer.destroy()
-    this.renderer = this.createRenderer(source)
-    await this.renderer.load(source)
+  /** 热切换准备阶段:同类型走 renderer.prepareSwap(),旧模型/canvas 全程不受影响;
+   *  跨类型新建一个 detached 的渲染器实例(canvas 尚未接入 DOM)并 load(),失败则立即
+   *  销毁新实例。两种情况下都不修改 this.renderer/this.rendererType,真正切换发生在
+   *  commitReload()。见 Phase 5 设计文档 §1。 */
+  async prepareReload(source: PetRenderSource): Promise<void> {
+    if (source.type === this.rendererType) {
+      await this.renderer.prepareSwap(source)
+      return
+    }
+    const { renderer, attach } = this.createRenderer(source)
+    try {
+      await renderer.load(source)
+    } catch (err) {
+      await renderer.destroy()
+      throw err
+    }
+    this.pendingRenderer = renderer
+    this.pendingRendererType = source.type
+    this.pendingAttach = attach
+  }
+
+  /** 原子提交 prepareReload() 准备好的内容。跨类型时把 pendingRenderer 接入 DOM、销毁旧实例;
+   *  同类型时转发给 renderer.commitSwap()。 */
+  commitReload(): void {
+    if (this.pendingRenderer && this.pendingAttach && this.pendingRendererType) {
+      const oldRenderer = this.renderer
+      this.pendingAttach()
+      void oldRenderer.destroy()
+      this.renderer = this.pendingRenderer
+      this.rendererType = this.pendingRendererType
+      this.pendingRenderer = null
+      this.pendingRendererType = null
+      this.pendingAttach = null
+      this.ctx = initBrain()
+      this.currentAnim = ''
+      return
+    }
+    this.renderer.commitSwap()
     this.ctx = initBrain()
     this.currentAnim = ''
   }
 
+  /** 丢弃 prepareReload() 准备好但未提交的半成品,当前可见渲染器/画面不受影响。 */
+  discardReload(): void {
+    if (this.pendingRenderer) {
+      void this.pendingRenderer.destroy()
+      this.pendingRenderer = null
+      this.pendingRendererType = null
+      this.pendingAttach = null
+      return
+    }
+    this.renderer.discardSwap()
+  }
+
+  setVisible(visible: boolean): void {
+    this.renderer.setVisible(visible)
+  }
+
   /** 供 main.ts 的鼠标事件处理器查询当前渲染器的命中结果——不能让 main.ts 自己持有一份
-   *  渲染器引用,否则 reload() 换实例后 main.ts 手里的引用会变成一个已销毁的旧实例。 */
+   *  渲染器引用,否则 commitReload() 换实例后 main.ts 手里的引用会变成一个已销毁的旧实例。 */
   hitTest(clientX: number, clientY: number): PetHitResult {
     return this.renderer.hitTest(clientX, clientY)
   }

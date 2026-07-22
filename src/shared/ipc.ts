@@ -82,7 +82,11 @@ export const IPC = {
   CHAT_LIST_PETS: 'chat:list-pets',
   SWITCH_PET: 'chat:switch-pet',
   PET_SWITCHED: 'chat:pet-switched',
-  PET_CHANGED: 'pet:changed'
+  PET_PREPARE: 'pet:prepare',
+  PET_PREPARE_RESULT: 'pet:prepare-result',
+  PET_COMMIT: 'pet:commit',
+  PET_DISCARD: 'pet:discard',
+  WINDOW_VISIBILITY_CHANGED: 'window:visibility-changed'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒 / 应用焦点感知，均为一次性边沿事件 */
@@ -147,8 +151,17 @@ export interface PetApi {
   /** 主进程情境信号(AFK 离开/久坐提醒):main→renderer 推送 */
   onContextSignal(cb: (kind: ContextSignalKind) => void): void
   quit(): void
-  /** 主进程通知宠物已换,渲染层重载精灵(重新 getPet + renderer.load()) */
-  onPetChanged(cb: () => void): void
+  /** 主进程要求渲染层后台准备一个新宠物(不影响当前画面);渲染层准备完成/失败后必须调用
+   *  reportPrepareResult()。见 Phase 5 设计文档 §3。 */
+  onPetPrepare(cb: (payload: PetPreparePayload) => void): void
+  /** 渲染层向主进程回报 onPetPrepare 的准备结果 */
+  reportPrepareResult(requestId: string, ok: boolean, error?: string): void
+  /** 主进程确认可以提交:渲染层原子切到已准备好的新宠物 */
+  onPetCommit(cb: (payload: PetCommitPayload) => void): void
+  /** 主进程确认要丢弃:渲染层销毁已准备但未提交的半成品,当前画面不受影响 */
+  onPetDiscard(cb: (payload: PetDiscardPayload) => void): void
+  /** 主进程窗口可见性变化(最小化/恢复/锁屏/解锁)推送,驱动 Live2D 场景帧率节流 */
+  onWindowVisibilityChanged(cb: (payload: WindowVisibilityPayload) => void): void
   /** 把 scale/offsetX/offsetY/autoFitted 写回当前宠物的 pet.json(只覆盖这四个字段,
    *  anchorX/anchorY/bubbleAnchorX/bubbleAnchorY 不变)。两个调用方:Live2DPetRenderer.load()
    *  首次加载时的自动对齐,以及 window.__kiboLive2D 调试挂钩的人工核对/覆盖。
@@ -206,6 +219,12 @@ export interface PetChatListItem {
   renderReady: boolean
 }
 export interface PetSwitchedPayload { petId: string; displayName: string }
+
+export interface PetPreparePayload { requestId: string; source: PetRenderSource }
+export interface PetPrepareResultPayload { requestId: string; ok: boolean; error?: string }
+export interface PetCommitPayload { requestId: string }
+export interface PetDiscardPayload { requestId: string }
+export interface WindowVisibilityPayload { visible: boolean }
 
 export interface SettingsApi {
   getSettings(): Promise<SettingsSnapshot>

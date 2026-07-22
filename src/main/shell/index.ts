@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, powerMonitor, type Tray } from 'electron'
 import { join, basename } from 'node:path'
 import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +37,7 @@ import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice, PetRenderSource } from '@shared/petPackage'
 import { loadPet, petsDir } from '../petLoader'
 import { createKiboPetProtocolRegistry, installKiboPetProtocolHandler } from '../pets/kiboPetProtocol'
-import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
+import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
 import { createSettingsWindow } from './settingsWindow'
@@ -68,9 +68,12 @@ import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
-  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight, validatePetId
+  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight, validatePetId,
+  validatePrepareResult
 } from '@shared/ipcValidation'
-import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
+import { fixedWindowBounds, isZeroMove, footAnchorPreservingBounds, windowSizeForSource } from '@shared/windowPlacement'
+import { createPendingPrepareRequests } from './pendingPrepareRequests'
+import { randomUUID } from 'node:crypto'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -167,7 +170,7 @@ export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): V
   return (petVoice.gptModel && petVoice.sovitsModel) ? 'gsv-tts-lite' : null
 }
 
-export function startShell(): void {
+export async function startShell(): Promise<void> {
   const kiboPetRegistry = createKiboPetProtocolRegistry()
   installKiboPetProtocolHandler(kiboPetRegistry)
   const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
@@ -217,8 +220,26 @@ export function startShell(): void {
   const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
   const firecrawlSecrets = createSecretStore(join(userData, 'secrets-firecrawl.bin'), safeStorage)
 
-  const petWin = createPetWindow({ preload, url: rendererUrl, indexHtml: petHtml })
+  const initialSource = await loadPet(join(resolved.petHome.petHome))
+  // windowSizeForSource() 只读 manifest(sprite 分支)/manifest.render.viewport(live2d 分支),
+  // 不会用到 resourceBaseUrl——这里只是为了满足 PetRenderSource 的类型形状,真正的
+  // resourceToken 要到下面 createPetSession() 才铸造,此处补空串纯粹是类型层面的占位。
+  const initialSizeSource: PetRenderSource = initialSource.type === 'live2d'
+    ? { ...initialSource, resourceBaseUrl: '' }
+    : initialSource
+  const petWin = createPetWindow({
+    preload, url: rendererUrl, indexHtml: petHtml,
+    initialSize: windowSizeForSource(initialSizeSource)
+  })
   const idleWatcher = startIdleWatcher(petWin)
+
+  function sendWindowVisibility(visible: boolean): void {
+    petWin.webContents.send(IPC.WINDOW_VISIBILITY_CHANGED, { visible })
+  }
+  petWin.on('minimize', () => sendWindowVisibility(false))
+  petWin.on('restore', () => sendWindowVisibility(true))
+  powerMonitor.on('lock-screen', () => sendWindowVisibility(false))
+  powerMonitor.on('unlock-screen', () => sendWindowVisibility(true))
 
   const bubble = createBubbleController({
     preload,
@@ -477,6 +498,16 @@ export function startShell(): void {
   let session = createPetSession(effectivePetId, sessionDeps)
   session.startVoice()
 
+  // switchPet() 的并发切换互斥锁:见 switchPet() 内的详细说明。
+  let switchInFlight = false
+
+  const pendingPrepare = createPendingPrepareRequests()
+  ipcMain.on(IPC.PET_PREPARE_RESULT, (_e, raw) => {
+    const payload = validatePrepareResult(raw)
+    if (!payload) return
+    pendingPrepare.resolve(payload.requestId, { ok: payload.ok, error: payload.error })
+  })
+
   const petAvatarCache = createPetAvatarCache()
 
   ipcMain.handle(IPC.CHAT_LIST_PETS, async (): Promise<PetChatListItem[]> => {
@@ -495,38 +526,84 @@ export function startShell(): void {
   })
 
   async function switchPet(petId: string): Promise<boolean> {
-    if (petId === session.petId) return false
-    const target = listPets(petCatalogDirs).find((p) => p.id === petId)
-    if (!target) {
-      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '找不到这只宠物')
+    // 并发切换互斥锁:switchPet() 的准备阶段要等渲染层最长 8 秒(prepareSwap 的
+    // PET_PREPARE/PET_PREPARE_RESULT 往返),这期间渲染层的 pendingModel/pendingFit/
+    // pendingBaseScale 是单份字段。若允许第二次调用在第一次仍在等待时并发进入,
+    // 后一次的 prepare 会覆盖前一次已发出的 pending 状态,导致前一次的 commit 实际
+    // 提交了后一次的模型、且可能把后一只宠物的自动对齐结果错误持久化进前一只宠物的
+    // pet.json(具体机制见最终审查记录)。这里直接串行化:切换进行中时,新请求原样
+    // 拒绝,不排队、不打断在途切换。
+    if (switchInFlight) {
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '正在切换宠物,请稍候再试')
       return false
     }
-    if (!target.renderReady) {
-      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '这只宠物的渲染引擎还没就绪,暂时无法切换')
-      return false
-    }
-    // 先建后弃:新会话构建成功才 dispose 旧的,失败则旧会话原封不动
-    let next: PetSession
+    switchInFlight = true
     try {
-      next = createPetSession(petId, sessionDeps)
-    } catch (e) {
-      console.warn('[switchPet] 新会话构建失败,保留当前宠物', e)
-      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '切换失败,已保留当前宠物')
-      return false
+      if (petId === session.petId) return false
+      const target = listPets(petCatalogDirs).find((p) => p.id === petId)
+      if (!target) {
+        dialog.window()?.webContents.send(IPC.CHAT_ERROR, '找不到这只宠物')
+        return false
+      }
+      if (!target.renderReady) {
+        dialog.window()?.webContents.send(IPC.CHAT_ERROR, '这只宠物的渲染引擎还没就绪,暂时无法切换')
+        return false
+      }
+      // 先建后弃:新会话构建成功才 dispose 旧的,失败则旧会话原封不动
+      let next: PetSession
+      try {
+        next = createPetSession(petId, sessionDeps)
+      } catch (e) {
+        console.warn('[switchPet] 新会话构建失败,保留当前宠物', e)
+        dialog.window()?.webContents.send(IPC.CHAT_ERROR, '切换失败,已保留当前宠物')
+        return false
+      }
+      const rawSource = await loadPet(next.petDir).catch(() => null)
+      if (!rawSource) {
+        await next.dispose()
+        dialog.window()?.webContents.send(IPC.CHAT_ERROR, '切换失败,读取宠物包出错')
+        return false
+      }
+      const source: PetRenderSource = rawSource.type === 'live2d'
+        ? { ...rawSource, resourceBaseUrl: `kibo-pet://${next.resourceToken}/` }
+        : rawSource
+
+      // 准备阶段:渲染层在旧模型仍显示时后台加载新模型,不动会话/settings/窗口
+      const requestId = randomUUID()
+      petWin.webContents.send(IPC.PET_PREPARE, { requestId, source })
+      const result = await pendingPrepare.wait(requestId, 8000)
+
+      if (!result.ok) {
+        await next.dispose()
+        petWin.webContents.send(IPC.PET_DISCARD, { requestId })
+        dialog.window()?.webContents.send(IPC.CHAT_ERROR, `切换失败:${result.error ?? 'MODEL_SWITCH_FAILED'}`)
+        return false
+      }
+
+      // 提交阶段:渲染层确认新模型首帧就绪,主进程才真正切会话/settings/窗口尺寸
+      await session.dispose()          // 停旧语音(释放端口)、停 appFocus、取消在途
+      session = next
+      session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
+      saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
+
+      const newSize = windowSizeForSource(source)
+      const newBounds = source.type === 'live2d'
+        ? footAnchorPreservingBounds(petBoundsFull(), newSize, petWorkArea())
+        : { ...petBoundsFull(), ...newSize } // 精灵包不参与脚底锚点体系(见设计文档 §5):保持左上角不变,只在尺寸确实需要变化时(例如从 Live2D 切回精灵)校正宽高
+      petWin.setBounds(newBounds)
+
+      petWin.webContents.send(IPC.PET_COMMIT, { requestId }) // 渲染层原子切到已准备好的新模型
+      dialog.pushUpdate(session.messages())                  // 右栏历史热切换
+      const loaded = await loadPet(session.petDir).catch(() => null)
+      dialog.window()?.webContents.send(IPC.PET_SWITCHED, {
+        petId, displayName: loaded?.manifest.displayName ?? petId
+      })
+      // 清跨宠物残留气泡
+      clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide()
+      return true
+    } finally {
+      switchInFlight = false
     }
-    await session.dispose()          // 停旧语音(释放端口)、停 appFocus、取消在途
-    session = next
-    session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
-    saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
-    petWin.webContents.send(IPC.PET_CHANGED)     // 渲染层重载精灵
-    dialog.pushUpdate(session.messages())        // 右栏历史热切换
-    const loaded = await loadPet(session.petDir).catch(() => null)
-    dialog.window()?.webContents.send(IPC.PET_SWITCHED, {
-      petId, displayName: loaded?.manifest.displayName ?? petId
-    })
-    // 清跨宠物残留气泡
-    clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide()
-    return true
   }
 
   ipcMain.handle(IPC.SWITCH_PET, async (_e, raw): Promise<boolean> => {
@@ -684,11 +761,11 @@ export function startShell(): void {
       ;({ workArea } = screen.getDisplayMatching({
         x: roundedX,
         y: roundedY,
-        width: PET_WINDOW_SIZE.width,
-        height: PET_WINDOW_SIZE.height
+        width,
+        height
       }))
-      finalX = Math.max(workArea.x, Math.min(roundedX, workArea.x + workArea.width - PET_WINDOW_SIZE.width))
-      finalY = Math.max(workArea.y, Math.min(roundedY, workArea.y + workArea.height - PET_WINDOW_SIZE.height))
+      finalX = Math.max(workArea.x, Math.min(roundedX, workArea.x + workArea.width - width))
+      finalY = Math.max(workArea.y, Math.min(roundedY, workArea.y + workArea.height - height))
       // Keep the accumulator in sync with any clamping so it can't run past the edge.
       walkPreciseX = finalX
       walkPreciseY = finalY
@@ -698,17 +775,17 @@ export function startShell(): void {
       const cursor = screen.getCursorScreenPoint()
       finalX = Math.round(dragAnchor.winX + (cursor.x - dragAnchor.cursorX))
       finalY = Math.round(dragAnchor.winY + (cursor.y - dragAnchor.cursorY))
-      workArea = screen.getDisplayMatching({ x: finalX, y: finalY, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height }).workArea
+      workArea = screen.getDisplayMatching({ x: finalX, y: finalY, width, height }).workArea
     } else {
       // Fallback if DRAG_START wasn't received for some reason — never let a
       // drag silently stop tracking the cursor.
       finalX = nx
       finalY = ny
-      workArea = screen.getDisplayMatching({ x: nx, y: ny, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height }).workArea
+      workArea = screen.getDisplayMatching({ x: nx, y: ny, width, height }).workArea
     }
-    petWin.setBounds(fixedWindowBounds(finalX, finalY, PET_WINDOW_SIZE))
+    petWin.setBounds(fixedWindowBounds(finalX, finalY, { width, height }))
     if (bubble.isVisible()) bubble.reposition(petBoundsFull(), petWorkArea())
-    return { workArea, window: { x: finalX, y: finalY, width: PET_WINDOW_SIZE.width, height: PET_WINDOW_SIZE.height } }
+    return { workArea, window: { x: finalX, y: finalY, width, height } }
   })
   ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, raw) => {
     const ignore = validateBool(raw)

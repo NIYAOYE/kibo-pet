@@ -48,4 +48,15 @@ describe('toCanvasCoords', () => {
 
     expect(result).toEqual({ x: 50, y: 70 })
   })
+
+  it('对非默认(非 256x288)窗口尺寸的 canvas 同样只做 CSS 偏移换算——动态窗口尺寸下这条数学不需要变', () => {
+    const fakeCanvas = {
+      width: 1200, height: 1350, // 物理分辨率,假设是 800x900 逻辑尺寸 * 1.5 resolutionCap
+      getBoundingClientRect: () => ({
+        left: 5, top: 8, width: 800, height: 900, right: 805, bottom: 908, x: 5, y: 8, toJSON: () => ({})
+      })
+    } as unknown as HTMLCanvasElement
+
+    expect(toCanvasCoords(fakeCanvas, 105, 208)).toEqual({ x: 100, y: 200 })
+  })
 })

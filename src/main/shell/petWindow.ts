@@ -1,14 +1,17 @@
 import { BrowserWindow } from 'electron'
 
-export const PET_WINDOW_SIZE = { width: 256, height: 288 } as const
-
-export function createPetWindow(opts: { preload: string; url: string | undefined; indexHtml: string }): BrowserWindow {
+export function createPetWindow(opts: {
+  preload: string
+  url: string | undefined
+  indexHtml: string
+  initialSize: { width: number; height: number }
+}): BrowserWindow {
   const win = new BrowserWindow({
-    width: PET_WINDOW_SIZE.width,
-    height: PET_WINDOW_SIZE.height,
+    width: opts.initialSize.width,
+    height: opts.initialSize.height,
     transparent: true,
     frame: false,
-    resizable: false,
+    resizable: true, // 尺寸变化只在 setBounds() 时一次性发生(首次加载/热切换提交),不运行时切换 setResizable
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,

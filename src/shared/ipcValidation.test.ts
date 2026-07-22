@@ -3,7 +3,7 @@ import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg,
   validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight, validateCollapsedHeight,
-  validatePetId
+  validatePetId, validatePrepareResult
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -190,5 +190,30 @@ describe('validatePetId', () => {
     expect(validatePetId('../x')).toBeNull()
     expect(validatePetId('a.b')).toBeNull()
     expect(validatePetId(123)).toBeNull()
+  })
+})
+
+describe('validatePrepareResult', () => {
+  it('接受合法的成功结果', () => {
+    expect(validatePrepareResult({ requestId: 'abc', ok: true })).toEqual({ requestId: 'abc', ok: true })
+  })
+  it('接受合法的失败结果(带 error)', () => {
+    expect(validatePrepareResult({ requestId: 'abc', ok: false, error: 'MODEL_SWITCH_FAILED' })).toEqual({
+      requestId: 'abc', ok: false, error: 'MODEL_SWITCH_FAILED'
+    })
+  })
+  it('拒绝非对象', () => {
+    expect(validatePrepareResult('nope')).toBeNull()
+    expect(validatePrepareResult(null)).toBeNull()
+  })
+  it('拒绝缺失/非字符串 requestId', () => {
+    expect(validatePrepareResult({ ok: true })).toBeNull()
+    expect(validatePrepareResult({ requestId: 123, ok: true })).toBeNull()
+  })
+  it('拒绝非布尔 ok', () => {
+    expect(validatePrepareResult({ requestId: 'abc', ok: 'yes' })).toBeNull()
+  })
+  it('拒绝非字符串 error(若提供)', () => {
+    expect(validatePrepareResult({ requestId: 'abc', ok: false, error: 123 })).toBeNull()
   })
 })

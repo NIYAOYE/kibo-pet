@@ -7,7 +7,8 @@ import {
   type BubbleApi, type BubblePlace, type ContextSignalKind,
   type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
   type GenieVoiceApi, type GenieInstallProgress,
-  type PetChatListItem, type PetSwitchedPayload, type Live2DTransformPatch
+  type PetChatListItem, type PetSwitchedPayload, type Live2DTransformPatch,
+  type PetPreparePayload, type PetCommitPayload, type PetDiscardPayload, type WindowVisibilityPayload
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 import type { PetRenderSource } from '@shared/petPackage'
@@ -30,9 +31,23 @@ const petApi: PetApi = {
     ipcRenderer.on(IPC.CONTEXT_SIGNAL, (_e, kind: ContextSignalKind) => cb(kind))
   },
   quit: (): void => ipcRenderer.send(IPC.QUIT),
-  onPetChanged: (cb: () => void): void => {
-    ipcRenderer.removeAllListeners(IPC.PET_CHANGED)
-    ipcRenderer.on(IPC.PET_CHANGED, () => cb())
+  onPetPrepare: (cb: (payload: PetPreparePayload) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_PREPARE)
+    ipcRenderer.on(IPC.PET_PREPARE, (_e, payload: PetPreparePayload) => cb(payload))
+  },
+  reportPrepareResult: (requestId: string, ok: boolean, error?: string): void =>
+    ipcRenderer.send(IPC.PET_PREPARE_RESULT, { requestId, ok, error }),
+  onPetCommit: (cb: (payload: PetCommitPayload) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_COMMIT)
+    ipcRenderer.on(IPC.PET_COMMIT, (_e, payload: PetCommitPayload) => cb(payload))
+  },
+  onPetDiscard: (cb: (payload: PetDiscardPayload) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_DISCARD)
+    ipcRenderer.on(IPC.PET_DISCARD, (_e, payload: PetDiscardPayload) => cb(payload))
+  },
+  onWindowVisibilityChanged: (cb: (payload: WindowVisibilityPayload) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.WINDOW_VISIBILITY_CHANGED)
+    ipcRenderer.on(IPC.WINDOW_VISIBILITY_CHANGED, (_e, payload: WindowVisibilityPayload) => cb(payload))
   },
   updateLive2DTransform: (patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }> =>
     ipcRenderer.invoke(IPC.UPDATE_LIVE2D_TRANSFORM, patch)

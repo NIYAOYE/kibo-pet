@@ -13,14 +13,7 @@ const DBLCLICK_MS = 280
  *  destroy() 内部调用 loseContext(),没有选项能跳过),之后同一个 canvas 再 getContext('webgl')
  *  拿到的还是那个已经废弃的 context——所以每次(重新)构造渲染器都必须换一个全新的 canvas 元素,
  *  不能复用旧的,不管前后渲染器类型是否相同。 */
-function replacePetCanvas(current: HTMLCanvasElement): HTMLCanvasElement {
-  const fresh = document.createElement('canvas')
-  fresh.id = current.id
-  current.replaceWith(fresh)
-  return fresh
-}
-
-function createRenderer(canvas: HTMLCanvasElement, source: PetRenderSource): PetRenderer {
+function createRendererForCanvas(canvas: HTMLCanvasElement, source: PetRenderSource): PetRenderer {
   if (source.type === 'sprite') return new SpriteRenderer(canvas)
   return new Live2DPetRenderer(canvas)
 }
@@ -52,16 +45,21 @@ async function boot(): Promise<void> {
     canvas.style.cursor = 'grabbing'
   }
 
-  // canvas 每次热切换都会被换成一个全新元素(见 replacePetCanvas 的注释),旧元素上的监听器
-  // 跟着旧节点一起被丢弃,所以每次换 canvas 都要在新元素上重新挂一次 mousedown。
+  // canvas 每次热切换都会被换成一个全新元素(见上方 createRendererForCanvas 的注释),旧元素上
+  // 的监听器跟着旧节点一起被丢弃,所以每次换 canvas 都要在新元素上重新挂一次 mousedown。
   canvas.addEventListener('mousedown', onCanvasMouseDown)
 
-  const renderer = createRenderer(canvas, source)
+  const renderer = createRendererForCanvas(canvas, source)
   await renderer.load(source)
-  const controller = new PetController(renderer, (s) => {
-    canvas = replacePetCanvas(canvas)
-    canvas.addEventListener('mousedown', onCanvasMouseDown)
-    return createRenderer(canvas, s)
+  const controller = new PetController(renderer, source.type, (s) => {
+    const fresh = document.createElement('canvas')
+    fresh.id = canvas.id
+    fresh.addEventListener('mousedown', onCanvasMouseDown)
+    const nextRenderer = createRendererForCanvas(fresh, s)
+    return {
+      renderer: nextRenderer,
+      attach: () => { canvas.replaceWith(fresh); canvas = fresh }
+    }
   })
   await controller.start()
   const pcmPlayer = createPcmPlayer()
@@ -71,9 +69,19 @@ async function boot(): Promise<void> {
     if (event === 'messageSent') pcmPlayer.stop()
   })
   window.petApi.onContextSignal((kind) => controller.receiveContextSignal(kind))
-  window.petApi.onPetChanged(() => {
-    void controller.reload().catch((err) => console.warn('pet reload failed', err))
+  window.petApi.onPetPrepare((payload) => {
+    controller.prepareReload(payload.source).then(
+      () => window.petApi.reportPrepareResult(payload.requestId, true),
+      (err) => window.petApi.reportPrepareResult(payload.requestId, false, err instanceof Error ? err.message : String(err))
+    )
   })
+  window.petApi.onPetCommit(() => {
+    try { controller.commitReload() } catch (err) { console.warn('commitReload failed', err) }
+  })
+  window.petApi.onPetDiscard(() => {
+    try { controller.discardReload() } catch (err) { console.warn('discardReload failed', err) }
+  })
+  window.petApi.onWindowVisibilityChanged((payload) => controller.setVisible(payload.visible))
   window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
   window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())

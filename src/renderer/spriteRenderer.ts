@@ -14,6 +14,8 @@ export class SpriteRenderer implements PetRenderer {
   private state = ''
   private sheet: HTMLImageElement | null = null
   private manifest: PetManifest | null = null
+  private pendingSheet: HTMLImageElement | null = null
+  private pendingManifest: PetManifest | null = null
 
   constructor(private canvas: HTMLCanvasElement) {}
 
@@ -27,6 +29,31 @@ export class SpriteRenderer implements PetRenderer {
     this.manifest = source.manifest
     this.frame = 0
     this.state = ''
+  }
+
+  async prepareSwap(source: PetRenderSource): Promise<void> {
+    if (source.type !== 'sprite') throw new Error('SpriteRenderer.prepareSwap() 只能准备 type:"sprite" 的 PetRenderSource')
+    const img = new Image()
+    img.src = source.spritesheetDataUrl
+    await img.decode()
+    this.pendingSheet = img
+    this.pendingManifest = source.manifest
+  }
+
+  commitSwap(): void {
+    if (!this.pendingSheet || !this.pendingManifest) throw new Error('commitSwap() 前必须先成功调用 prepareSwap()')
+    this.stop()
+    this.sheet = this.pendingSheet
+    this.manifest = this.pendingManifest
+    this.frame = 0
+    this.state = ''
+    this.pendingSheet = null
+    this.pendingManifest = null
+  }
+
+  discardSwap(): void {
+    this.pendingSheet = null
+    this.pendingManifest = null
   }
 
   playState(state: PetVisualState): void {

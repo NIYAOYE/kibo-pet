@@ -112,3 +112,11 @@ export function validateCollapsedHeight(v: unknown): number | null {
 export function validatePetId(v: unknown): string | null {
   return typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v) ? v : null
 }
+
+export function validatePrepareResult(v: unknown): { requestId: string; ok: boolean; error?: string } | null {
+  if (!isObject(v)) return null
+  if (typeof v.requestId !== 'string' || v.requestId.length === 0) return null
+  if (typeof v.ok !== 'boolean') return null
+  if (v.error !== undefined && typeof v.error !== 'string') return null
+  return { requestId: v.requestId, ok: v.ok, error: v.error as string | undefined }
+}
