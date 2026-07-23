@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createOpenAiCompatEmbedder, createFakeEmbedder, resolveEmbeddingKey } from './embedder'
 import type { AppSettings } from '@shared/llm'
-import { DEFAULT_TTS_SETTINGS, DEFAULT_GENIE_TTS_SETTINGS } from '@shared/llm'
+import { DEFAULT_TTS_SETTINGS, DEFAULT_GENIE_TTS_SETTINGS, DEFAULT_TTS_TRANSLATE_SETTINGS } from '@shared/llm'
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response
@@ -66,6 +66,7 @@ describe('resolveEmbeddingKey', () => {
     appFocusLlmOpener: { enabled: false },
     tts: DEFAULT_TTS_SETTINGS,
     ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
+    ttsTranslate: DEFAULT_TTS_TRANSLATE_SETTINGS,
     gpuAcceleration: { experimental: false },
     live2d: { mouseTrackingEnabled: false }
   })

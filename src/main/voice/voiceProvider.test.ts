@@ -38,6 +38,30 @@ describe('createVoiceProvider', () => {
     expect(outcome).toBe('spoken')
   })
 
+  it('targetLanguage=auto 且原文是中文 → segments 必须标注为 zh,不能强制标成 en(否则会被英文发音引擎丢字漏句)', async () => {
+    const sidecar = fakeSidecar()
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'auto' }),
+      onError: () => {}
+    })
+    await synthesize(vp, '你好,今天天气不错。', () => {})
+    const req = (sidecar.speak as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(req.segments).toEqual([{ lang: 'zh', text: '你好,今天天气不错。' }])
+  })
+
+  it('targetLanguage=auto 且原文含假名 → segments 标注为 ja', async () => {
+    const sidecar = fakeSidecar()
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'auto' }),
+      onError: () => {}
+    })
+    await synthesize(vp, 'こんにちは、元気ですか', () => {})
+    const req = (sidecar.speak as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(req.segments).toEqual([{ lang: 'ja', text: 'こんにちは、元気ですか' }])
+  })
+
   it('targetLanguage=ja 且文本不含假名 → 先翻译再合成翻译后的文本', async () => {
     const translate = vi.fn(async () => 'こんにちは')
     const sidecar = fakeSidecar()
@@ -196,6 +220,45 @@ describe('createVoiceProvider', () => {
     })
     await vp.speak('你好', () => {})
     expect(sidecar.speak).toHaveBeenCalledWith(expect.objectContaining({ language: 'auto' }), expect.any(Function), expect.any(Object))
+  })
+
+  it('speak 请求带上 segments,按英文/非英文切分,已知目标语言标注非英文片段', async () => {
+    const speak = vi.fn(async (_req, onChunk) => { onChunk({ audioBase64: 'QQ==', sampleRate: 32000 }) })
+    const sidecar = { start: vi.fn(), speak, stop: vi.fn() }
+    const provider = createVoiceProvider({
+      sidecar,
+      translator: { translate: vi.fn(async (text: string) => `[${text}]`) },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
+      onError: vi.fn()
+    })
+    await provider.synthesize('我觉得 React 框架很好用', () => {})
+    const req = speak.mock.calls[0][0]
+    // Task 14 起 translate() 按非英文片段分别调用,'我觉得 '和' 框架很好用'各自单独包一层,
+    // 英文片段 'React' 原样保留不进翻译器。
+    expect(req.segments).toEqual([
+      { lang: 'ja', text: '[我觉得 ]' },
+      { lang: 'en', text: 'React' },
+      { lang: 'ja', text: '[ 框架很好用]' }
+    ])
+  })
+
+  it('翻译时英文片段原样保留,只翻译非英文片段,按原顺序拼回', async () => {
+    const translator = { translate: vi.fn(async (text: string) => `[${text}]`) }
+    const speak = vi.fn(async (_req, onChunk) => { onChunk({ audioBase64: 'QQ==', sampleRate: 32000 }) })
+    const sidecar = { start: vi.fn(), speak, stop: vi.fn() }
+    const provider = createVoiceProvider({
+      sidecar,
+      translator,
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
+      onError: vi.fn()
+    })
+    await provider.synthesize('我觉得 React 框架很好用', () => {})
+    // 只有非英文片段进了 translate(),英文片段 'React' 不应该出现在调用参数里
+    expect(translator.translate).toHaveBeenCalledTimes(2)
+    expect(translator.translate.mock.calls.map((c) => c[0])).toEqual(['我觉得 ', ' 框架很好用'])
+    // 最终喂给 sidecar 的文本是"译文1 + 原样英文 + 译文2"拼接
+    const req = speak.mock.calls[0][0]
+    expect(req.text).toBe('[我觉得 ]React[ 框架很好用]')
   })
 
   it('sidecar 正常完成但未产生 PCM → 返回 failed 并提示本段仅显示', async () => {

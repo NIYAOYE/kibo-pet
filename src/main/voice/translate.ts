@@ -1,4 +1,6 @@
 import type { LlmProvider } from '../providers/llmProvider'
+import type { TranslateSidecar } from './translateSidecar'
+import { detectSourceLanguage } from './languageDetect'
 
 export interface Translator {
   translate(text: string, target: 'zh' | 'ja' | 'en', signal: AbortSignal): Promise<string>
@@ -16,6 +18,33 @@ export function createLlmTranslator(provider: LlmProvider): Translator {
         else if (chunk.type === 'error') throw new Error(chunk.message)
       }
       return acc.trim()
+    }
+  }
+}
+
+export function createFallbackTranslator(opts: {
+  primary: Translator
+  fallback: Translator
+  isPrimaryAvailable: () => boolean
+}): Translator {
+  return {
+    async translate(text, target, signal) {
+      if (!opts.isPrimaryAvailable()) return opts.fallback.translate(text, target, signal)
+      try {
+        return await opts.primary.translate(text, target, signal)
+      } catch (e) {
+        if (signal.aborted) throw e
+        return opts.fallback.translate(text, target, signal)
+      }
+    }
+  }
+}
+
+export function createLocalNllbTranslator(sidecar: TranslateSidecar): Translator {
+  return {
+    translate(text, target, signal) {
+      const source = detectSourceLanguage(text)
+      return sidecar.translate({ text, source, target }, signal)
     }
   }
 }

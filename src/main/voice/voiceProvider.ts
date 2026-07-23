@@ -1,8 +1,9 @@
 import type { TtsSettings } from '@shared/llm'
 import type { VoiceSidecar, PcmChunk } from './voiceSidecar'
 import type { Translator } from './translate'
-import { needsTranslation } from './languageDetect'
+import { needsTranslation, detectSourceLanguage } from './languageDetect'
 import { toSpeakableText } from './speakableText'
+import { splitByScript } from './mixedLanguageSplit'
 
 export type VoiceSynthesisOutcome = 'spoken' | 'skipped' | 'failed'
 
@@ -31,7 +32,12 @@ export function createVoiceProvider(opts: {
       let toSpeak = speakable
       if (settings.targetLanguage !== 'auto' && needsTranslation(speakable, settings.targetLanguage)) {
         try {
-          toSpeak = await opts.translator.translate(speakable, settings.targetLanguage, ctrl.signal)
+          const scriptSegments = splitByScript(speakable)
+          const targetLanguage = settings.targetLanguage
+          const translated = await Promise.all(scriptSegments.map((s) =>
+            s.lang === 'en' ? s.text : opts.translator.translate(s.text, targetLanguage, ctrl.signal)
+          ))
+          toSpeak = translated.join('')
         } catch (e) {
           if (ctrl.signal.aborted) return 'skipped'
           opts.onError(`翻译失败,朗读已跳过本段:${String((e as Error)?.message ?? e)}`)
@@ -45,6 +51,14 @@ export function createVoiceProvider(opts: {
         await opts.sidecar.speak({
           text: toSpeak,
           language: settings.targetLanguage,
+          // auto 模式没有目标语言可用,不能沿用之前"随便标个 en"的兜底——segments 现在直接
+          // 决定 TTS 引擎用哪种语言的发音去读这段文字(见 gsv_server.py/genie_server.py),标错
+          // 语言会导致英文发音引擎处理不了中/日文字符,真机验证出来的现象是大面积丢字漏句。
+          // 用 detectSourceLanguage 现场猜一下这段文字实际是什么语言。
+          segments: splitByScript(toSpeak).map((s) => ({
+            lang: s.lang === 'en' ? 'en' : (settings.targetLanguage === 'auto' ? detectSourceLanguage(s.text) : settings.targetLanguage),
+            text: s.text
+          })),
           isCutText: settings.isCutText,
           cutMinLen: settings.cutMinLen,
           cutMute: settings.cutMute,

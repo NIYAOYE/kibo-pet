@@ -23,25 +23,38 @@ REF_AUDIO = ""
 REF_TEXT = ""
 _infer_lock = threading.Lock()
 
-_AUTO_GET_TEXTS = LangSegment.getTexts
 
+def _apply_language(segments, default_lang):
+    """按请求传来的 segments 构造 LangSegment.getTexts 的返回值,替代它自己的语言检测。
 
-def _apply_language(lang):
-    """按请求指定发音语言;必须在持有 _infer_lock 时调用。
+    之前的实现监听 language 参数、强制整段按单一语言发音,是为了修复纯汉字、不含假名的
+    日语行被自动检测误判成中文的问题,代价是顺带关掉了混合语言能力。现在改成直接用请求方
+    (已经知道目标语言、也已经用 splitByScript 切好英文/非英文片段)算好的 segments,不需要
+    再让 LangSegment 自己去猜——原问题(不需要猜)和混合语言能力(segments 里天然保留了
+    英文片段)可以同时满足。
 
-    gsv_tts 的 infer_stream 没有语言参数,内部用 LangSegment.getTexts 逐段自动
-    检测语言——纯汉字+数字、不含假名的日语行(如翻译后的天气数据"降水確率86%")
-    会被误判成中文、用中文发音读出,造成一条回复里中日发音混杂。zh/ja 时把
-    getTexts 替换成"整段固定语言",等价于 GPT-SoVITS 的 all_zh/all_ja 强制语言
-    模式(日语 G2P 自带数字/汉字的日语读法)。en/auto 保持自动检测:英文 G2P
-    遇到 CJK 字符行为未知,不强制。
+    但 tts.infer_stream 在 is_cut_text=True 时会把整句按 cut_minlen 切成多个小片段,而
+    LangSegment.getTexts 具体是"整句只调一次"还是"每个切片各调一次"取决于 gsv_tts 内部
+    实现——这个项目里没有真实装了 gsv_tts 的 Python 环境能验证。如果是后者,只按 segments
+    原样返回整句列表会导致每个切片都拿到全句文本、整句音频被合成并播放多次(见 final review
+    发现)。因此这里同时兼容两种调用方式:传入文本如果等于全部 segments 拼接后的整句,说明
+    这是"整句一次性调用",按 segments 逐段发音;否则视为"按切片调用",退回到本功能加入前的
+    旧行为——原样回显该片段、按 default_lang(即请求里的 language,默认 auto)单一语言发音,
+    不依赖对内部调用方式的猜测。segments 为空(理论上不会,voiceProvider 至少会给一个整段)
+    时 combined 为空串,任何非空切片都会走回退分支。必须在持有 _infer_lock 时调用。
     """
-    if lang in ("zh", "ja"):
-        LangSegment.getTexts = lambda text, _lang=lang: (
-            [] if text is None or len(text.strip()) == 0 else [{"lang": _lang, "text": text}]
+    combined = "".join(s["text"] for s in segments)
+
+    def get_texts(text):
+        if text == combined:
+            return [{"lang": s["lang"], "text": s["text"]} for s in segments if s["text"]]
+        return (
+            []
+            if text is None or len(text.strip()) == 0
+            else [{"lang": default_lang, "text": text}]
         )
-    else:
-        LangSegment.getTexts = _AUTO_GET_TEXTS
+
+    LangSegment.getTexts = get_texts
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -71,7 +84,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             stream_mode = "sentence" if body.get("synthesisChunking") == "sentence" else "token"
             with _infer_lock:
-                _apply_language(body.get("language", "auto"))
+                default_lang = body.get("language", "auto")
+                _apply_language(body.get("segments") or [{"lang": default_lang, "text": body["text"]}], default_lang)
                 for clip in tts.infer_stream(
                     spk_audio_path=REF_AUDIO,
                     prompt_audio_path=REF_AUDIO,

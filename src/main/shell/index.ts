@@ -9,9 +9,14 @@ import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
 import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
 import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
-import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall, realSpawnGenieProcess, realDownloadGenieData } from '../voice/realVoiceTransport'
+import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall, realSpawnGenieProcess, realDownloadGenieData, realSpawnTranslateProcess, realPostJson, realDownloadNllbModel, NLLB_MODEL_REPO } from '../voice/realVoiceTransport'
 import { runGenieRuntimeInstall } from '../voice/genieRuntimeInstall'
 import { parseGenieRuntimeMarker, isGenieRuntimeUsable, serializeGenieRuntimeMarker, GENIE_RUNTIME_MARKER_VERSION } from '../voice/genieRuntimeMarker'
+import { createTranslateSidecar } from '../voice/translateSidecar'
+import { runTranslateRuntimeInstall } from '../voice/translateRuntimeInstall'
+import {
+  parseTranslateRuntimeMarker, isTranslateRuntimeUsable, serializeTranslateRuntimeMarker, TRANSLATE_RUNTIME_MARKER_VERSION
+} from '../voice/translateRuntimeMarker'
 import { createProvider } from '../providers/createProvider'
 import { createScreenshotState } from '../automation/screenshotState'
 import { captureFullScreen } from '../media/fullScreenCapture'
@@ -30,6 +35,7 @@ import {
   type VoiceRuntimeState,
   type VoiceArchiveResult,
   type GenieRuntimeState,
+  type TranslateRuntimeState,
   type PetChatListItem,
   type Live2DTransformPatch,
   type StageImportOutcome,
@@ -506,6 +512,45 @@ export async function startShell(): Promise<void> {
     return { installed: true, installPath, genieTtsVersion: marker!.genieTtsVersion }
   }
 
+  // ---- 本地翻译运行时(NLLB,应用级单例,不随切宠物重启)----
+  // 安装路径固定,不像 GSV/Genie 那样提供路径选择器——体积小(~650MB)且不需要用户感知
+  // (spec §6.1/6.2)。
+  const TRANSLATE_PORT = 8852
+  const translateScriptPath = join(appRoot, 'resources/voice/translate_server.py')
+  const translateInstallDir = join(userData, 'translate-runtime')
+  const translatePythonExe = join(translateInstallDir, 'python.exe')
+  const translateModelDir = join(translateInstallDir, 'nllb-model')
+  const translateMarkerFile = join(translateInstallDir, 'runtime-marker.json')
+
+  function getTranslateRuntimeState(): TranslateRuntimeState {
+    try {
+      const marker = parseTranslateRuntimeMarker(readFileSync(translateMarkerFile, 'utf-8'))
+      if (!isTranslateRuntimeUsable(marker)) return { installed: false }
+      return { installed: true, nllbModelRepo: marker!.nllbModelRepo }
+    } catch {
+      return { installed: false }
+    }
+  }
+
+  const translateSidecar = createTranslateSidecar({
+    port: TRANSLATE_PORT,
+    spawnProcess: () => realSpawnTranslateProcess({
+      pythonExe: translatePythonExe,
+      scriptPath: translateScriptPath,
+      port: TRANSLATE_PORT,
+      modelDir: translateModelDir
+    }),
+    postJson: realPostJson
+  })
+  let translateAvailable = false
+
+  // 应用启动时尝试一次,不像 GSV/Genie 那样每次切宠物重试——失败就整个会话期固定用 LLM 翻译回退。
+  if (getTranslateRuntimeState().installed) {
+    translateSidecar.start().then(() => { translateAvailable = true }).catch((e) => {
+      console.warn('[translate] 本地翻译 sidecar 启动失败,本次运行固定使用 LLM 翻译', e)
+    })
+  }
+
   // 宠物作用域件(memory/chat/appFocus/voice)全部收进 PetSession 工厂,以便后续任务
   // (Task 7)不重启即可重建这一捆绑来热切换宠物。跨会话共享的全局件(indicatorGate、
   // browserControl、todoStore、secrets 门面、渲染层推送等)在此处建一次,以回调/取值器注入。
@@ -572,6 +617,7 @@ export async function startShell(): Promise<void> {
       onAudioChunk: (c) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
       onAudioError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
     },
+    translateDeps: { translateSidecar, isTranslateAvailable: () => translateAvailable },
     kiboPetRegistry
   }
 
@@ -1235,6 +1281,60 @@ export async function startShell(): Promise<void> {
     const r = await electronDialog.showSaveDialog({ defaultPath: 'genie-voice-runtime.zip', filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
     if (r.canceled || !r.filePath) return { ok: false, error: '已取消' }
     return exportVoiceRuntimeArchive({ srcDir: s.ttsGenie.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
+  })
+
+  ipcMain.handle(IPC.TRANSLATE_GET_STATE, async () => getTranslateRuntimeState())
+
+  ipcMain.on(IPC.TRANSLATE_START_INSTALL, () => {
+    const win = settings.window()
+    void runTranslateRuntimeInstall({
+      destDir: translateInstallDir,
+      steps: {
+        downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
+        enablePip: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        installTranslateDeps: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['ctranslate2', 'sentencepiece'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        downloadNllbModel: async (_dir, onProgress) => {
+          await realDownloadNllbModel(translateModelDir, onProgress)
+        }
+      },
+      onProgress: (p) => { win?.webContents.send(IPC.TRANSLATE_INSTALL_PROGRESS, p); petWin.webContents.send(IPC.TRANSLATE_INSTALL_PROGRESS, p) }
+    }).then((r) => {
+      if (r.ok) {
+        mkdirSync(translateInstallDir, { recursive: true })
+        writeFileSync(translateMarkerFile, serializeTranslateRuntimeMarker({ markerVersion: TRANSLATE_RUNTIME_MARKER_VERSION, nllbModelRepo: NLLB_MODEL_REPO }))
+        // 安装刚完成,尝试立即启动一次,不用等下次重启应用才生效;若开机时已经启动成功
+        // (translateAvailable 已为 true),不要再起一个进程去抢同一个端口。
+        if (!translateAvailable) {
+          void translateSidecar.start().then(() => { translateAvailable = true }).catch((e) => {
+            console.warn('[translate] 安装完成但启动失败', e)
+          })
+        }
+      } else {
+        const p = { stage: r.stage, message: `安装失败:${r.error}` }
+        win?.webContents.send(IPC.TRANSLATE_INSTALL_PROGRESS, p)
+        petWin.webContents.send(IPC.TRANSLATE_INSTALL_PROGRESS, p)
+      }
+    })
   })
 
   ipcMain.on(IPC.VOICE_STOP, () => session.stopSpeech())

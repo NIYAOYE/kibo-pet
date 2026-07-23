@@ -66,36 +66,47 @@ class Handler(BaseHTTPRequestHandler):
         import genie_tts as genie
 
         async def run():
-            async for chunk in genie.tts_async(
-                character_name=CHARACTER_NAME,
-                text=body["text"],
-                play=False,
-                split_sentence=False,
-            ):
-                pcm_f32 = (np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0)
-                audio_b64 = base64.b64encode(pcm_f32.tobytes()).decode("ascii")
-                payload = json.dumps({"audio": audio_b64, "sampleRate": 32000})
-                self.wfile.write(("event: audio\ndata: %s\n\n" % payload).encode("utf-8"))
-                self.wfile.flush()
+            # genie_tts 的公开 API(set_reference_audio/load_character)都改不了"要合成的新文本"用什么
+            # 语言音素化——那个语言是在角色第一次 load_character() 时写死进 ModelManager 内部的
+            # character_to_language 字典,之后任何公开调用都不会再更新它(load_character 对已加载
+            # 角色直接短路返回,set_reference_audio 的 language 只影响参考音频自身转写文本,两者都
+            # 不是目标文本的音素化语言)。TTSPlayer._tts_worker_loop 每次合成都会重新读这个字典
+            # (model_manager.get(character_name).LANGUAGE),所以直接改写它是唯一能在不重新加载
+            # 整个角色模型(代价高、且 load_character 对已加载角色是 no-op 做不到)的前提下,做到
+            # 按请求切换目标文本发音语言的办法——这是伸手改 genie_tts 的内部私有状态,不是公开 API,
+            # 但目前没有更干净的公开途径;如果 genie_tts 未来版本改了内部实现,这里最坏情况是又退回
+            # "始终用角色基准语言"的旧行为,不会崩溃。
+            #
+            # Genie-TTS 架构上没有单次调用内混合语言的能力(与 gsv_server.py 的 GSV-TTS-Lite 不同)——
+            # character_to_language 只能设一个全局值,所以混合语言文本需要按 segments 拆段,每段各自
+            # 切一次语言、各自单独调用一次 genie.tts_async(),多次调用产出的 PCM 帧顺序写进同一个
+            # SSE 流,拼接成一段连续音频。
+            segments = body.get("segments") or [{"lang": body.get("language", "auto"), "text": body.get("text", "")}]
+            requested_lang = body.get("language", "auto")
+            default_lang = requested_lang if requested_lang in ("zh", "ja", "en") else BASE_LANGUAGE
+            for seg in segments:
+                text = seg.get("text", "")
+                if not text.strip():
+                    continue
+                seg_lang = seg["lang"] if seg.get("lang") in ("zh", "ja", "en") else default_lang
+                with _infer_lock:
+                    from genie_tts.ModelManager import model_manager
+                    from genie_tts.Utils.Language import normalize_language
+                    model_manager.character_to_language[CHARACTER_NAME.lower()] = normalize_language(seg_lang)
+                    async for chunk in genie.tts_async(
+                        character_name=CHARACTER_NAME,
+                        text=text,
+                        play=False,
+                        split_sentence=False,
+                    ):
+                        pcm_f32 = (np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0)
+                        audio_b64 = base64.b64encode(pcm_f32.tobytes()).decode("ascii")
+                        payload = json.dumps({"audio": audio_b64, "sampleRate": 32000})
+                        self.wfile.write(("event: audio\ndata: %s\n\n" % payload).encode("utf-8"))
+                        self.wfile.flush()
 
         try:
-            requested_lang = body.get("language", "auto")
-            lang = requested_lang if requested_lang in ("zh", "ja", "en") else BASE_LANGUAGE
-            with _infer_lock:
-                # genie_tts 的公开 API(set_reference_audio/load_character)都改不了"要合成的新文本"用什么
-                # 语言音素化——那个语言是在角色第一次 load_character() 时写死进 ModelManager 内部的
-                # character_to_language 字典,之后任何公开调用都不会再更新它(load_character 对已加载
-                # 角色直接短路返回,set_reference_audio 的 language 只影响参考音频自身转写文本,两者都
-                # 不是目标文本的音素化语言)。TTSPlayer._tts_worker_loop 每次合成都会重新读这个字典
-                # (model_manager.get(character_name).LANGUAGE),所以直接改写它是唯一能在不重新加载
-                # 整个角色模型(代价高、且 load_character 对已加载角色是 no-op 做不到)的前提下,做到
-                # 按请求切换目标文本发音语言的办法——这是伸手改 genie_tts 的内部私有状态,不是公开 API,
-                # 但目前没有更干净的公开途径;如果 genie_tts 未来版本改了内部实现,这里最坏情况是又退回
-                # "始终用角色基准语言"的旧行为,不会崩溃。
-                from genie_tts.ModelManager import model_manager
-                from genie_tts.Utils.Language import normalize_language
-                model_manager.character_to_language[CHARACTER_NAME.lower()] = normalize_language(lang)
-                asyncio.run(run())
+            asyncio.run(run())
             self.wfile.write(b"event: done\ndata: {}\n\n")
             self.wfile.flush()
         except Exception as e:

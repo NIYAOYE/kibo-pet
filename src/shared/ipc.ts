@@ -81,6 +81,9 @@ export const IPC = {
   GENIE_INSTALL_PROGRESS: 'genie:install-progress',
   GENIE_IMPORT_ARCHIVE: 'genie:import-archive',
   GENIE_EXPORT_ARCHIVE: 'genie:export-archive',
+  TRANSLATE_GET_STATE: 'translate:get-state',
+  TRANSLATE_START_INSTALL: 'translate:start-install',
+  TRANSLATE_INSTALL_PROGRESS: 'translate:install-progress',
   CHAT_LIST_PETS: 'chat:list-pets',
   SWITCH_PET: 'chat:switch-pet',
   PET_SWITCHED: 'chat:pet-switched',
@@ -321,8 +324,24 @@ export interface GenieVoiceApi {
   exportArchive(): Promise<VoiceArchiveResult>
 }
 
+/** 本地翻译运行时(NLLB,通过 ctranslate2 推理):安装路径固定为
+ *  `<userData>/translate-runtime`,不像 GSV/Genie 那样提供路径选择器/归档导入导出——
+ *  体积小(~650MB)且不需要用户感知安装位置(spec §6.1/6.2)。 */
+export interface TranslateRuntimeState { installed: boolean; nllbModelRepo?: string }
+export interface TranslateInstallProgressMsg { stage: string; message: string }
+
+export interface TranslateVoiceApi {
+  getState(): Promise<TranslateRuntimeState>
+  startInstall(): void
+  onInstallProgress(cb: (p: TranslateInstallProgressMsg) => void): void
+}
+
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi; genieVoiceApi: GenieVoiceApi }
+  interface Window {
+    petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi
+    todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi; genieVoiceApi: GenieVoiceApi
+    translateVoiceApi: TranslateVoiceApi
+  }
 }
 
 export type { PetEvent, Bounds }

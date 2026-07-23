@@ -105,6 +105,17 @@ export function realSpawnGenieProcess(opts: {
   })
 }
 
+/** spawn translate_server.py 处理真实翻译请求。翻译 sidecar 与宠物身份无关,不需要 voice/installDir 这类每个宠物不同的参数。 */
+export function realSpawnTranslateProcess(opts: {
+  pythonExe: string
+  scriptPath: string
+  port: number
+  modelDir: string
+}): { kill(): void; waitReady(): Promise<void> } {
+  const args = [opts.scriptPath, '--port', String(opts.port), '--model-dir', opts.modelDir]
+  return spawnAndWaitForReady(opts.pythonExe, args, '本地翻译 sidecar')
+}
+
 /** spawn genie_server.py 的 `--download-data` 模式:只触发基础预训练模型下载(首次约 391MB)后退出。
  *
  *  不能提前在 Node 侧创建 <installDir>/GenieData 目录——genie_tts 的 Core/Resources.py 只在
@@ -154,6 +165,26 @@ export function realDownloadGenieData(opts: {
   return child.waitReady()
 }
 
+export const NLLB_MODEL_REPO = 'JustFrederik/nllb-200-distilled-600M-ct2-int8'
+/** shared_vocabulary.txt 是 ctranslate2.Translator() 加载"目标词表"必需的文件,当初设计时
+ *  漏看了它——真机报错验证:缺这个文件会在构造 Translator 时直接抛
+ *  "Cannot load the target vocabulary from the model directory"。 */
+const NLLB_MODEL_FILES = ['config.json', 'model.bin', 'sentencepiece.bpe.model', 'shared_vocabulary.txt']
+
+/** 直接从 huggingface.co 下载推理必需的 3 个文件,不引入 huggingface_hub(Node 侧直接 HTTP GET,
+ *  复用 downloadToFile)。不设 HF_ENDPOINT 镜像——参考 realDownloadGenieData 上方注释记录的教训,
+ *  镜像曾经跟 huggingface_hub 的元数据校验不兼容、反而制造了后续几轮真机报错,直连 huggingface.co
+ *  本身是能成功下载的。这里是纯文件 GET,不经过 huggingface_hub 库,不受那个特定不兼容问题影响,
+ *  但同样不主动加镜像,保持跟已验证过的直连路径一致。 */
+export async function realDownloadNllbModel(destDir: string, onProgress: (message: string) => void, fetchImpl: typeof fetch = fetch): Promise<void> {
+  mkdirSync(destDir, { recursive: true })
+  for (let i = 0; i < NLLB_MODEL_FILES.length; i++) {
+    const file = NLLB_MODEL_FILES[i]
+    onProgress(`下载翻译模型(${i + 1}/${NLLB_MODEL_FILES.length}):${file}`)
+    await downloadToFile(`https://huggingface.co/${NLLB_MODEL_REPO}/resolve/main/${file}`, join(destDir, file), fetchImpl)
+  }
+}
+
 /** 发 POST + 手动解析 text/event-stream 响应体(纯文本协议,不引入 ws 包)。 */
 export function realPostSse(port: number, path: string, body: unknown, onFrame: (f: SseFrame) => void, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.reject(new Error('TTS request cancelled'))
@@ -176,10 +207,43 @@ export function realPostSse(port: number, path: string, body: unknown, onFrame: 
   })
 }
 
+/** 发 POST + 收完整 JSON 响应体(非流式,供本地翻译 sidecar 用——它是同步返回,不是 SSE)。 */
+export function realPostJson(port: number, path: string, body: unknown, signal: AbortSignal): Promise<unknown> {
+  if (signal.aborted) return Promise.reject(new Error('翻译请求已取消'))
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = httpRequest({
+      host: '127.0.0.1', port, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+    }, (res) => {
+      let raw = ''
+      res.setEncoding('utf-8')
+      res.on('data', (chunk: string) => { raw += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(raw || '{}')
+          if (res.statusCode !== 200) {
+            reject(new Error(typeof parsed?.error === 'string' ? parsed.error : `HTTP ${res.statusCode}`))
+            return
+          }
+          resolve(parsed)
+        } catch (e) {
+          reject(e)
+        }
+      })
+      res.on('error', reject)
+    })
+    req.on('error', reject)
+    signal.addEventListener('abort', () => req.destroy(new Error('已取消')))
+    req.write(payload)
+    req.end()
+  })
+}
+
 const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py'
 
 /** Node 18+ 的 fetch body 是 web ReadableStream,转成 node stream 落盘到 destPath;非 2xx 抛错。 */
-async function downloadToFile(url: string, destPath: string, fetchImpl: typeof fetch): Promise<void> {
+export async function downloadToFile(url: string, destPath: string, fetchImpl: typeof fetch): Promise<void> {
   const res = await fetchImpl(url)
   if (!res.ok || !res.body) throw new Error(`下载失败(${url}):HTTP ${res.status}`)
   const { Readable } = await import('node:stream')

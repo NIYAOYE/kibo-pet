@@ -112,6 +112,10 @@ function makeDeps(): PetSessionDeps {
       onAudioChunk: () => {},
       onAudioError: () => {}
     },
+    translateDeps: {
+      translateSidecar: { start: async () => {}, translate: async () => '', stop: () => {} },
+      isTranslateAvailable: () => false
+    },
     kiboPetRegistry: {
       registerToken: () => 'fake-token',
       revokeToken: () => {}
@@ -234,6 +238,33 @@ describe('createPetSession() voice facade', () => {
     await sequenceConfig?.speakOne('Hello.', () => {})
     expect(synthesize).toHaveBeenCalledTimes(1)
     expect(legacySpeak).not.toHaveBeenCalled()
+  })
+
+  it('translator 是 createFallbackTranslator 组合出来的,isTranslateAvailable=true 时优先用本地翻译', async () => {
+    vi.mocked(loadPet).mockResolvedValue({
+      manifest: { voice: { gptModel: 'gpt.ckpt', sovitsModel: 'sovits.pth', refAudio: 'ref.wav', refText: 'hello' } }
+    } as never)
+    vi.mocked(createVoiceSidecar).mockReturnValue({ start: vi.fn(async () => {}), stop: vi.fn(async () => {}) } as never)
+    vi.mocked(createVoiceProvider).mockReturnValue({ synthesize: vi.fn(async () => 'spoken' as const), stop: vi.fn() } as never)
+    vi.mocked(createSpeechSequencer).mockReturnValue({ speak: vi.fn(async () => {}), stop: vi.fn() } as never)
+
+    const localTranslate = vi.fn(async () => '本地译文')
+    const deps: PetSessionDeps = {
+      ...enabledDeps(),
+      translateDeps: {
+        translateSidecar: { start: vi.fn(async () => {}), translate: localTranslate, stop: vi.fn() },
+        isTranslateAvailable: () => true
+      }
+    }
+    const session = createPetSession('fake-pet-id', deps)
+    await (session.startVoice as () => Promise<void>)()
+
+    const translatorArg = vi.mocked(createVoiceProvider).mock.calls[0][0].translator
+    const out = await translatorArg.translate('你好', 'ja', new AbortController().signal)
+    expect(out).toBe('本地译文')
+    expect(localTranslate).toHaveBeenCalledOnce()
+
+    await session.dispose()
   })
 
   it('stays unavailable when its sidecar exhausts startup retries', async () => {

@@ -5,6 +5,11 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" />
     <link rel="stylesheet" href="./theme.css" />
     <style>
+      :root {
+        --bubble-bg: rgba(255, 255, 255, 0.55);
+        --bubble-border: rgba(106, 79, 179, 0.45);
+        --tail-color: rgba(255, 255, 255, 0.55);
+      }
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
                    font-family: system-ui, sans-serif; font-size: 13px; color: var(--text-primary); }
       /* 竖直栈:气泡框 + 尾巴区。尾巴在底/顶由 body 的 tail-bottom/tail-top 类切换。 */
@@ -14,7 +19,8 @@
       /* 气泡框:占据除尾巴外的全部高度,内部滚动(超过 MAX_TOTAL_HEIGHT 才会触发) */
       #box { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
              box-sizing: border-box; padding: 10px 14px; border-radius: 22px;
-             background: var(--surface-grad);
+             background: var(--bubble-bg);
+             border: 1.5px solid var(--bubble-border);
              box-shadow: var(--shadow-bubble);
              word-break: break-word; line-height: 1.5;
              scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }

@@ -93,7 +93,7 @@ describe('first PCM timeout', () => {
 })
 
 const req: SpeakRequest = {
-  text: '你好', language: 'auto', isCutText: true, cutMinLen: 10, cutMute: 0.3,
+  text: '你好', language: 'auto', segments: [{ lang: 'zh', text: '你好' }], isCutText: true, cutMinLen: 10, cutMute: 0.3,
   synthesisChunking: 'sentence', speed: 1, noiseScale: 0.5, temperature: 1,
   topK: 15, topP: 1, repetitionPenalty: 1.35
 }

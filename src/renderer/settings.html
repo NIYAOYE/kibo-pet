@@ -287,6 +287,13 @@
                 <option value="en">英语</option>
               </select>
             </label>
+            <div id="translateInstallBanner" class="hint" style="display:none;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--card-bg)">
+              <span id="translateRuntimeStatus"></span>
+              <div class="row" style="margin-top:6px">
+                <button id="translateInstall" class="secondary" type="button">安装本地翻译运行时</button>
+              </div>
+              <pre id="translateInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none;color:#f0f0f4"></pre>
+            </div>
             <label>播放触发方式
               <select id="ttsPlaybackTrigger">
                 <option value="batch">整句合成后播放(推荐,不易卡顿)</option>

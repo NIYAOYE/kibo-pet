@@ -109,11 +109,17 @@ export const DEFAULT_GENIE_TTS_SETTINGS: GenieTtsSettings = {
   runtimeInstallPath: ''
 }
 
-export const SETTINGS_SCHEMA_VERSION = 15
+export interface TtsTranslateSettings { runtimeInstallPath: string }
+
+export const DEFAULT_TTS_TRANSLATE_SETTINGS: TtsTranslateSettings = {
+  runtimeInstallPath: ''
+}
+
+export const SETTINGS_SCHEMA_VERSION = 16
 
 export interface Live2DSettings { mouseTrackingEnabled: boolean }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; live2d: Live2DSettings }
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; ttsTranslate: TtsTranslateSettings; live2d: Live2DSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -129,6 +135,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gpuAcceleration: { experimental: false },
   tts: DEFAULT_TTS_SETTINGS,
   ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
+  ttsTranslate: DEFAULT_TTS_TRANSLATE_SETTINGS,
   live2d: { mouseTrackingEnabled: true }
 }
 

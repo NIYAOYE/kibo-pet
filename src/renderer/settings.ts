@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend, type TtsTranslateSettings, DEFAULT_TTS_TRANSLATE_SETTINGS } from '@shared/llm'
 import type { VoiceRuntimeState, StageImportOutcome } from '@shared/ipc'
 import { Live2DPetRenderer } from './live2dRenderer'
 
@@ -102,6 +102,10 @@ const genieInstall = $<HTMLButtonElement>('genieInstall')
 const genieImport = $<HTMLButtonElement>('genieImport')
 const genieExport = $<HTMLButtonElement>('genieExport')
 const genieInstallLog = $<HTMLPreElement>('genieInstallLog')
+const translateInstallBanner = $<HTMLElement>('translateInstallBanner')
+const translateRuntimeStatus = $<HTMLElement>('translateRuntimeStatus')
+const translateInstall = $<HTMLButtonElement>('translateInstall')
+const translateInstallLog = $<HTMLPreElement>('translateInstallLog')
 
 function formatRuntimeState(s: VoiceRuntimeState): string {
   if (!s.installed) return '运行时状态:未安装'
@@ -126,6 +130,33 @@ function appendGenieInstallLog(line: string): void {
   genieInstallLog.style.display = ''
   genieInstallLog.textContent += `${line}\n`
   genieInstallLog.scrollTop = genieInstallLog.scrollHeight
+}
+
+function appendTranslateInstallLog(line: string): void {
+  translateInstallLog.style.display = ''
+  translateInstallLog.textContent += `${line}\n`
+  translateInstallLog.scrollTop = translateInstallLog.scrollHeight
+}
+
+// 本地翻译运行时安装位置固定(main 进程侧 join(userData, 'translate-runtime'),见
+// src/main/shell/index.ts 的 translateInstallDir),不像 GSV/Genie 那样有路径选择器,
+// 所以这里只根据 ttsTargetLanguage 是否为 auto + getState().installed 决定是否显示提示条。
+async function refreshTranslateBanner(): Promise<void> {
+  if (ttsTargetLanguage.value === 'auto') {
+    translateInstallBanner.style.display = 'none'
+    return
+  }
+  try {
+    const state = await window.translateVoiceApi.getState()
+    translateInstallBanner.style.display = state.installed ? 'none' : ''
+    translateRuntimeStatus.textContent = state.installed
+      ? '本地翻译运行时已安装'
+      : '未安装本地翻译运行时,朗读翻译将使用聊天模型(较慢)'
+  } catch (err) {
+    // 无宠物包引导模式下语音子系统未接线,这是预期情况;但也可能是真实故障,打个
+    // warn 方便在 devtools 里排查,不改变现有静默/不重新抛出的行为。
+    console.warn('[settings] refreshTranslateBanner 获取翻译运行时状态失败', err)
+  }
 }
 
 function currentTts(): TtsSettings {
@@ -178,6 +209,19 @@ function currentTtsGenie(): { runtimeInstallPath: string } {
 
 function applyTtsGenie(t: { runtimeInstallPath: string }): void {
   genieInstallPath.value = t.runtimeInstallPath
+}
+
+// 本地翻译运行时(NLLB)的安装位置是主进程侧固定路径(join(userData,
+// 'translate-runtime'),见 src/main/shell/index.ts 的 translateInstallDir),不像
+// GSV/Genie 那样提供路径选择器,主进程也从不读取 settings.ttsTranslate.runtimeInstallPath
+// 来决定安装目录——TranslateRuntimeState(window.translateVoiceApi.getState() 的返回值,
+// 见 src/shared/ipc.ts)甚至根本不包含安装路径字段,渲染进程无从得知、也不需要得知真实路径。
+// 这里仍然原样回填并保存已加载到的值(而不是硬编码 ''),纯粹是为了不在保存时无条件抹掉
+// 这个字段里可能存在的任何值(即便目前没有任何代码路径会写入非空值)。
+let currentTtsTranslateSettings: TtsTranslateSettings = DEFAULT_TTS_TRANSLATE_SETTINGS
+
+function applyTtsTranslate(t: TtsTranslateSettings): void {
+  currentTtsTranslateSettings = t
 }
 
 let activePetVoice: import('@shared/petPackage').PetVoice | undefined
@@ -270,6 +314,19 @@ genieExport.addEventListener('click', async () => {
     status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
   }
 })
+
+translateInstall.addEventListener('click', () => {
+  translateInstallLog.textContent = ''
+  appendTranslateInstallLog('开始安装…')
+  window.translateVoiceApi.startInstall()
+})
+
+window.translateVoiceApi.onInstallProgress((p) => {
+  appendTranslateInstallLog(`[${p.stage}] ${p.message}`)
+  if (p.stage === 'done') void refreshTranslateBanner()
+})
+
+ttsTargetLanguage.addEventListener('change', () => { void refreshTranslateBanner() })
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
@@ -511,6 +568,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       gpuAcceleration: { experimental: gpuAccelerationExperimental.checked },
       tts: currentTts(),
       ttsGenie: currentTtsGenie(),
+      ttsTranslate: currentTtsTranslateSettings,
       live2d: { mouseTrackingEnabled: live2dMouseTrackingEnabled.checked }
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
@@ -532,8 +590,10 @@ void (async () => {
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
   applyTtsGenie(snap.settings.ttsGenie)
+  applyTtsTranslate(snap.settings.ttsTranslate)
   activePetVoice = snap.activePetVoice
   refreshBackendAvailability()
+  void refreshTranslateBanner()
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)

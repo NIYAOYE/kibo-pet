@@ -5,6 +5,8 @@ export interface SpeakRequest {
   text: string
   /** 发音语言:zh/ja 时 sidecar 强制整段按该语言发音(纯汉字的日语行会被自动检测误判成中文);auto/en 保持自动检测。 */
   language: TtsTargetLanguage
+  /** 文本按"英文 / 目标语言"切分后的分段,用于混合语言发音(见 splitByScript)。 */
+  segments: Array<{ lang: 'en' | 'zh' | 'ja'; text: string }>
   isCutText: boolean; cutMinLen: number; cutMute: number
   synthesisChunking: 'token' | 'sentence'
   speed: number; noiseScale: number; temperature: number

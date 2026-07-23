@@ -20,7 +20,8 @@ import { loadPet } from '../petLoader'
 import { createVoiceSidecar } from '../voice/voiceSidecar'
 import { createVoiceProvider } from '../voice/voiceProvider'
 import { createSpeechSequencer } from '../voice/speechSequencer'
-import { createLlmTranslator } from '../voice/translate'
+import { createLlmTranslator, createFallbackTranslator, createLocalNllbTranslator } from '../voice/translate'
+import type { TranslateSidecar } from '../voice/translateSidecar'
 import type { Embedder } from '../providers/embedder'
 import type { LlmProvider } from '../providers/llmProvider'
 import type { SkillIndex } from '../skills/skillLoader'
@@ -41,6 +42,13 @@ export interface VoiceSessionDeps {
   postSse: typeof import('../voice/realVoiceTransport').realPostSse
   onAudioChunk: (c: VoicePcmChunk) => void
   onAudioError: (m: string) => void
+}
+
+/** 翻译 sidecar 与宠物身份无关,生命周期不跟着切宠物重启——由 startShell 建一次、启动一次,
+ *  这里只持有引用。isTranslateAvailable 反映"这次应用运行期间 sidecar 有没有成功启动过"。 */
+export interface TranslateSessionDeps {
+  translateSidecar: TranslateSidecar
+  isTranslateAvailable: () => boolean
 }
 
 /** 一个宠物会话所需的全部依赖。宠物作用域件(memory/chat/appFocus/voice)由 `createPetSession`
@@ -82,6 +90,7 @@ export interface PetSessionDeps {
   onAppFocusMatch: (lineText: string) => void
   // 语音接线所需
   voiceDeps: VoiceSessionDeps
+  translateDeps: TranslateSessionDeps
   /** kibo-pet:// 协议的 token 注册表(main/pets/kiboPetProtocol.ts),startShell 建一次注入。
    *  createPetSession 用它给每个会话铸造一个资源 token,dispose() 时撤销。 */
   kiboPetRegistry: {
@@ -282,9 +291,14 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
       }
     }
     const translatorProvider = createProviderForVoice()
+    const translator = createFallbackTranslator({
+      primary: createLocalNllbTranslator(deps.translateDeps.translateSidecar),
+      fallback: createLlmTranslator(translatorProvider),
+      isPrimaryAvailable: deps.translateDeps.isTranslateAvailable
+    })
     const provider = createVoiceProvider({
       sidecar,
-      translator: createLlmTranslator(translatorProvider),
+      translator,
       getSettings: () => deps.loadSettings().tts,
       onError: (m) => deps.voiceDeps.onAudioError(m)
     })

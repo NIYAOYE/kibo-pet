@@ -8,7 +8,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
 import type { AppSettings, StreamChunk } from '@shared/llm'
-import { DEFAULT_TTS_SETTINGS, DEFAULT_GENIE_TTS_SETTINGS } from '@shared/llm'
+import { DEFAULT_TTS_SETTINGS, DEFAULT_GENIE_TTS_SETTINGS, DEFAULT_TTS_TRANSLATE_SETTINGS } from '@shared/llm'
 import type { TodoStore } from '../todos/todoStore'
 
 const settings: AppSettings = {
@@ -24,6 +24,7 @@ const settings: AppSettings = {
   appFocusLlmOpener: { enabled: false },
   tts: DEFAULT_TTS_SETTINGS,
   ttsGenie: DEFAULT_GENIE_TTS_SETTINGS,
+  ttsTranslate: DEFAULT_TTS_TRANSLATE_SETTINGS,
   gpuAcceleration: { experimental: false },
   live2d: { mouseTrackingEnabled: false }
 }

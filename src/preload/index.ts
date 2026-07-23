@@ -7,6 +7,7 @@ import {
   type BubbleApi, type BubblePlace, type ContextSignalKind,
   type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
   type GenieVoiceApi, type GenieInstallProgress,
+  type TranslateVoiceApi, type TranslateInstallProgressMsg,
   type PetChatListItem, type PetSwitchedPayload, type Live2DTransformPatch,
   type PetPreparePayload, type PetCommitPayload, type PetDiscardPayload, type WindowVisibilityPayload
 } from '@shared/ipc'
@@ -214,6 +215,15 @@ const genieVoiceApi = {
   exportArchive: () => ipcRenderer.invoke(IPC.GENIE_EXPORT_ARCHIVE)
 } satisfies GenieVoiceApi
 
+const translateVoiceApi = {
+  getState: () => ipcRenderer.invoke(IPC.TRANSLATE_GET_STATE),
+  startInstall: () => ipcRenderer.send(IPC.TRANSLATE_START_INSTALL),
+  onInstallProgress: (cb: (p: TranslateInstallProgressMsg) => void) => {
+    ipcRenderer.removeAllListeners(IPC.TRANSLATE_INSTALL_PROGRESS)
+    ipcRenderer.on(IPC.TRANSLATE_INSTALL_PROGRESS, (_e, p) => cb(p))
+  }
+} satisfies TranslateVoiceApi
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
@@ -223,3 +233,4 @@ contextBridge.exposeInMainWorld('todoApi', todoApi)
 contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)
 contextBridge.exposeInMainWorld('voiceApi', voiceApi)
 contextBridge.exposeInMainWorld('genieVoiceApi', genieVoiceApi)
+contextBridge.exposeInMainWorld('translateVoiceApi', translateVoiceApi)
