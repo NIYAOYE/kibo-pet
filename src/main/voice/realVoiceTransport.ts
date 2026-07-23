@@ -156,6 +156,7 @@ export function realDownloadGenieData(opts: {
 
 /** 发 POST + 手动解析 text/event-stream 响应体(纯文本协议,不引入 ws 包)。 */
 export function realPostSse(port: number, path: string, body: unknown, onFrame: (f: SseFrame) => void, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error('TTS request cancelled'))
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body)
     const req = httpRequest({

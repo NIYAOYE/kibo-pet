@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createChatStore, buildQuickActionPreview, MAX_CLIPBOARD_CHARS } from './chat'
+import type { VoiceReplyGate } from './replyPresenter'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
@@ -36,6 +37,8 @@ let firecrawlKey: string | null = null
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'chat-')); firecrawlKey = null })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
+type ChatVoice = VoiceReplyGate & { stop: () => void }
+
 function makeStore(
   provider: LlmProvider,
   seen: StreamChatRequest[],
@@ -46,6 +49,13 @@ function makeStore(
     buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
     beginDesktopControlTurn?: () => number
     endDesktopControlTurn?: (token: number) => void
+  },
+  presentation?: {
+    voice?: ChatVoice
+    pushUpdate?: (messages: import('@shared/ipc').ChatMessage[]) => void
+    pushStream?: (text: string) => void
+    pushDone?: () => void
+    pushError?: (message: string) => void
   }
 ) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
@@ -77,14 +87,39 @@ function makeStore(
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
     emitPetEvent: () => {},
-    pushUpdate: () => {},
-    pushStream: () => {},
+    pushUpdate: presentation?.pushUpdate ?? (() => {}),
+    pushStream: presentation?.pushStream ?? (() => {}),
     pushStatus: () => {},
-    pushDone: () => done(),
-    pushError: () => done(),
-    openSettings: () => {}
+    pushDone: () => { presentation?.pushDone?.(); done() },
+    pushError: (message) => { presentation?.pushError?.(message); done() },
+    openSettings: () => {},
+    voice: presentation?.voice
   })
   return { store, memory, finished, written }
+}
+
+interface ControlledVoiceCall {
+  text: string
+  onDisplay: () => void
+  resolve: () => void
+}
+
+function createControlledVoice(config: {
+  ready?: boolean
+  settings?: Partial<import('@shared/llm').TtsSettings>
+} = {}): { voice: ChatVoice; calls: ControlledVoiceCall[]; stopped: () => boolean } {
+  const calls: ControlledVoiceCall[] = []
+  let wasStopped = false
+  return {
+    voice: {
+      isReady: () => config.ready ?? true,
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, ...config.settings }),
+      speak: (text, onDisplay) => new Promise<void>((resolve) => { calls.push({ text, onDisplay, resolve }) }),
+      stop: () => { wasStopped = true }
+    },
+    calls,
+    stopped: () => wasStopped
+  }
 }
 
 describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
@@ -474,7 +509,12 @@ describe('语音接线', () => {
       pushDone: () => done(),
       pushError: () => done(),
       openSettings: () => {},
-      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'batch' }), speak: (t) => spoken.push(t), stop: () => {} }
+      voice: {
+        isReady: () => true,
+        getSettings: () => ({ ...settings.tts, playbackTrigger: 'batch' }),
+        speak: (t, onDisplay) => { spoken.push(t); onDisplay(); return Promise.resolve() },
+        stop: () => {}
+      }
     })
     store.handleSend({ text: '你好' })
     await finished
@@ -507,7 +547,12 @@ describe('语音接线', () => {
       pushDone: () => done(),
       pushError: () => done(),
       openSettings: () => {},
-      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'sentence' }), speak: (t) => spoken.push(t), stop: () => {} }
+      voice: {
+        isReady: () => true,
+        getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'sentence' }),
+        speak: (t, onDisplay) => { spoken.push(t); onDisplay(); return Promise.resolve() },
+        stop: () => {}
+      }
     })
     store.handleSend({ text: '你好' })
     await finished
@@ -540,7 +585,12 @@ describe('语音接线', () => {
       pushDone: () => done(),
       pushError: () => done(),
       openSettings: () => {},
-      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'smart' }), speak: (t) => spoken.push(t), stop: () => {} }
+      voice: {
+        isReady: () => true,
+        getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream', textSplit: 'smart' }),
+        speak: (t, onDisplay) => { spoken.push(t); onDisplay(); return Promise.resolve() },
+        stop: () => {}
+      }
     })
     store.handleSend({ text: '你好' })
     await finished
@@ -570,10 +620,312 @@ describe('语音接线', () => {
       pushDone: () => {},
       pushError: () => {},
       openSettings: () => {},
-      voice: { getSettings: () => settings.tts, speak: () => {}, stop: () => stopped.push(true) }
+      voice: { isReady: () => false, getSettings: () => settings.tts, speak: async () => {}, stop: () => stopped.push(true) }
     })
     // 不预先调用 handleSend:cancel() 应无条件停止朗读,无论是否有请求在途(设计文档 §6)
     store.cancel()
     expect(stopped).toEqual([true])
+  })
+})
+
+describe('chat reply presenter integration', () => {
+  it('streams raw LLM chunks immediately and never queues speech when voice is unavailable', async () => {
+    const seen: StreamChatRequest[] = []
+    const pushed: string[] = []
+    const controlled = createControlledVoice({ ready: false })
+    const { store, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'plain ' }, { type: 'text', text: 'reply' }, { type: 'done' }]] }),
+      seen,
+      undefined,
+      undefined,
+      { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
+    )
+
+    store.handleSend({ text: 'hello' })
+    await finished
+
+    expect(pushed).toEqual(['plain ', 'reply'])
+    expect(controlled.calls).toEqual([])
+  })
+
+  it('defers a cross-chunk URL as one complete raw stream segment until the voice gate releases it', async () => {
+    const seen: StreamChatRequest[] = []
+    const pushed: string[] = []
+    const raw = 'Open https://example.com/path.'
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'Open https://exam' }, { type: 'text', text: 'ple.com/path.' }, { type: 'done' }]] }),
+      seen,
+      undefined,
+      undefined,
+      { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
+    )
+
+    store.handleSend({ text: 'show the link' })
+    await vi.waitFor(() => expect(controlled.calls.length).toBeGreaterThan(0))
+    expect(controlled.calls.some((call) => call.text.includes('https://example.com/path'))).toBe(true)
+    expect(pushed).toEqual([])
+
+    for (const call of controlled.calls) {
+      call.onDisplay()
+      call.resolve()
+    }
+    await finished
+
+    expect(pushed).toEqual([raw])
+  })
+
+  it('routes a quick-action fenced code block through the voice gate as one complete raw segment', async () => {
+    const seen: StreamChatRequest[] = []
+    const pushed: string[] = []
+    const fence = '~~~ts\nconst endpoint = "https://example.com/path"\nconsole.log(endpoint)\n~~~'
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: fence.slice(0, 35) }, { type: 'text', text: fence.slice(35) }, { type: 'done' }]] }),
+      seen,
+      { readText: () => 'source text' },
+      undefined,
+      { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
+    )
+
+    store.runQuickAction('translate')
+    await vi.waitFor(() => expect(controlled.calls.length).toBeGreaterThan(0))
+    expect(controlled.calls.some((call) => call.text.includes(fence))).toBe(true)
+    expect(controlled.calls.some((call) => call.text.includes('const endpoint') && !call.text.includes(fence))).toBe(false)
+
+    for (const call of controlled.calls) {
+      call.onDisplay()
+      call.resolve()
+    }
+    await finished
+
+    expect(pushed.join('')).toBe(fence)
+  })
+
+  it('holds memory, update, and done behind a batch voice finish barrier', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'batch', textSplit: 'sentence' } })
+    const { store, memory, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'First.' }, { type: 'done' }]] }),
+      seen,
+      undefined,
+      undefined,
+      {
+        voice: controlled.voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushDone: () => events.push('done')
+      }
+    )
+
+    store.handleSend({ text: 'hello' })
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    expect(memory.messages().map((m) => m.role)).toEqual(['user'])
+    expect(events).toEqual(['update:user'])
+
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await finished
+
+    expect(memory.messages().map((m) => m.text)).toEqual(['hello', 'First.'])
+    expect(events).toEqual(['update:user', 'stream:First.', 'update:user|pet', 'done'])
+  })
+
+  it('falls back to a stream display before the normal-reply final update when a voice gate resolves without onDisplay', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const voice: ChatVoice = {
+      isReady: () => true,
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, playbackTrigger: 'batch', textSplit: 'sentence' }),
+      speak: async () => {},
+      stop: () => {}
+    }
+    const { store, finished } = makeStore(
+      createFakeProvider({ reply: 'Fallback.' }),
+      seen,
+      undefined,
+      undefined,
+      {
+        voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushDone: () => events.push('done')
+      }
+    )
+
+    store.handleSend({ text: 'hello' })
+    await finished
+
+    expect(events).toEqual(['update:user', 'stream:Fallback.', 'update:user|pet', 'done'])
+  })
+
+  it('falls back to a stream display before the quick-action final update when a voice gate resolves without onDisplay', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const voice: ChatVoice = {
+      isReady: () => true,
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, playbackTrigger: 'batch', textSplit: 'sentence' }),
+      speak: async () => {},
+      stop: () => {}
+    }
+    const { store, finished } = makeStore(
+      createFakeProvider({ reply: 'Fallback quick.' }),
+      seen,
+      { readText: () => 'source text' },
+      undefined,
+      {
+        voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushDone: () => events.push('done')
+      }
+    )
+
+    store.runQuickAction('translate')
+    await finished
+
+    expect(events).toEqual(['update:user', 'stream:Fallback quick.', 'update:user|pet', 'done'])
+  })
+
+  it('cancel prevents delayed voice callbacks and completion from updating the reply', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, memory } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'Delayed.' }, { type: 'done' }]] }),
+      seen,
+      undefined,
+      undefined,
+      {
+        voice: controlled.voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushDone: () => events.push('done'),
+        pushError: (message) => events.push(`error:${message}`)
+      }
+    )
+
+    store.handleSend({ text: 'hello' })
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    store.cancel()
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    expect(controlled.stopped()).toBe(true)
+    expect(memory.messages().map((m) => m.role)).toEqual(['user'])
+    expect(events).toEqual(['update:user'])
+  })
+
+  it('drops an old gated completion after a new reply supersedes it', async () => {
+    const seen: StreamChatRequest[] = []
+    const pushed: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, finished } = makeStore(
+      createFakeProvider({ script: [
+        [{ type: 'text', text: 'Old.' }, { type: 'done' }],
+        [{ type: 'text', text: 'New.' }, { type: 'done' }]
+      ] }),
+      seen,
+      undefined,
+      undefined,
+      { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
+    )
+
+    store.handleSend({ text: 'first' })
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    store.handleSend({ text: 'second' })
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(2))
+
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await Promise.resolve()
+    expect(pushed).toEqual([])
+
+    controlled.calls[1]?.onDisplay()
+    controlled.calls[1]?.resolve()
+    await finished
+    expect(pushed).toEqual(['New.'])
+  })
+
+  it('routes quick actions through the same presenter gate instead of directly streaming', async () => {
+    const seen: StreamChatRequest[] = []
+    const pushed: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'Translated.' }, { type: 'done' }]] }),
+      seen,
+      { readText: () => 'source text' },
+      undefined,
+      { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
+    )
+
+    store.runQuickAction('translate')
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    expect(pushed).toEqual([])
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await finished
+
+    expect(pushed).toEqual(['Translated.'])
+  })
+
+  it('keeps a partial normal reply behind the gate before saving it and reporting an LLM error', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
+    const { store, memory, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'Partial.' }, { type: 'error', message: 'provider failed' }]] }),
+      seen,
+      undefined,
+      undefined,
+      {
+        voice: controlled.voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushError: (message) => events.push(`error:${message}`)
+      }
+    )
+
+    store.handleSend({ text: 'hello' })
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    expect(memory.messages().map((m) => m.role)).toEqual(['user'])
+
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await finished
+
+    expect(memory.messages().map((m) => m.text)).toEqual(['hello', 'Partial.'])
+    expect(events).toEqual(['update:user', 'stream:Partial.', 'update:user|pet', 'error:provider failed'])
+  })
+
+  it('holds a quick-action error behind the same presenter finish barrier', async () => {
+    const seen: StreamChatRequest[] = []
+    const events: string[] = []
+    const controlled = createControlledVoice({ settings: { playbackTrigger: 'batch', textSplit: 'sentence' } })
+    const { store, memory, finished } = makeStore(
+      createFakeProvider({ script: [[{ type: 'text', text: 'Partial quick.' }, { type: 'error', message: 'provider failed' }]] }),
+      seen,
+      { readText: () => 'source text' },
+      undefined,
+      {
+        voice: controlled.voice,
+        pushStream: (text) => events.push(`stream:${text}`),
+        pushUpdate: (messages) => events.push(`update:${messages.map((m) => m.role).join('|')}`),
+        pushError: (message) => events.push(`error:${message}`)
+      }
+    )
+
+    store.runQuickAction('translate')
+    await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
+    expect(memory.messages().map((m) => m.role)).toEqual(['user'])
+
+    controlled.calls[0]?.onDisplay()
+    controlled.calls[0]?.resolve()
+    await finished
+
+    expect(memory.messages().map((m) => m.text)).toEqual(['【翻译(中↔英)】source text', 'Partial quick.'])
+    expect(events).toEqual(['update:user', 'stream:Partial quick.', 'update:user|pet', 'error:provider failed'])
   })
 })

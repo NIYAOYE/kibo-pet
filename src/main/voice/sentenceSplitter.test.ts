@@ -1,6 +1,64 @@
 import { describe, it, expect } from 'vitest'
 import { createSentenceSplitter, createSmartSplitter } from './sentenceSplitter'
 
+describe('technical segment protection', () => {
+  it('keeps http, https, and www URLs intact instead of splitting on their dots', () => {
+    for (const raw of [
+      'Open http://example.com/path.',
+      'Open https://example.com/path.',
+      'Open www.example.com/path.'
+    ]) {
+      const s = createSentenceSplitter()
+      expect(s.push(raw)).toEqual([])
+      expect(s.flush()).toBe(raw)
+    }
+  })
+
+  it('waits for a URL that spans stream chunks before emitting its complete raw segment', () => {
+    const s = createSentenceSplitter()
+
+    expect(s.push('Open https://exam')).toEqual([])
+    expect(s.push('ple.com/path.')).toEqual([])
+    expect(s.flush()).toBe('Open https://example.com/path.')
+  })
+
+  it('waits for a www URL that spans stream chunks before emitting its complete raw segment', () => {
+    const s = createSentenceSplitter()
+
+    expect(s.push('Open www.exam')).toEqual([])
+    expect(s.push('ple.com/path.')).toEqual([])
+    expect(s.flush()).toBe('Open www.example.com/path.')
+  })
+
+  it('keeps an end-of-chunk host dot pending until a later chunk or finish proves the complete URL', () => {
+    for (const [start, continuation, raw] of [
+      ['Open https://example.', 'com/path.', 'Open https://example.com/path.'],
+      ['Open www.example.', 'com/path.', 'Open www.example.com/path.']
+    ]) {
+      const s = createSentenceSplitter()
+      expect(s.push(start)).toEqual([])
+      expect(s.push(continuation)).toEqual([])
+      expect(s.flush()).toBe(raw)
+    }
+  })
+
+  it('keeps a multiline tilde fence intact across chunks and resumes normal splitting after it closes', () => {
+    const s = createSentenceSplitter()
+    const fence = '~~~ts\nconst endpoint = "https://example.com/path"\nconsole.log(endpoint)\n~~~\n'
+
+    expect(s.push(`Intro:\n${fence.slice(0, 37)}`)).toEqual(['Intro:\n'])
+    expect(s.push(`${fence.slice(37)}After.`)).toEqual([fence, 'After.'])
+  })
+
+  it('keeps a multiline backtick fence intact across chunks', () => {
+    const s = createSentenceSplitter()
+    const fence = '```ts\nconst endpoint = "https://example.com/path"\n```\n'
+
+    expect(s.push(fence.slice(0, 31))).toEqual([])
+    expect(s.push(fence.slice(31))).toEqual([fence])
+  })
+})
+
 describe('createSentenceSplitter', () => {
   it('单次 push 完整一句 → 立即吐出该句', () => {
     const s = createSentenceSplitter()

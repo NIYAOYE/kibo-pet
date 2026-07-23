@@ -1,29 +1,36 @@
 import type { TtsSettings } from '@shared/llm'
 import type { PcmChunk } from './voiceSidecar'
+import type { VoiceSynthesisOutcome } from './voiceProvider'
 
 export interface SpeechSequencer {
   getSettings: () => TtsSettings
-  speak: (text: string) => void
+  speak: (text: string, onDisplay: () => void) => Promise<void>
   stop: () => void
 }
 
-/** 最多同时有多少句在合成中("当前应播放的一句" + "预取的下一句")。 */
+/** The current sentence plus one prefetched sentence may synthesize at once. */
 const MAX_CONCURRENT = 2
 
-interface QueueItem { seq: number; text: string }
-interface SeqBuffer { chunks: PcmChunk[]; finished: boolean }
+interface QueueItem {
+  seq: number
+  text: string
+  onDisplay: () => void
+  resolve: () => void
+  displayed: boolean
+  resolved: boolean
+  outcome?: VoiceSynthesisOutcome
+  hasPcm: boolean
+  firstPcmForwarded: boolean
+  chunks: PcmChunk[]
+  finished: boolean
+}
 
 /**
- * 把"哪句先合成完就先播放"改成"永远按文本顺序播放,同时允许最多
- * MAX_CONCURRENT 句在途合成"。
- *
- * 根因:sidecar 端用 threading.Lock 把并发合成请求串行化,但锁的获取顺序不保证
- * 和请求到达顺序一致;渲染层的播放队列又是"谁先到就排谁"——两层叠加导致乱序。
- * 这里用序号 + 缓冲区确保:只有轮到播放的那一句,它的音频块才会被转发;抢先
- * 合成完的下一句先缓冲住,等前一句真正播完再按顺序放出来。
+ * Buffers prefetched PCM so both text and audio reach the renderer in the
+ * original LLM order, even when synthesis completes out of order.
  */
 export function createSpeechSequencer(opts: {
-  speakOne: (text: string, onChunk: (c: PcmChunk) => void) => Promise<void>
+  speakOne: (text: string, onChunk: (c: PcmChunk) => void) => Promise<VoiceSynthesisOutcome>
   onChunk: (c: PcmChunk) => void
   getSettings: () => TtsSettings
   stopUnderlying: () => void
@@ -31,65 +38,149 @@ export function createSpeechSequencer(opts: {
   let nextSeq = 0
   let cursor = 0
   let inFlightCount = 0
+  let generation = 0
   const pending: QueueItem[] = []
-  const buffers = new Map<number, SeqBuffer>()
+  const items = new Map<number, QueueItem>()
 
-  function bufferFor(seq: number): SeqBuffer {
-    let b = buffers.get(seq)
-    if (!b) { b = { chunks: [], finished: false }; buffers.set(seq, b) }
-    return b
+  function releaseDisplay(item: QueueItem): void {
+    if (item.displayed) return
+    item.displayed = true
+    try {
+      item.onDisplay()
+    } catch {
+      // Rendering must not be able to block later text or audio from releasing.
+    }
+    if (!item.resolved) {
+      item.resolved = true
+      item.resolve()
+    }
   }
 
-  /** 从 cursor 开始,把已经到位的音频块按顺序放出来;遇到还没合成完的就停在原地等下一次。 */
+  function resolveWithoutDisplay(item: QueueItem): void {
+    if (item.resolved) return
+    item.resolved = true
+    item.resolve()
+  }
+
+  function isCurrentFlushItem(item: QueueItem, flushGeneration: number): boolean {
+    return generation === flushGeneration && cursor === item.seq && items.get(item.seq) === item
+  }
+
+  /** Release every fully ordered item that is ready, stopping at the first gap. */
   function flush(): void {
+    const flushGeneration = generation
     for (;;) {
-      const b = buffers.get(cursor)
-      if (!b) return
-      if (b.chunks.length > 0) {
-        for (const c of b.chunks) opts.onChunk(c)
-        b.chunks = []
+      if (generation !== flushGeneration) return
+      const item = items.get(cursor)
+      if (!item) return
+
+      const shouldDiscardPcm = item.outcome === 'failed' || item.outcome === 'skipped'
+      if (shouldDiscardPcm) {
+        item.chunks.length = 0
+      } else if (item.chunks.length > 0) {
+        releaseDisplay(item)
+        if (!isCurrentFlushItem(item, flushGeneration)) return
+        if (!item.firstPcmForwarded) {
+          item.firstPcmForwarded = true
+          opts.onChunk(item.chunks.shift()!)
+          if (!isCurrentFlushItem(item, flushGeneration)) return
+        }
+
+        // The first chunk starts playback promptly. Keep the remainder until
+        // synthesis confirms that this is a spoken segment, so a later failure
+        // cannot release speculative buffered audio.
+        if (item.outcome !== 'spoken') return
+
+        const chunks = item.chunks.splice(0)
+        for (const chunk of chunks) {
+          opts.onChunk(chunk)
+          if (!isCurrentFlushItem(item, flushGeneration)) return
+        }
       }
-      if (!b.finished) return
-      buffers.delete(cursor)
+
+      if (!item.finished) return
+
+      // Skipped, failed, and no-PCM successful syntheses become display-only
+      // precisely when all earlier source segments have been released.
+      releaseDisplay(item)
+      if (!isCurrentFlushItem(item, flushGeneration)) return
+      items.delete(cursor)
       cursor++
+    }
+  }
+
+  function finishSynthesis(item: QueueItem, outcome: VoiceSynthesisOutcome, runGeneration: number): void {
+    if (runGeneration !== generation || !items.has(item.seq)) return
+    item.outcome = outcome
+    item.finished = true
+    flush()
+  }
+
+  function startSynthesis(item: QueueItem): void {
+    const runGeneration = generation
+    inFlightCount++
+
+    const onChunk = (chunk: PcmChunk) => {
+      if (runGeneration !== generation || !items.has(item.seq)) return
+      item.hasPcm = true
+      item.chunks.push(chunk)
+      flush()
+    }
+
+    const onSettled = () => {
+      if (runGeneration !== generation) return
+      inFlightCount--
+      pump()
+    }
+
+    try {
+      void opts.speakOne(item.text, onChunk).then(
+        (outcome) => finishSynthesis(item, outcome, runGeneration),
+        () => finishSynthesis(item, 'failed', runGeneration)
+      ).then(onSettled, onSettled)
+    } catch {
+      finishSynthesis(item, 'failed', runGeneration)
+      onSettled()
     }
   }
 
   function pump(): void {
     while (inFlightCount < MAX_CONCURRENT && pending.length > 0) {
-      const item = pending.shift()!
-      const seq = item.seq
-      inFlightCount++
-      void opts.speakOne(item.text, (c) => {
-        if (seq < cursor) return // 属于已被 stop() 跳过的旧一轮,丢弃
-        bufferFor(seq).chunks.push(c)
-        flush()
-      }).finally(() => {
-        inFlightCount--
-        if (seq >= cursor) {
-          bufferFor(seq).finished = true
-          flush()
-        }
-        pump()
-      }).catch(() => {
-        // speakOne 失败(合成出错)时 .finally() 会让 rejection 继续冒泡;
-        // voiceProvider 内部已经把错误报给 onError 了,这里只是防止
-        // 出现 unhandled promise rejection,不需要再做任何事。
-      })
+      startSynthesis(pending.shift()!)
     }
   }
 
   return {
     getSettings: opts.getSettings,
-    speak(text: string): void {
-      pending.push({ seq: nextSeq++, text })
-      pump()
+    speak(text: string, onDisplay: () => void): Promise<void> {
+      return new Promise<void>((resolve) => {
+        const item: QueueItem = {
+          seq: nextSeq++,
+          text,
+          onDisplay,
+          resolve,
+          displayed: false,
+          resolved: false,
+          hasPcm: false,
+          firstPcmForwarded: false,
+          chunks: [],
+          finished: false
+        }
+        items.set(item.seq, item)
+        pending.push(item)
+        pump()
+      })
     },
     stop(): void {
-      opts.stopUnderlying()
+      // Invalidate callbacks before asking the provider to abort, because its
+      // abort path can synchronously invoke a pending callback.
+      generation++
       pending.length = 0
-      buffers.clear()
+      for (const item of items.values()) resolveWithoutDisplay(item)
+      items.clear()
       cursor = nextSeq
+      inFlightCount = 0
+      opts.stopUnderlying()
     }
   }
 }

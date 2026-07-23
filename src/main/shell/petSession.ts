@@ -127,11 +127,44 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
   let voiceProviderInstance: ReturnType<typeof createVoiceProvider> | null = null
   let speechSequencerInstance: ReturnType<typeof createSpeechSequencer> | null = null
   let voiceSidecarInstance: ReturnType<typeof createVoiceSidecar> | null = null
+  let voiceSidecarStarting: ReturnType<typeof createVoiceSidecar> | null = null
+  const stoppedVoiceSidecars = new WeakSet<ReturnType<typeof createVoiceSidecar>>()
+  let voiceStartEpoch = 0
+  let disposed = false
 
-  function makeVoiceFacade(): { getSettings: () => AppSettings['tts']; speak: (text: string) => void; stop: () => void } {
+  function isCurrentVoiceStart(epoch: number): boolean {
+    return !disposed && voiceStartEpoch === epoch
+  }
+
+  async function stopSidecarOnce(sidecar: ReturnType<typeof createVoiceSidecar> | null): Promise<void> {
+    if (!sidecar || stoppedVoiceSidecars.has(sidecar)) return
+    stoppedVoiceSidecars.add(sidecar)
+    await sidecar.stop()
+  }
+
+  async function discardStartingVoice(
+    sidecar: ReturnType<typeof createVoiceSidecar> | null,
+    provider: ReturnType<typeof createVoiceProvider> | null = null,
+    sequencer: ReturnType<typeof createSpeechSequencer> | null = null
+  ): Promise<void> {
+    try { sequencer?.stop() } catch (e) { console.warn('[petSession] discard sequencer', e) }
+    if (!sequencer) {
+      try { provider?.stop() } catch (e) { console.warn('[petSession] discard provider', e) }
+    }
+    if (voiceSidecarStarting === sidecar) voiceSidecarStarting = null
+    try { await stopSidecarOnce(sidecar) } catch (e) { console.warn('[petSession] discard sidecar', e) }
+  }
+
+  function makeVoiceFacade(): {
+    isReady: () => boolean
+    getSettings: () => AppSettings['tts']
+    speak: (text: string, onDisplay: () => void) => Promise<void>
+    stop: () => void
+  } {
     return {
+      isReady: () => deps.loadSettings().tts.enabled && speechSequencerInstance !== null,
       getSettings: () => deps.loadSettings().tts,
-      speak: (text: string) => speechSequencerInstance?.speak(text),
+      speak: (text: string, onDisplay: () => void) => speechSequencerInstance?.speak(text, onDisplay) ?? Promise.resolve(),
       stop: () => speechSequencerInstance?.stop()
     }
   }
@@ -143,6 +176,8 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
   }
 
   async function startVoice(): Promise<void> {
+    const startEpoch = ++voiceStartEpoch
+    if (!isCurrentVoiceStart(startEpoch)) return
     const s = deps.loadSettings()
     if (!s.tts.enabled) return
     let petVoice: PetVoice | undefined
@@ -152,6 +187,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     } catch {
       return
     }
+    if (!isCurrentVoiceStart(startEpoch)) return
     if (!petVoice) return
 
     const backend = deps.voiceDeps.resolveVoiceBackend(petVoice, s.tts.backend)
@@ -209,45 +245,80 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     // 换宠物快速切换时,旧会话 stop() 是同步 kill、不等 OS 真正释放端口(见 voiceSidecar.ts),
     // 新会话紧跟着起同一端口的 sidecar 可能撞上"端口尚未释放"的瞬时失败——重试几次通常几百毫秒内自愈,
     // 而不是直接判定语音不可用。重试耗尽后仍走原有的 catch-and-warn-and-return 兜底,不改变外部可见行为。
+    voiceSidecarStarting = sidecar
+    if (!isCurrentVoiceStart(startEpoch)) {
+      await discardStartingVoice(sidecar)
+      return
+    }
     const START_ATTEMPTS = 3
     const START_RETRY_DELAY_MS = 250
     for (let attempt = 1; attempt <= START_ATTEMPTS; attempt++) {
+      if (!isCurrentVoiceStart(startEpoch)) {
+        await discardStartingVoice(sidecar)
+        return
+      }
       try {
         await sidecar.start()
+        if (!isCurrentVoiceStart(startEpoch)) {
+          await discardStartingVoice(sidecar)
+          return
+        }
         break
       } catch (e) {
+        if (!isCurrentVoiceStart(startEpoch)) {
+          await discardStartingVoice(sidecar)
+          return
+        }
         if (attempt === START_ATTEMPTS) {
           console.warn(`[voice] sidecar 启动失败(已重试 ${START_ATTEMPTS} 次),本次运行语音功能不可用`, e)
           return
         }
         console.warn(`[voice] sidecar 启动失败,第 ${attempt}/${START_ATTEMPTS} 次尝试,${START_RETRY_DELAY_MS}ms 后重试`, e)
         await new Promise((resolve) => setTimeout(resolve, START_RETRY_DELAY_MS))
+        if (!isCurrentVoiceStart(startEpoch)) {
+          await discardStartingVoice(sidecar)
+          return
+        }
       }
     }
-    voiceSidecarInstance = sidecar
-
     const translatorProvider = createProviderForVoice()
-    voiceProviderInstance = createVoiceProvider({
+    const provider = createVoiceProvider({
       sidecar,
       translator: createLlmTranslator(translatorProvider),
       getSettings: () => deps.loadSettings().tts,
       onError: (m) => deps.voiceDeps.onAudioError(m)
     })
-    const vp = voiceProviderInstance
-    speechSequencerInstance = createSpeechSequencer({
-      speakOne: (text, onChunk) => vp.speak(text, onChunk),
+    if (!isCurrentVoiceStart(startEpoch)) {
+      await discardStartingVoice(sidecar, provider)
+      return
+    }
+    const sequencer = createSpeechSequencer({
+      speakOne: (text, onChunk) => provider.synthesize(text, onChunk),
       onChunk: (c) => deps.voiceDeps.onAudioChunk(c),
       getSettings: () => deps.loadSettings().tts,
-      stopUnderlying: () => vp.stop()
+      stopUnderlying: () => provider.stop()
     })
+    if (!isCurrentVoiceStart(startEpoch)) {
+      await discardStartingVoice(sidecar, provider, sequencer)
+      return
+    }
+    if (voiceSidecarStarting === sidecar) voiceSidecarStarting = null
+    voiceSidecarInstance = sidecar
+    voiceProviderInstance = provider
+    speechSequencerInstance = sequencer
   }
 
   async function stopVoice(): Promise<void> {
-    speechSequencerInstance?.stop()
-    await voiceSidecarInstance?.stop()
+    voiceStartEpoch++
+    const sequencer = speechSequencerInstance
+    const sidecar = voiceSidecarInstance
+    const startingSidecar = voiceSidecarStarting
     voiceSidecarInstance = null
+    voiceSidecarStarting = null
     speechSequencerInstance = null
     voiceProviderInstance = null
+    sequencer?.stop()
+    await Promise.all([stopSidecarOnce(sidecar), stopSidecarOnce(startingSidecar)])
   }
 
   const chat = createChatStore({
@@ -301,6 +372,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     startVoice,
     stopSpeech: () => speechSequencerInstance?.stop(),
     async dispose(): Promise<void> {
+      disposed = true
       try { chat.cancel() } catch (e) { console.warn('[petSession] chat.cancel', e) }
       try { appFocusWatcher.stop() } catch (e) { console.warn('[petSession] appFocus.stop', e) }
       try { await stopVoice() } catch (e) { console.warn('[petSession] stopVoice', e) }

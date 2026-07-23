@@ -1,7 +1,7 @@
 import type { ChatMessage, ChatSendPayload, ChatSendAttachment } from '@shared/ipc'
-import type { AppSettings, ProviderSettings, ImagePart, TtsSettings } from '@shared/llm'
+import type { AppSettings, ProviderSettings, ImagePart } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
-import { createSentenceSplitter, createSmartSplitter } from '../voice/sentenceSplitter'
+import { createReplyPresenter, type ReplyPresenter, type VoiceReplyGate } from './replyPresenter'
 import { loadPersona } from '../persona/personaLoader'
 import { assemblePrompt } from '../agent/promptAssembler'
 import { runAgent } from '../agent/agentLoop'
@@ -85,12 +85,42 @@ export function createChatStore(opts: {
   pushError: (message: string) => void
   openSettings: () => void
   /** 语音(GSV-TTS-Lite)朗读接线;未注入则该功能整体不存在,与 settings.tts.enabled 无关(同 desktopControl 的注入式惯例) */
-  voice?: { getSettings: () => TtsSettings; speak: (text: string) => void; stop: () => void }
+  voice?: VoiceReplyGate & { stop: () => void }
 }): ChatStore {
   const make = opts.makeProvider ?? createProvider
   let inFlight: AbortController | null = null
+  let activePresenter: ReplyPresenter | null = null
+  let generation = 0
+
+  interface ActiveReply {
+    ctrl: AbortController
+    presenter: ReplyPresenter
+    generation: number
+  }
+
+  function beginReply(): ActiveReply {
+    const ctrl = new AbortController()
+    const presenter = createReplyPresenter({ voice: opts.voice, pushStream: opts.pushStream })
+    const reply = { ctrl, presenter, generation: ++generation }
+    inFlight = ctrl
+    activePresenter = presenter
+    return reply
+  }
+
+  function isActive(reply: ActiveReply): boolean {
+    return reply.generation === generation && inFlight === reply.ctrl && activePresenter === reply.presenter && !reply.ctrl.signal.aborted
+  }
+
+  function clearReply(reply: ActiveReply): void {
+    if (!isActive(reply)) return
+    inFlight = null
+    activePresenter = null
+  }
 
   function cancel(): void {
+    generation++
+    activePresenter?.cancel()
+    activePresenter = null
     if (inFlight) { inFlight.abort(); inFlight = null }
     opts.voice?.stop()
   }
@@ -128,9 +158,7 @@ export function createChatStore(opts: {
       const settings = opts.loadSettings()
       const persona = loadPersona(opts.petDir)
       const provider = make(settings.provider, key)
-      const ctrl = new AbortController()
-      inFlight = ctrl
-      let acc = ''
+      const reply = beginReply()
       void (async () => {
         const { system, messages } = assemblePrompt(persona, opts.memory.messages())
         // 把 指令 + 反注入头 + 剪贴板原文 作为当轮 user content(原文只在此处、不落盘)
@@ -144,27 +172,31 @@ export function createChatStore(opts: {
           messages,               // 无 registry → 无工具、无回灌
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
-          signal: ctrl.signal,
-          onText: (t) => { acc += t; opts.pushStream(t) },
-          onStatus: (t) => opts.pushStatus(t)
+          signal: reply.ctrl.signal,
+          onText: (t) => { if (isActive(reply)) reply.presenter.append(t) },
+          onStatus: (t) => { if (isActive(reply)) opts.pushStatus(t) }
         })
-        if (inFlight === ctrl) inFlight = null
-        if (res.canceled) return
+        if (!isActive(reply) || res.canceled) { clearReply(reply); return }
+        await reply.presenter.finish()
+        if (!isActive(reply)) return
+        const text = reply.presenter.getText()
         if (res.error) {
-          if (acc) opts.memory.appendMessage({ role: 'pet', text: acc })
+          if (text) opts.memory.appendMessage({ role: 'pet', text })
           opts.pushUpdate(opts.memory.messages())
           opts.pushError(res.error)
           opts.emitPetEvent('replyDone')
+          clearReply(reply)
           return
         }
-        opts.memory.appendMessage({ role: 'pet', text: acc })
+        opts.memory.appendMessage({ role: 'pet', text })
         opts.pushUpdate(opts.memory.messages())
-        if (settings.textTools.autoCopyResult && acc) {
-          opts.clipboard.writeText(acc)
+        if (settings.textTools.autoCopyResult && text) {
+          opts.clipboard.writeText(text)
           opts.pushStatus('✓ 结果已复制到剪贴板')
         }
         opts.pushDone()
         opts.emitPetEvent('replyDone')
+        clearReply(reply)
       })()
     },
     handleSend(payload: ChatSendPayload): void {
@@ -229,17 +261,12 @@ export function createChatStore(opts: {
       }
       const registry = createToolRegistry(tools)
 
-      const ctrl = new AbortController()
-      inFlight = ctrl
-      let acc = ''
-      const sentenceSplitter = opts.voice?.getSettings().textSplit === 'sentence'
-        ? createSentenceSplitter()
-        : createSmartSplitter()
+      const reply = beginReply()
       void (async () => {
         try {
           // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
-          const recalled = await opts.memory.recall(text, ctrl.signal)
-          if (ctrl.signal.aborted) return
+          const recalled = await opts.memory.recall(text, reply.ctrl.signal)
+          if (!isActive(reply)) return
           const { system, messages } = assemblePrompt(
             persona,
             opts.memory.messages(),
@@ -264,40 +291,29 @@ export function createChatStore(opts: {
             maxToolRounds,
             maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
             timeoutMs: TIMEOUT_MS,
-            signal: ctrl.signal,
-            onText: (t) => {
-              acc += t
-              opts.pushStream(t)
-              if (opts.voice && opts.voice.getSettings().playbackTrigger === 'stream') {
-                for (const sentence of sentenceSplitter.push(t)) opts.voice.speak(sentence)
-              }
-            },
-            onStatus: (t) => opts.pushStatus(t)
+            signal: reply.ctrl.signal,
+            onText: (t) => { if (isActive(reply)) reply.presenter.append(t) },
+            onStatus: (t) => { if (isActive(reply)) opts.pushStatus(t) }
           })
-          if (inFlight === ctrl) inFlight = null
-          if (res.canceled) return // 静默丢弃
+          if (!isActive(reply) || res.canceled) { clearReply(reply); return }
+          await reply.presenter.finish()
+          if (!isActive(reply)) return
+          const replyText = reply.presenter.getText()
           // 该回合用过的工具名落进 pet 消息(工具往返本身不落盘,这是跨回合感知的唯一线索)
           const actions = res.toolsUsed && res.toolsUsed.length > 0 ? { actions: res.toolsUsed } : {}
           if (res.error) {
             // 有部分文本(如轮数上限)时先落 transcript,再报错
-            if (acc) opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
+            if (replyText) opts.memory.appendMessage({ role: 'pet', text: replyText, ...actions })
             opts.pushUpdate(opts.memory.messages())
             opts.pushError(res.error)
             opts.emitPetEvent('replyDone')
           } else {
-            opts.memory.appendMessage({ role: 'pet', text: acc, ...actions })
+            opts.memory.appendMessage({ role: 'pet', text: replyText, ...actions })
             opts.pushUpdate(opts.memory.messages())
             opts.pushDone()
             opts.emitPetEvent('replyDone')
-            if (opts.voice) {
-              const vs = opts.voice.getSettings()
-              if (vs.playbackTrigger === 'batch') opts.voice.speak(acc)
-              else {
-                const rest = sentenceSplitter.flush()
-                if (rest) opts.voice.speak(rest)
-              }
-            }
           }
+          clearReply(reply)
           // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
           opts.memory.maybeSummarize(() => {
             const k = opts.getKey()
