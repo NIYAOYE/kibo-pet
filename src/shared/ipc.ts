@@ -3,6 +3,7 @@ import type { PetEvent, Bounds } from './petBrain'
 import type { AppSettings, ProviderSettings } from './llm'
 import type { TodoItem } from './todo'
 import type { ReactionCategory } from './reactionPlanner'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from './live2dPerformance'
 
 export const IPC = {
   GET_PET: 'pet:get',
@@ -91,6 +92,9 @@ export const IPC = {
   PET_PREPARE_RESULT: 'pet:prepare-result',
   PET_COMMIT: 'pet:commit',
   PET_DISCARD: 'pet:discard',
+  REPORT_LIVE2D_CAPABILITIES: 'live2d:report-capabilities',
+  CLEAR_LIVE2D_CAPABILITIES: 'live2d:clear-capabilities',
+  LIVE2D_PERFORM: 'live2d:perform',
   WINDOW_VISIBILITY_CHANGED: 'window:visibility-changed',
   MOUSE_FOCUS: 'pet:mouse-focus'
 } as const
@@ -135,7 +139,7 @@ export interface Live2DTransformPatch {
 }
 
 export interface PetApi {
-  getPet(): Promise<PetRenderSource>
+  getPet(): Promise<PetInitialPayload>
   /** Resolves with the real post-move window/workArea bounds, so callers that
    *  track position (autonomous walk) can stay authoritative instead of
    *  predicting — main always applies clamping against the live display. */
@@ -166,6 +170,12 @@ export interface PetApi {
   onPetCommit(cb: (payload: PetCommitPayload) => void): void
   /** 主进程确认要丢弃:渲染层销毁已准备但未提交的半成品,当前画面不受影响 */
   onPetDiscard(cb: (payload: PetDiscardPayload) => void): void
+  /** Renderer reports controls only after the active model has loaded or committed. */
+  reportLive2DCapabilities(snapshot: Live2DCapabilitySnapshot, epoch: string): void
+  /** Invalidates the named pet's prior snapshot while the renderer recovers from a lost WebGL context. */
+  clearLive2DCapabilities(petId: string, epoch: string): void
+  /** Main forwards a validated temporary performance for the active model. */
+  onLive2DPerform(cb: (instruction: Live2DPerformanceInstruction) => void): void
   /** 主进程窗口可见性变化(最小化/恢复/锁屏/解锁)推送,驱动 Live2D 场景帧率节流 */
   onWindowVisibilityChanged(cb: (payload: WindowVisibilityPayload) => void): void
   /** 主进程推送的鼠标追踪目标([-1,1] 方向;(0,0) 表示回正),仅当当前宠物是 live2d 且
@@ -239,7 +249,9 @@ export interface PetChatListItem {
 }
 export interface PetSwitchedPayload { petId: string; displayName: string }
 
-export interface PetPreparePayload { requestId: string; source: PetRenderSource }
+/** Session-unique token preventing stale renderer messages from an A→B→A switch. */
+export interface PetInitialPayload { source: PetRenderSource; capabilityEpoch: string }
+export interface PetPreparePayload { requestId: string; source: PetRenderSource; capabilityEpoch: string }
 export interface PetPrepareResultPayload { requestId: string; ok: boolean; error?: string }
 export interface PetCommitPayload { requestId: string }
 export interface PetDiscardPayload { requestId: string }

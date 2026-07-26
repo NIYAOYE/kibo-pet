@@ -12,6 +12,17 @@ import { pointInBounds, toCanvasCoords } from './live2dHitTestFallback'
 import { applyCubismCoreCompatPatch } from './live2dCubismCoreCompat'
 import { needsAutoFit, pickWatermarkBreakExpressionName, type ExpressionDefinition } from './live2dAutoSetup'
 import { clampLive2DViewport } from '@shared/windowPlacement'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
+import type { ActivePerformanceLayer } from './live2dPerformanceLayer'
+import {
+  applyActivePerformanceLayer,
+  attachPerformanceAfterBaseline,
+  collectLive2DCapabilities,
+  playResolvedState,
+  replaceActivePerformanceLayer,
+  type CubismCoreParameterApi,
+  type PerformancePostBaselineEmitter
+} from './live2dPerformanceRuntime'
 
 const MOTION_PRIORITY_NORMAL = 2 // untitled-pixi-live2d-engine: 0 无优先级/1 IDLE/2 NORMAL/3 FORCE
 
@@ -30,6 +41,12 @@ export class Live2DPetRenderer implements PetRenderer {
   private pendingViewport: { width: number; height: number } | null = null
   private pendingBaseScale: number | null = null
   private pendingFit: { scale: number; offsetX: number; offsetY: number } | null = null
+  private capabilities: Live2DCapabilitySnapshot | null = null
+  private parameterIndexes = new Map<string, number>()
+  private pendingCapabilities: Live2DCapabilitySnapshot | null = null
+  private pendingParameterIndexes = new Map<string, number>()
+  private activePerformanceLayer: ActivePerformanceLayer | null = null
+  private removePerformanceHook: (() => void) | null = null
 
   /** persistTransform 默认调真实的 window.petApi.updateLive2DTransform;设置窗口预览一个尚未
    *  提交的 staging 包时会显式传一个 no-op,不能通过重新赋值 window.petApi 上的方法来做同样的
@@ -78,6 +95,9 @@ export class Live2DPetRenderer implements PetRenderer {
 
     const { baseScale, fit } = await this.setupModel(model, source.manifest, viewport)
     this.baseScale = baseScale
+    const collected = this.collectCapabilities(model, source.manifest)
+    this.capabilities = collected.snapshot
+    this.parameterIndexes = collected.parameterIndexes
     // 注:跨类型热切换(如 sprite→live2d)时,load() 在准备阶段就可能触发这里的自动对齐持久化,
     // 而此时主进程 session 还指向旧的精灵包——写入会被 patchLive2DTransform 拒绝(manifest 类型不符),
     // 不会写坏数据,但这次切换的自动对齐结果不会被保存,下次冷启动会重新算一遍。这是已知的良性
@@ -85,6 +105,7 @@ export class Live2DPetRenderer implements PetRenderer {
     if (fit) void this.persistTransform({ ...fit, autoFitted: true })
     app.stage.addChild(model)
     this.model = model
+    this.installPerformanceHook(model)
 
     // 高级故障排查用:把 app/model 挂到 window 上,方便在 DevTools Console 里直接读写
     // scale/position/visible 等属性做实时诊断。正常情况下导入后会自动完成对齐(见上面
@@ -187,16 +208,19 @@ export class Live2DPetRenderer implements PetRenderer {
 
   private async playResolved(resolved: ResolvedMotion, originalState: string): Promise<void> {
     if (!this.model || !this.manifest) return
-    const ok = await this.startMotion(resolved)
-    if (resolved.expression) void this.model.expression(resolved.expression)
-    if (!ok && originalState !== 'idle') {
+    const result = await playResolvedState(
+      resolved,
+      (motion) => this.startMotion(motion),
+      (expression) => { void this.model?.expression(expression) }
+    )
+    if (result.motionAttempted && !result.motionSucceeded && originalState !== 'idle') {
       const idleFallback = resolveStateMotion(this.manifest.render.stateMap, 'idle')
-      if (idleFallback) await this.startMotion(idleFallback)
+      if (idleFallback?.motionGroup) await this.startMotion(idleFallback)
     }
   }
 
   private async startMotion(resolved: ResolvedMotion): Promise<boolean> {
-    if (!this.model) return false
+    if (!this.model || !resolved.motionGroup) return false
     let index: number | undefined
     if (typeof resolved.selection === 'number') {
       index = resolved.selection
@@ -233,6 +257,16 @@ export class Live2DPetRenderer implements PetRenderer {
     }
   }
 
+  getLive2DCapabilities(): Live2DCapabilitySnapshot | null {
+    return this.capabilities
+  }
+
+  applyLive2DPerformance(instruction: Live2DPerformanceInstruction, nowMs: number): void {
+    if (!this.model || !this.manifest) return
+    this.activePerformanceLayer = replaceActivePerformanceLayer(this.activePerformanceLayer, instruction, nowMs)
+    if (instruction.expression) void this.model.expression(instruction.expression)
+  }
+
   setLookTarget(x: number, y: number): void {
     // 不能用 Live2DModel.focus(x,y)——那是给"传真实世界/像素坐标"用的公开便捷方法(内部会
     // 用 toModelPosition()+atan2 把像素坐标换算成角度,再调下面这行),我们已经算好了 [-1,1]
@@ -267,6 +301,9 @@ export class Live2DPetRenderer implements PetRenderer {
   async prepareSwap(source: PetRenderSource): Promise<void> {
     if (source.type !== 'live2d') throw new Error('Live2DPetRenderer.prepareSwap() 只能准备 type:"live2d" 的 PetRenderSource')
     if (!this.app) throw new Error('prepareSwap() 前必须先成功调用过一次 load()')
+    this.activePerformanceLayer = null
+    this.pendingCapabilities = null
+    this.pendingParameterIndexes.clear()
     const viewport = clampLive2DViewport(source.manifest.render.viewport)
     const modelUrl = `${source.resourceBaseUrl}${source.manifest.render.model}`
     const model = await Live2DModel.from(modelUrl)
@@ -276,18 +313,26 @@ export class Live2DPetRenderer implements PetRenderer {
     this.pendingViewport = viewport
     this.pendingBaseScale = pendingBaseScale
     this.pendingFit = fit
+    const collected = this.collectCapabilities(model, source.manifest)
+    this.pendingCapabilities = collected.snapshot
+    this.pendingParameterIndexes = collected.parameterIndexes
   }
 
   commitSwap(): void {
     if (!this.pendingModel || !this.pendingManifest || !this.pendingViewport || !this.app) {
       throw new Error('commitSwap() 前必须先成功调用 prepareSwap()')
     }
+    this.removePerformanceHook?.()
+    this.removePerformanceHook = null
     this.model?.destroy()
     this.resize(this.pendingViewport)
     this.app.stage.addChild(this.pendingModel)
     this.model = this.pendingModel
     this.manifest = this.pendingManifest
     this.baseScale = this.pendingBaseScale!
+    this.capabilities = this.pendingCapabilities
+    this.parameterIndexes = this.pendingParameterIndexes
+    this.activePerformanceLayer = null
     // 只有走到这里(commit 已完成)才持久化:main 进程按 Task 13 的协议,只有在收到
     // renderer 的 prepare 成功结果后才会把 session 切到这个新宠物,再发 PET_COMMIT——
     // 所以此时 main 的 session.petDir 已经指向这个新宠物,IPC 写入落盘的位置是对的。
@@ -298,25 +343,72 @@ export class Live2DPetRenderer implements PetRenderer {
     this.pendingViewport = null
     this.pendingBaseScale = null
     this.pendingFit = null
+    this.pendingCapabilities = null
+    this.pendingParameterIndexes = new Map()
+    this.installPerformanceHook(this.model)
   }
 
   discardSwap(): void {
     this.pendingModel?.destroy()
+    this.activePerformanceLayer = null
     this.pendingModel = null
     this.pendingManifest = null
     this.pendingViewport = null
     this.pendingBaseScale = null
     this.pendingFit = null
+    this.pendingCapabilities = null
+    this.pendingParameterIndexes = new Map()
   }
 
   async destroy(): Promise<void> {
+    this.removePerformanceHook?.()
+    this.removePerformanceHook = null
     this.model?.destroy()
     this.model = null
+    this.pendingModel?.destroy()
+    this.pendingModel = null
     this.manifest = null
+    this.capabilities = null
+    this.parameterIndexes.clear()
+    this.activePerformanceLayer = null
+    this.pendingManifest = null
+    this.pendingViewport = null
+    this.pendingBaseScale = null
+    this.pendingFit = null
+    this.pendingCapabilities = null
+    this.pendingParameterIndexes = new Map()
     this.sequentialIndexByGroup.clear()
     if (this.app) {
       this.app.destroy(false, { children: true })
       this.app = null
     }
+  }
+
+  private collectCapabilities(model: Live2DModel, manifest: Live2DManifest) {
+    const expressionManager = model.internalModel.motionManager.expressionManager as
+      | { definitions?: ExpressionDefinition[] }
+      | undefined
+    return collectLive2DCapabilities(
+      manifest,
+      model.internalModel.coreModel as CubismCoreParameterApi,
+      expressionManager?.definitions
+    )
+  }
+
+  private installPerformanceHook(model: Live2DModel): void {
+    this.removePerformanceHook?.()
+    this.removePerformanceHook = attachPerformanceAfterBaseline(
+      model.internalModel as PerformancePostBaselineEmitter,
+      () => {
+        if (this.model !== model || !this.manifest) return
+        this.activePerformanceLayer = applyActivePerformanceLayer(
+          this.activePerformanceLayer,
+          model.internalModel.coreModel as CubismCoreParameterApi,
+          this.parameterIndexes,
+          this.manifest.render.interaction.lipSyncParameter,
+          performance.now()
+        )
+      }
+    )
   }
 }

@@ -1,7 +1,7 @@
 import type { Live2DStateMapEntry } from '@shared/petPackage'
 
 export interface ResolvedMotion {
-  motionGroup: string
+  motionGroup?: string
   selection: 'random' | 'sequential' | number
   loop?: boolean
   expression?: string
@@ -20,7 +20,7 @@ export function resolveStateMotion(
   if (visited.has(state)) return null
   visited.add(state)
   const entry = stateMap[state]
-  if (entry?.motionGroup) {
+  if (entry?.motionGroup || entry?.expression) {
     return {
       motionGroup: entry.motionGroup,
       selection: entry.selection ?? 'random',

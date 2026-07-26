@@ -16,6 +16,10 @@ export interface ContextRecoveryGuardDeps {
   showOverlay: (text: string) => void
   hideOverlay: () => void
   onStateChange: (state: ContextRecoveryState) => void
+  /** Invalidates main-process capabilities before the old renderer is rebuilt. */
+  onRecoveryStart?: () => void
+  /** Reports fresh capabilities after reload() has committed the replacement renderer. */
+  onRecoveryComplete?: () => void
   /** 见设计文档 §2:进入 recovering/given-up 时必须强制 setIgnoreMouseEvents(true),
    *  因为遮罩层没有 pointer-events:none,而 Electron 的忽略状态是丢失前、依赖光标位置的
    *  陈旧 hit-test 结果决定的。只会被调用 true——恢复健康后不需要显式传 false 撤销:
@@ -52,6 +56,7 @@ export function createLive2DContextRecoveryGuard(deps: ContextRecoveryGuardDeps)
       // 转移在下面的 webglcontextlost 监听里已经同步处理过),这次迟到的重载结果就不再代表
       // 当前状态——不能让一次"成功"把已经判定的 given-up 打回 healthy。
       if (state !== 'recovering') return
+      deps.onRecoveryComplete?.()
       setState(nextContextRecoveryState(state, 'restore-succeeded'))
       deps.hideOverlay()
     } catch (err) {
@@ -69,6 +74,7 @@ export function createLive2DContextRecoveryGuard(deps: ContextRecoveryGuardDeps)
     const next = nextContextRecoveryState(state, 'contextlost')
     setState(next)
     if (next === 'recovering') {
+      deps.onRecoveryStart?.()
       deps.forceIgnoreMouseEvents(true)
       deps.showOverlay(CONTEXT_RECOVERY_MESSAGE)
     } else if (next === 'given-up') {

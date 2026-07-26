@@ -4,6 +4,7 @@ import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@
 import { initLive2DBrain, stepLive2D, type Live2DBrainCtx } from '@shared/live2dPetBrain'
 import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
 import type { ContextSignalKind } from '@shared/ipc'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 const TICK_MS = 33
 
@@ -125,6 +126,14 @@ export class PetController {
 
   setLipSync(level: number): void {
     this.renderer.setLipSync(level)
+  }
+
+  getLive2DCapabilities(): Live2DCapabilitySnapshot | null {
+    return this.renderer.getLive2DCapabilities()
+  }
+
+  applyLive2DPerformance(instruction: Live2DPerformanceInstruction, nowMs: number): void {
+    this.renderer.applyLive2DPerformance(instruction, nowMs)
   }
 
   /** 主进程推来的鼠标追踪目标:非睡眠状态原样转发;睡眠时强制回正,不使用传入目标——

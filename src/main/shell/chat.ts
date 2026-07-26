@@ -19,6 +19,7 @@ import { createWeatherTool, createOpenMeteoClient } from '../tools/weather'
 import { createFirecrawlClient } from '../tools/firecrawl/firecrawlClient'
 import { createReadUrlTool } from '../tools/firecrawl/readUrl'
 import { createExtractFromUrlTool } from '../tools/firecrawl/extractFromUrl'
+import { createLive2DPerformanceTool } from '../tools/live2dPerformance'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { MemoryManager } from '../memory/memoryManager'
 import type { TodoStore } from '../todos/todoStore'
@@ -58,6 +59,10 @@ export function createChatStore(opts: {
   endDesktopControlTurn?: (token: number) => void
   /** 浏览器自动化工具的真实构造器;未注入则该能力永不出现,与 settings 开关无关 */
   buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
+  /** Current renderer-reported Live2D capabilities. Omitted for sprite pets or before report. */
+  getLive2DCapabilitySnapshot?: () => import('@shared/live2dPerformance').Live2DCapabilitySnapshot | null
+  /** Dispatches a validated performance only if the active pet is still current. */
+  dispatchLive2DPerformance?: (instruction: import('@shared/live2dPerformance').Live2DPerformanceInstruction) => boolean
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
   /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
@@ -174,6 +179,13 @@ export function createChatStore(opts: {
       }
       if (settings.browserControl.enabled && opts.buildBrowserTools) {
         tools.push(...opts.buildBrowserTools())
+      }
+      const live2dSnapshot = opts.getLive2DCapabilitySnapshot?.()
+      if (live2dSnapshot && opts.dispatchLive2DPerformance) {
+        tools.push(createLive2DPerformanceTool({
+          snapshot: live2dSnapshot,
+          dispatch: opts.dispatchLive2DPerformance
+        }))
       }
       const registry = createToolRegistry(tools)
 

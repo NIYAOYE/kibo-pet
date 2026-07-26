@@ -12,10 +12,10 @@ import {
   type PetPreparePayload, type PetCommitPayload, type PetDiscardPayload, type WindowVisibilityPayload
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
-import type { PetRenderSource } from '@shared/petPackage'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 const petApi: PetApi = {
-  getPet: (): Promise<PetRenderSource> => ipcRenderer.invoke(IPC.GET_PET),
+  getPet: () => ipcRenderer.invoke(IPC.GET_PET),
   moveWindow: (delta: MoveDelta): Promise<WindowBounds> => ipcRenderer.invoke(IPC.MOVE_WINDOW, delta),
   dragStart: (): void => ipcRenderer.send(IPC.DRAG_START),
   dragEnd: (): void => ipcRenderer.send(IPC.DRAG_END),
@@ -45,6 +45,14 @@ const petApi: PetApi = {
   onPetDiscard: (cb: (payload: PetDiscardPayload) => void): void => {
     ipcRenderer.removeAllListeners(IPC.PET_DISCARD)
     ipcRenderer.on(IPC.PET_DISCARD, (_e, payload: PetDiscardPayload) => cb(payload))
+  },
+  reportLive2DCapabilities: (snapshot: Live2DCapabilitySnapshot, epoch: string): void =>
+    ipcRenderer.send(IPC.REPORT_LIVE2D_CAPABILITIES, snapshot, epoch),
+  clearLive2DCapabilities: (petId: string, epoch: string): void =>
+    ipcRenderer.send(IPC.CLEAR_LIVE2D_CAPABILITIES, petId, epoch),
+  onLive2DPerform: (cb: (instruction: Live2DPerformanceInstruction) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.LIVE2D_PERFORM)
+    ipcRenderer.on(IPC.LIVE2D_PERFORM, (_e, instruction: Live2DPerformanceInstruction) => cb(instruction))
   },
   onWindowVisibilityChanged: (cb: (payload: WindowVisibilityPayload) => void): void => {
     ipcRenderer.removeAllListeners(IPC.WINDOW_VISIBILITY_CHANGED)

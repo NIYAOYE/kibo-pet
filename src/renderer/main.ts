@@ -37,7 +37,8 @@ function createErrorOverlay(text: string): HTMLDivElement {
 
 async function boot(): Promise<void> {
   let canvas = document.getElementById('pet') as HTMLCanvasElement
-  const source = await window.petApi.getPet()
+  const initialPet = await window.petApi.getPet()
+  const source = initialPet.source
 
   let dragging = false
   let moved = false
@@ -68,6 +69,8 @@ async function boot(): Promise<void> {
 
   let currentSource: PetRenderSource = source
   let pendingSource: PetRenderSource | null = null
+  let capabilityEpoch = initialPet.capabilityEpoch
+  let pendingCapabilityEpoch: string | null = null
   let windowVisible = true
   let guard: ContextRecoveryGuard | null = null
   let recoveryOverlayEl: HTMLDivElement | null = null
@@ -81,7 +84,7 @@ async function boot(): Promise<void> {
     const nextRenderer = createRendererForCanvas(fresh, s)
     return {
       renderer: nextRenderer,
-      attach: () => { canvas.replaceWith(fresh); canvas = fresh; setupGuard(fresh, s.type) }
+      attach: () => { canvas.replaceWith(fresh); canvas = fresh }
     }
   })
 
@@ -98,7 +101,7 @@ async function boot(): Promise<void> {
   // 注意旧 canvas 上的监听器不会随节点一起被丢弃(canvas.replaceWith 只是把它移出 DOM,
   // 旧渲染器随后 destroy() 时仍会对它强制 lose context,监听器照样触发),所以下面必须
   // 先 guard?.dispose() 换下旧 guard,否则会对一个已经不代表任何当前宠物的旧会话误报。
-  function setupGuard(target: HTMLCanvasElement, type: PetRenderSource['type']): void {
+  function setupGuard(target: HTMLCanvasElement, type: PetRenderSource['type'], epoch: string): void {
     // 换下旧 guard 前必须先 dispose 它:旧 canvas 之后可能经由一次完全无关的
     // `Application.destroy()` 被强制 lose context(见文件顶部注释),旧 guard 若还在监听,
     // 会对着一个已经不代表任何当前宠物的旧会话误报一次 recovering/given-up。
@@ -107,12 +110,15 @@ async function boot(): Promise<void> {
       guard = null
       return
     }
+    const guardEpoch = epoch
     guard = createLive2DContextRecoveryGuard({
       canvas: target,
       // reload() 读的是外层 currentSource——即便这里绑定的时间点早于 currentSource 被更新
       // (跨类型 attach() 内部同步调用 setupGuard,晚于它的 onPetCommit 才更新 currentSource),
       // 箭头函数闭包捕获的是变量本身,真正调用 reload() 永远读到当时最新的值。
       reload: () => controller.prepareReload(currentSource).then(() => controller.commitReload()),
+      onRecoveryStart: () => window.petApi.clearLive2DCapabilities(currentSource.manifest.id, guardEpoch),
+      onRecoveryComplete: () => reportLive2DCapabilities(guardEpoch),
       showOverlay: (text) => {
         recoveryOverlayEl?.remove()
         recoveryOverlayEl = createErrorOverlay(text)
@@ -128,9 +134,15 @@ async function boot(): Promise<void> {
       onStateChange: () => applyVisibility()
     })
   }
-  setupGuard(canvas, source.type)
+  setupGuard(canvas, source.type, capabilityEpoch)
 
   await controller.start()
+  function reportLive2DCapabilities(epoch = capabilityEpoch): void {
+    const capabilities = controller.getLive2DCapabilities()
+    if (capabilities) window.petApi.reportLive2DCapabilities(capabilities, epoch)
+  }
+  reportLive2DCapabilities()
+
   const pcmPlayer = createPcmPlayer()
   window.petApi.onPetEvent((event) => {
     controller.send(event)
@@ -142,6 +154,7 @@ async function boot(): Promise<void> {
     controller.prepareReload(payload.source).then(
       () => {
         pendingSource = payload.source
+        pendingCapabilityEpoch = payload.capabilityEpoch
         window.petApi.reportPrepareResult(payload.requestId, true)
       },
       (err) => window.petApi.reportPrepareResult(payload.requestId, false, err instanceof Error ? err.message : String(err))
@@ -150,7 +163,14 @@ async function boot(): Promise<void> {
   window.petApi.onPetCommit(() => {
     try {
       controller.commitReload()
-      if (pendingSource) { currentSource = pendingSource; pendingSource = null }
+      if (pendingSource && pendingCapabilityEpoch) {
+        currentSource = pendingSource
+        capabilityEpoch = pendingCapabilityEpoch
+        pendingSource = null
+        pendingCapabilityEpoch = null
+        setupGuard(canvas, currentSource.type, capabilityEpoch)
+      }
+      reportLive2DCapabilities()
       // 真实换宠物提交成功——不管上一个宠物当时是不是卡在 given-up,这都是一个全新的、
       // 还没经历过任何 GPU 丢失的会话,强制回到 healthy。
       guard?.reset()
@@ -162,6 +182,7 @@ async function boot(): Promise<void> {
   })
   window.petApi.onPetDiscard(() => {
     pendingSource = null
+    pendingCapabilityEpoch = null
     try { controller.discardReload() } catch (err) { console.warn('discardReload failed', err) }
   })
   window.petApi.onWindowVisibilityChanged((payload) => {
@@ -169,6 +190,7 @@ async function boot(): Promise<void> {
     applyVisibility()
   })
   window.petApi.onMouseFocus((payload) => controller.setMouseFocus(payload.x, payload.y))
+  window.petApi.onLive2DPerform((instruction) => controller.applyLive2DPerformance(instruction, performance.now()))
   window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
   window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())

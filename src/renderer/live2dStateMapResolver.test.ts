@@ -28,6 +28,17 @@ describe('resolveStateMotion', () => {
     expect(resolveStateMotion(stateMap, 'happy')?.motionGroup).toBe('Idle')
   })
 
+  it('解析只有 expression 的状态而不回退', () => {
+    const stateMap: Record<string, Live2DStateMapEntry> = {
+      greet: { expression: 'smile', fallback: 'idle' },
+      idle: { motionGroup: 'Idle', selection: 'random', loop: true }
+    }
+
+    expect(resolveStateMotion(stateMap, 'greet')).toEqual({
+      motionGroup: undefined, selection: 'random', loop: undefined, expression: 'smile', lipSync: undefined
+    })
+  })
+
   it('状态完全不在 stateMap 里,回退到 idle', () => {
     const stateMap: Record<string, Live2DStateMapEntry> = {
       idle: { motionGroup: 'Idle', selection: 'random', loop: true }

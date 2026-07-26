@@ -27,6 +27,7 @@ import type { LlmProvider } from '../providers/llmProvider'
 import type { SkillIndex } from '../skills/skillLoader'
 import type { TodoStore } from '../todos/todoStore'
 import type { ToolSpec } from '../tools/toolSpec'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 /** 语音会话依赖:sidecar 端口、脚本路径、真实进程/传输实现、运行时状态查询、音频回推。
  *  这些都不随宠物皮肤变化(端口固定、脚本随打包分发、运行时是设置/安装作用域),由
@@ -76,6 +77,8 @@ export interface PetSessionDeps {
   beginDesktopControlTurn: () => number
   endDesktopControlTurn: (token: number) => void
   buildBrowserTools: () => ToolSpec[]
+  getLive2DCapabilitySnapshot: () => Live2DCapabilitySnapshot | null
+  dispatchLive2DPerformance: (instruction: Live2DPerformanceInstruction) => boolean
   prepareImages: (a: ChatSendAttachment[]) => ImagePart[]
   clipboard: { readText: () => string; writeText: (t: string) => void }
   // 渲染层推送回调(startShell 里已有的那几个)
@@ -349,6 +352,8 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     beginDesktopControlTurn: deps.beginDesktopControlTurn,
     endDesktopControlTurn: deps.endDesktopControlTurn,
     buildBrowserTools: deps.buildBrowserTools,
+    getLive2DCapabilitySnapshot: deps.getLive2DCapabilitySnapshot,
+    dispatchLive2DPerformance: deps.dispatchLive2DPerformance,
     prepareImages: deps.prepareImages,
     clipboard: deps.clipboard,
     emitPetEvent: deps.emitPetEvent,

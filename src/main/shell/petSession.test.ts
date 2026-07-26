@@ -90,6 +90,8 @@ function makeDeps(): PetSessionDeps {
     beginDesktopControlTurn: () => 0,
     endDesktopControlTurn: () => {},
     buildBrowserTools: () => [],
+    getLive2DCapabilitySnapshot: () => null,
+    dispatchLive2DPerformance: () => false,
     prepareImages: () => [],
     clipboard: { readText: () => '', writeText: () => {} },
     emitPetEvent: () => {},

@@ -1,5 +1,6 @@
 import { frameRect, frameDurationMs, type PetManifest, type PetAnimation, type PetRenderSource } from '@shared/petPackage'
 import type { PetRenderer, PetVisualState, PetHitResult, PetViewport } from './petRenderer'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 export function nextFrameIndex(current: number, frames: number, loop: boolean): number {
   const next = current + 1
@@ -75,6 +76,14 @@ export class SpriteRenderer implements PetRenderer {
 
   setLipSync(_level: number): void {
     // no-op:精灵格式没有可驱动的口型参数,这是格式本身的固有限制,不是遗漏。
+  }
+
+  getLive2DCapabilities(): Live2DCapabilitySnapshot | null {
+    return null
+  }
+
+  applyLive2DPerformance(_instruction: Live2DPerformanceInstruction, _nowMs: number): void {
+    // no-op: sprite pets do not expose Live2D Core controls.
   }
 
   setLookTarget(_x: number, _y: number): void {

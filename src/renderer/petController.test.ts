@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { PetController } from './petController'
 import type { PetRenderer, PetHitResult } from './petRenderer'
 import type { PetRenderSource } from '@shared/petPackage'
+import type { Live2DCapabilitySnapshot, Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 function makeFakeRenderer(): PetRenderer & {
   destroyed: boolean
@@ -12,11 +13,14 @@ function makeFakeRenderer(): PetRenderer & {
   shouldFailPrepare?: boolean
   lipSyncLevels: number[]
   lookTargets: { x: number; y: number }[]
+  capabilities: Live2DCapabilitySnapshot | null
+  performanceCalls: Array<{ instruction: Live2DPerformanceInstruction; nowMs: number }>
 } {
   const loadedWith: PetRenderSource[] = []
   const prepareSwapWith: PetRenderSource[] = []
   const lipSyncLevels: number[] = []
   const lookTargets: { x: number; y: number }[] = []
+  const performanceCalls: Array<{ instruction: Live2DPerformanceInstruction; nowMs: number }> = []
   return {
     destroyed: false,
     loadedWith,
@@ -25,6 +29,8 @@ function makeFakeRenderer(): PetRenderer & {
     discardSwapCalled: false,
     lipSyncLevels,
     lookTargets,
+    capabilities: null,
+    performanceCalls,
     async load(source) { loadedWith.push(source) },
     async prepareSwap(source) {
       if (this.shouldFailPrepare) throw new Error('prepare failed')
@@ -35,6 +41,8 @@ function makeFakeRenderer(): PetRenderer & {
     playState() {},
     setFacing() {},
     setLipSync(level: number) { this.lipSyncLevels.push(level) },
+    getLive2DCapabilities() { return this.capabilities },
+    applyLive2DPerformance(instruction, nowMs) { this.performanceCalls.push({ instruction, nowMs }) },
     setLookTarget(x: number, y: number) { this.lookTargets.push({ x, y }) },
     hitTest(): PetHitResult { return { hit: false } },
     resize() {},
@@ -223,6 +231,21 @@ describe('PetController.setLipSync', () => {
     const controller = new PetController(renderer, 'live2d', vi.fn())
     controller.setLipSync(0.7)
     expect(renderer.lipSyncLevels).toEqual([0.7])
+  })
+})
+
+describe('PetController Live2D performance forwarding', () => {
+  it('returns current renderer capabilities and forwards performance instructions unchanged', () => {
+    const renderer = makeFakeRenderer()
+    renderer.capabilities = { petId: 'BQD', expressions: ['smile'], parameters: [] }
+    const controller = new PetController(renderer, 'live2d', vi.fn())
+    const instruction: Live2DPerformanceInstruction = {
+      expression: 'smile', parameters: [], durationMs: 500, fadeInMs: 0, fadeOutMs: 0
+    }
+
+    expect(controller.getLive2DCapabilities()).toEqual(renderer.capabilities)
+    controller.applyLive2DPerformance(instruction, 1234)
+    expect(renderer.performanceCalls).toEqual([{ instruction, nowMs: 1234 }])
   })
 })
 

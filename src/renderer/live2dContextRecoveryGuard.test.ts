@@ -23,6 +23,36 @@ function createFakeCanvas() {
 const flush = (): Promise<void> => Promise.resolve().then(() => Promise.resolve())
 
 describe('createLive2DContextRecoveryGuard', () => {
+  it('invalidates capabilities when recovery begins and refreshes them only after reload commits', async () => {
+    let finishReload: (() => void) | undefined
+    const reload = vi.fn(() => new Promise<void>((resolve) => { finishReload = resolve }))
+    const onRecoveryStart = vi.fn()
+    const onRecoveryComplete = vi.fn()
+    const canvas = createFakeCanvas()
+    createLive2DContextRecoveryGuard({
+      canvas,
+      reload,
+      showOverlay: vi.fn(),
+      hideOverlay: vi.fn(),
+      onStateChange: vi.fn(),
+      forceIgnoreMouseEvents: vi.fn(),
+      onRecoveryStart,
+      onRecoveryComplete
+    })
+
+    canvas.fire('webglcontextlost')
+    expect(onRecoveryStart).toHaveBeenCalledOnce()
+    expect(onRecoveryComplete).not.toHaveBeenCalled()
+
+    canvas.fire('webglcontextrestored')
+    expect(reload).toHaveBeenCalledOnce()
+    expect(onRecoveryComplete).not.toHaveBeenCalled()
+
+    finishReload!()
+    await flush()
+    expect(onRecoveryComplete).toHaveBeenCalledOnce()
+  })
+
   it('healthy 状态下丢失 context:preventDefault + 显示恢复中占位 + 上报 recovering + 强制鼠标穿透', () => {
     const canvas = createFakeCanvas()
     const preventDefault = vi.fn()

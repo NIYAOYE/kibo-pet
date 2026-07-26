@@ -49,6 +49,8 @@ function makeStore(
     buildBrowserTools?: () => import('../tools/toolSpec').ToolSpec[]
     beginDesktopControlTurn?: () => number
     endDesktopControlTurn?: (token: number) => void
+    getLive2DCapabilitySnapshot?: () => import('@shared/live2dPerformance').Live2DCapabilitySnapshot | null
+    dispatchLive2DPerformance?: (instruction: import('@shared/live2dPerformance').Live2DPerformanceInstruction) => boolean
   },
   presentation?: {
     voice?: ChatVoice
@@ -83,6 +85,8 @@ function makeStore(
     buildBrowserTools: desktop?.buildBrowserTools,
     beginDesktopControlTurn: desktop?.beginDesktopControlTurn,
     endDesktopControlTurn: desktop?.endDesktopControlTurn,
+    getLive2DCapabilitySnapshot: desktop?.getLive2DCapabilitySnapshot,
+    dispatchLive2DPerformance: desktop?.dispatchLive2DPerformance,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
     clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
@@ -880,5 +884,35 @@ describe('chat reply presenter integration', () => {
 
     expect(memory.messages().map((m) => m.text)).toEqual(['source text', 'Partial quick.'])
     expect(events).toEqual(['update:user', 'stream:Partial quick.', 'update:user|pet', 'error:provider failed'])
+  })
+})
+
+describe('Live2D performance tool mounting', () => {
+  it('adds live2d_perform only while a current capability snapshot exists', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      getLive2DCapabilitySnapshot: () => ({
+        petId: 'BQD', expressions: ['笑咪咪'], parameters: []
+      }),
+      dispatchLive2DPerformance: () => true
+    })
+
+    store.handleSend({ text: 'wave' })
+    await finished
+
+    expect(seen[0].tools?.map((tool) => tool.name)).toContain('live2d_perform')
+  })
+
+  it('omits live2d_perform without a current capability snapshot', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, undefined, {
+      getLive2DCapabilitySnapshot: () => null,
+      dispatchLive2DPerformance: () => true
+    })
+
+    store.handleSend({ text: 'wave' })
+    await finished
+
+    expect(seen[0].tools?.map((tool) => tool.name)).not.toContain('live2d_perform')
   })
 })

@@ -82,7 +82,9 @@ import {
 import { fixedWindowBounds, isZeroMove, footAnchorPreservingBounds, windowSizeForSource } from '@shared/windowPlacement'
 import { computeMouseFocusTick, DEFAULT_MOUSE_TRACK_RADIUS_PX } from '@shared/mouseFocus'
 import { createPendingPrepareRequests } from './pendingPrepareRequests'
+import { createLive2DCapabilityStore, parseLive2DCapabilitySnapshot } from './live2dCapabilityStore'
 import { randomUUID } from 'node:crypto'
+import type { Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
@@ -553,6 +555,16 @@ export async function startShell(): Promise<void> {
   // 宠物作用域件(memory/chat/appFocus/voice)全部收进 PetSession 工厂,以便后续任务
   // (Task 7)不重启即可重建这一捆绑来热切换宠物。跨会话共享的全局件(indicatorGate、
   // browserControl、todoStore、secrets 门面、渲染层推送等)在此处建一次,以回调/取值器注入。
+  const live2dCapabilities = createLive2DCapabilityStore()
+  let session: PetSession
+
+  function dispatchLive2DPerformance(instruction: Live2DPerformanceInstruction): boolean {
+    const snapshot = live2dCapabilities.current()
+    if (!snapshot || snapshot.petId !== session.petId) return false
+    petWin.webContents.send(IPC.LIVE2D_PERFORM, instruction)
+    return true
+  }
+
   const sessionDeps: PetSessionDeps = {
     userData,
     bundledPetsDir: petCatalogDirs.bundledPetsDir,
@@ -578,6 +590,8 @@ export async function startShell(): Promise<void> {
     beginDesktopControlTurn: () => indicatorGate.beginTurn(),
     endDesktopControlTurn: (token) => indicatorGate.endTurn(token),
     buildBrowserTools: () => createBrowserTools({ control: browserControl }),
+    getLive2DCapabilitySnapshot: () => live2dCapabilities.current(),
+    dispatchLive2DPerformance,
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
@@ -620,7 +634,8 @@ export async function startShell(): Promise<void> {
     kiboPetRegistry
   }
 
-  let session = createPetSession(effectivePetId, sessionDeps)
+  session = createPetSession(effectivePetId, sessionDeps)
+  live2dCapabilities.activate(session.petId, session.resourceToken)
   session.startVoice()
 
   // switchPet() 的并发切换互斥锁:见 switchPet() 内的详细说明。
@@ -631,6 +646,17 @@ export async function startShell(): Promise<void> {
     const payload = validatePrepareResult(raw)
     if (!payload) return
     pendingPrepare.resolve(payload.requestId, { ok: payload.ok, error: payload.error })
+  })
+  ipcMain.on(IPC.REPORT_LIVE2D_CAPABILITIES, (event, raw: unknown, epoch: unknown) => {
+    if (event.sender !== petWin.webContents) return
+    const snapshot = parseLive2DCapabilitySnapshot(raw)
+    if (!snapshot || typeof epoch !== 'string' || epoch.length === 0) return
+    live2dCapabilities.report(snapshot, epoch)
+  })
+  ipcMain.on(IPC.CLEAR_LIVE2D_CAPABILITIES, (event, petId: unknown, epoch: unknown) => {
+    if (event.sender !== petWin.webContents) return
+    if (typeof petId !== 'string' || typeof epoch !== 'string' || epoch.length === 0) return
+    live2dCapabilities.clear(petId, epoch)
   })
 
   const petAvatarCache = createPetAvatarCache()
@@ -695,7 +721,7 @@ export async function startShell(): Promise<void> {
 
       // 准备阶段:渲染层在旧模型仍显示时后台加载新模型,不动会话/settings/窗口
       const requestId = randomUUID()
-      petWin.webContents.send(IPC.PET_PREPARE, { requestId, source })
+      petWin.webContents.send(IPC.PET_PREPARE, { requestId, source, capabilityEpoch: next.resourceToken })
       const result = await pendingPrepare.wait(requestId, 8000)
 
       if (!result.ok) {
@@ -707,7 +733,9 @@ export async function startShell(): Promise<void> {
 
       // 提交阶段:渲染层确认新模型首帧就绪,主进程才真正切会话/settings/窗口尺寸
       await session.dispose()          // 停旧语音(释放端口)、停 appFocus、取消在途
+      live2dCapabilities.clear(session.petId, session.resourceToken)
       session = next
+      live2dCapabilities.activate(session.petId, session.resourceToken)
       session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
       saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
       activeLive2DTrackingCapable = source.type === 'live2d' && source.manifest.render.interaction.mouseTracking
@@ -851,12 +879,12 @@ export async function startShell(): Promise<void> {
     walkPreciseY = null
   })
 
-  ipcMain.handle(IPC.GET_PET, async (): Promise<PetRenderSource> => {
+  ipcMain.handle(IPC.GET_PET, async () => {
     const source = await loadPet(session.petDir)
     if (source.type === 'live2d') {
-      return { ...source, resourceBaseUrl: `kibo-pet://${session.resourceToken}/` }
+      return { source: { ...source, resourceBaseUrl: `kibo-pet://${session.resourceToken}/` }, capabilityEpoch: session.resourceToken }
     }
-    return source
+    return { source, capabilityEpoch: session.resourceToken }
   })
   ipcMain.handle(IPC.UPDATE_LIVE2D_TRANSFORM, async (_e, patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }> => {
     const petJsonPath = join(session.petDir, 'pet.json')

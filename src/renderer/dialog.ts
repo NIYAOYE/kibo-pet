@@ -72,7 +72,7 @@ async function addFiles(files: Iterable<File>): Promise<void> {
  *  avatarEl.style.backgroundImage(哪怕是清空),不能提前 return,否则切换宠物后头像会
  *  停留在切换前那只宠物的画面上(真机验收发现的真实 bug,而不是设计如此)。 */
 async function loadAvatar(): Promise<void> {
-  const pet = await window.petApi.getPet()
+  const pet = (await window.petApi.getPet()).source
   petNameEl.textContent = pet.manifest.displayName
   if (pet.type === 'sprite' && pet.manifest.animations.idle) {
     const idle = pet.manifest.animations.idle
