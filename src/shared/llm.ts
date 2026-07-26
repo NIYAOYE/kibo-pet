@@ -35,8 +35,6 @@ export interface SearchSettings { backend: SearchBackendKind }
 export interface EmbeddingSettings { baseURL: string; model: string }
 export interface MemorySettings { embedding: EmbeddingSettings | null }
 
-export interface TextToolsSettings { autoCopyResult: boolean }
-
 export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
 export interface DesktopControlSettings { enabled: boolean }
@@ -119,7 +117,7 @@ export const SETTINGS_SCHEMA_VERSION = 16
 
 export interface Live2DSettings { mouseTrackingEnabled: boolean }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; ttsTranslate: TtsTranslateSettings; live2d: Live2DSettings }
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; ttsTranslate: TtsTranslateSettings; live2d: Live2DSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -127,7 +125,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
-  textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },

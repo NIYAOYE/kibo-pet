@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createChatStore, buildQuickActionPreview, MAX_CLIPBOARD_CHARS } from './chat'
+import { createChatStore } from './chat'
 import type { VoiceReplyGate } from './replyPresenter'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
@@ -17,7 +17,6 @@ const settings: AppSettings = {
   provider: { kind: 'fake', model: 'fake' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
-  textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
@@ -437,53 +436,6 @@ describe('chat 图像', () => {
   })
 })
 
-describe('MVP-08 runQuickAction', () => {
-  it('buildQuickActionPreview 生成占位:label + 截断预览', () => {
-    expect(buildQuickActionPreview('总结要点', 'a'.repeat(50))).toBe(`【总结要点】${'a'.repeat(20)}…`)
-    expect(buildQuickActionPreview('翻译', '短')).toBe('【翻译】短')
-  })
-
-  it('剪贴板空 → 报错,不发起模型调用', async () => {
-    const seen: StreamChatRequest[] = []
-    const { store } = makeStore(createFakeProvider({ reply: 'x' }), seen, { readText: () => '' })
-    store.runQuickAction('translate')
-    expect(seen.length).toBe(0)
-  })
-
-  it('剪贴板原文喂当轮 prompt,但 transcript 只存占位(不含原文)', async () => {
-    const seen: StreamChatRequest[] = []
-    // 原文刻意 > 20 字(buildQuickActionPreview 的截断阈值),否则短原文会被整段保留进占位符,
-    // 使"不含原文"断言恒假——这是本计划先前的一处测试数据缺陷,已在实现阶段发现并修正。
-    const original = `需要翻译的原文${'Z'.repeat(20)}`
-    const { store, finished } = makeStore(createFakeProvider({ reply: '译文' }), seen, { readText: () => original })
-    store.runQuickAction('translate')
-    await finished
-    const last = seen[0].messages[seen[0].messages.length - 1] as { role: string; content: string }
-    expect(last.content).toContain(original)                     // 喂给模型:完整原文
-    const raw = readFileSync(join(dir, 'memory', 'transcript.json'), 'utf-8')
-    expect(raw).not.toContain(original)                           // 不落盘:完整原文不出现
-    expect(raw).toContain('【翻译(中↔英)】')                     // 占位在
-  })
-
-  it('autoCopyResult 开启时把结果写回剪贴板', async () => {
-    settings.textTools = { autoCopyResult: true }
-    const seen: StreamChatRequest[] = []
-    const { store, finished, written } = makeStore(createFakeProvider({ reply: '译文结果' }), seen, { readText: () => 'hello' })
-    store.runQuickAction('translate')
-    await finished
-    expect(written).toContain('译文结果')
-    settings.textTools = { autoCopyResult: false } // 复位,避免影响其它用例
-  })
-
-  it('快捷动作不带工具(空 registry)', async () => {
-    const seen: StreamChatRequest[] = []
-    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, { readText: () => 'x' })
-    store.runQuickAction('summarize')
-    await finished
-    expect(seen[0].tools).toBeUndefined()
-  })
-})
-
 describe('语音接线', () => {
   it('batch 模式:回复完整生成后调用一次 voice.speak(完整文本)', async () => {
     const seen: StreamChatRequest[] = []
@@ -676,7 +628,7 @@ describe('chat reply presenter integration', () => {
     expect(pushed).toEqual([raw])
   })
 
-  it('routes a quick-action fenced code block through the voice gate as one complete raw segment', async () => {
+  it('routes a normal-chat fenced code block through the voice gate as one complete raw segment', async () => {
     const seen: StreamChatRequest[] = []
     const pushed: string[] = []
     const fence = '~~~ts\nconst endpoint = "https://example.com/path"\nconsole.log(endpoint)\n~~~'
@@ -689,7 +641,7 @@ describe('chat reply presenter integration', () => {
       { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
     )
 
-    store.runQuickAction('translate')
+    store.handleSend({ text: 'source text' })
     await vi.waitFor(() => expect(controlled.calls.length).toBeGreaterThan(0))
     expect(controlled.calls.some((call) => call.text.includes(fence))).toBe(true)
     expect(controlled.calls.some((call) => call.text.includes('const endpoint') && !call.text.includes(fence))).toBe(false)
@@ -761,7 +713,7 @@ describe('chat reply presenter integration', () => {
     expect(events).toEqual(['update:user', 'stream:Fallback.', 'update:user|pet', 'done'])
   })
 
-  it('falls back to a stream display before the quick-action final update when a voice gate resolves without onDisplay', async () => {
+  it('falls back to a stream display before the normal-chat final update when a voice gate resolves without onDisplay', async () => {
     const seen: StreamChatRequest[] = []
     const events: string[] = []
     const voice: ChatVoice = {
@@ -783,7 +735,7 @@ describe('chat reply presenter integration', () => {
       }
     )
 
-    store.runQuickAction('translate')
+    store.handleSend({ text: 'source text' })
     await finished
 
     expect(events).toEqual(['update:user', 'stream:Fallback quick.', 'update:user|pet', 'done'])
@@ -850,7 +802,7 @@ describe('chat reply presenter integration', () => {
     expect(pushed).toEqual(['New.'])
   })
 
-  it('routes quick actions through the same presenter gate instead of directly streaming', async () => {
+  it('routes normal chat through the same presenter gate instead of directly streaming', async () => {
     const seen: StreamChatRequest[] = []
     const pushed: string[] = []
     const controlled = createControlledVoice({ settings: { playbackTrigger: 'stream', textSplit: 'sentence' } })
@@ -862,7 +814,7 @@ describe('chat reply presenter integration', () => {
       { voice: controlled.voice, pushStream: (text) => pushed.push(text) }
     )
 
-    store.runQuickAction('translate')
+    store.handleSend({ text: 'source text' })
     await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
     expect(pushed).toEqual([])
     controlled.calls[0]?.onDisplay()
@@ -901,7 +853,7 @@ describe('chat reply presenter integration', () => {
     expect(events).toEqual(['update:user', 'stream:Partial.', 'update:user|pet', 'error:provider failed'])
   })
 
-  it('holds a quick-action error behind the same presenter finish barrier', async () => {
+  it('holds a normal-chat error behind the same presenter finish barrier', async () => {
     const seen: StreamChatRequest[] = []
     const events: string[] = []
     const controlled = createControlledVoice({ settings: { playbackTrigger: 'batch', textSplit: 'sentence' } })
@@ -918,7 +870,7 @@ describe('chat reply presenter integration', () => {
       }
     )
 
-    store.runQuickAction('translate')
+    store.handleSend({ text: 'source text' })
     await vi.waitFor(() => expect(controlled.calls).toHaveLength(1))
     expect(memory.messages().map((m) => m.role)).toEqual(['user'])
 
@@ -926,7 +878,7 @@ describe('chat reply presenter integration', () => {
     controlled.calls[0]?.resolve()
     await finished
 
-    expect(memory.messages().map((m) => m.text)).toEqual(['【翻译(中↔英)】source text', 'Partial quick.'])
+    expect(memory.messages().map((m) => m.text)).toEqual(['source text', 'Partial quick.'])
     expect(events).toEqual(['update:user', 'stream:Partial quick.', 'update:user|pet', 'error:provider failed'])
   })
 })

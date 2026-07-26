@@ -59,7 +59,6 @@ describe('resolveEmbeddingKey', () => {
     provider: { kind: 'openai-compat', baseURL: chatBaseURL, model: 'm' },
     search: { backend: 'duckduckgo' },
     memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null },
-    textTools: { autoCopyResult: false },
     firecrawl: { enabled: false },
     desktopControl: { enabled: false },
     browserControl: { enabled: false, mode: 'isolated' },

@@ -100,27 +100,10 @@ describe('v2 -> v3 迁移(memory)', () => {
   })
 })
 
-describe('MVP-08 textTools 迁移', () => {
-  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 12', () => {
-    const out = normalizeSettings({
-      schemaVersion: 4,
-      activePetId: 'luluka',
-      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
-      search: { backend: 'duckduckgo' },
-      memory: { embedding: null }
-    })
-    expect(out.schemaVersion).toBe(16)
-    expect(out.textTools).toEqual({ autoCopyResult: false })
-  })
-
-  it('保留已存的 autoCopyResult:true', () => {
+describe('移除快捷加工设置', () => {
+  it('忽略旧 textTools 字段，不把它带入当前设置', () => {
     const out = normalizeSettings({ textTools: { autoCopyResult: true } })
-    expect(out.textTools.autoCopyResult).toBe(true)
-  })
-
-  it('textTools 非法值退化为默认 false', () => {
-    const out = normalizeSettings({ textTools: { autoCopyResult: 'yes' } })
-    expect(out.textTools.autoCopyResult).toBe(false)
+    expect(Object.hasOwn(out, 'textTools')).toBe(false)
   })
 })
 
@@ -131,8 +114,7 @@ describe('MVP-12 firecrawl 迁移', () => {
       activePetId: 'luluka',
       provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
       search: { backend: 'duckduckgo' },
-      memory: { embedding: null },
-      textTools: { autoCopyResult: false }
+      memory: { embedding: null }
     })
     expect(out.schemaVersion).toBe(16)
     expect(out.firecrawl).toEqual({ enabled: false, baseURL: undefined })
@@ -159,7 +141,6 @@ describe('desktopControl 迁移', () => {
       provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
       search: { backend: 'duckduckgo' },
       memory: { embedding: null },
-      textTools: { autoCopyResult: false },
       firecrawl: { enabled: false }
     })
     expect(out.schemaVersion).toBe(16)
@@ -185,7 +166,6 @@ describe('tts 迁移', () => {
       provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
       search: { backend: 'duckduckgo' },
       memory: { embedding: null },
-      textTools: { autoCopyResult: false },
       firecrawl: { enabled: false },
       desktopControl: { enabled: false },
       browserControl: { enabled: false, mode: 'isolated' }

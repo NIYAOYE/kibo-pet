@@ -14,7 +14,6 @@ const searchKey = $<HTMLInputElement>('searchKey')
 const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
-const autoCopyResult = $<HTMLInputElement>('autoCopyResult')
 const firecrawlEnabled = $<HTMLInputElement>('firecrawlEnabled')
 const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
 const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
@@ -553,7 +552,6 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
       memory: { embedding },
-      textTools: { autoCopyResult: autoCopyResult.checked },
       firecrawl: {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
@@ -607,7 +605,6 @@ void (async () => {
     embModel.value = snap.settings.memory.embedding.model
   }
   if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
-  autoCopyResult.checked = snap.settings.textTools.autoCopyResult
   firecrawlEnabled.checked = snap.settings.firecrawl.enabled
   if (snap.settings.firecrawl.baseURL) firecrawlBaseURL.value = snap.settings.firecrawl.baseURL
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'

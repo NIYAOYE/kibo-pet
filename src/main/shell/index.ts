@@ -226,7 +226,6 @@ function startOnboarding(opts: {
 
   tray = createTray(join(appRoot, 'resources/tray.png'), {
     onSettings: () => settings.open(),
-    onQuickAction: () => settings.open(),
     onTodos: () => settings.open()
   })
 
@@ -1373,10 +1372,6 @@ export async function startShell(): Promise<void> {
   registerHotkeys(toggleDialog)
   tray = createTray(join(appRoot, 'resources/tray.png'), {
     onSettings: openSettings,
-    onQuickAction: (id) => {
-      if (!dialog.isOpen()) dialog.toggle(petBounds) // 没开先弹出,用户才看得到流式结果
-      session.chat.runQuickAction(id)
-    },
     onTodos: () => todoWin.open()
   })
 

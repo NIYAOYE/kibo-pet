@@ -133,7 +133,6 @@ describe('createPetSession().dispose()', () => {
     vi.mocked(createChatStore).mockReturnValue({
       messages: () => [],
       handleSend: vi.fn(),
-      runQuickAction: vi.fn(),
       cancel: cancelSpy
     })
     vi.mocked(startAppFocusWatcher).mockReturnValue({ stop: stopSpy })

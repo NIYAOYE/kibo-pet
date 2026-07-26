@@ -37,8 +37,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
     typeof e.model === 'string' && e.model.length > 0
       ? { baseURL: e.baseURL, model: e.model }
       : null
-  const tt = (r.textTools ?? {}) as Record<string, unknown>
-  const autoCopyResult = tt.autoCopyResult === true
   const fc = (r.firecrawl ?? {}) as Record<string, unknown>
   const firecrawl = {
     enabled: fc.enabled === true,
@@ -93,7 +91,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
     provider: { kind, model, baseURL },
     search: { backend },
     memory: { embedding },
-    textTools: { autoCopyResult },
     firecrawl,
     desktopControl,
     browserControl,
