@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { isValidPetId, listPets, stageImportPet, commitStagedPet, discardStagedPet, cleanupStaleStaging } from './petCatalog'
@@ -34,7 +34,7 @@ function makeLive2DPet(root: string, id: string, displayName = id): string {
     render: {
       type: 'live2d', model: 'model/character.model3.json',
       viewport: { width: 360, height: 480, resolutionCap: 1.5 },
-      transform: { scale: 1, offsetX: 0, offsetY: 0, anchorX: 0.5, anchorY: 1, bubbleAnchorX: 0.5, bubbleAnchorY: 0 },
+      transform: { scale: 1, offsetX: 0, offsetY: 0, anchorX: 0.5, anchorY: 1, bubbleAnchorX: 0.5, bubbleAnchorY: 0, autoFitted: false },
       interaction: { mirrorOnWalk: true, mouseTracking: true, lipSyncParameter: 'ParamMouthOpenY' },
       stateMap: {}
     }
@@ -114,12 +114,13 @@ describe('stageImportPet', () => {
     expect(existsSync(join(user, 'newpet', 'spritesheet.webp'))).toBe(true)
   })
 
-  it('缺 pet.json → no-manifest,不复制', () => {
+  it('缺 pet.json 且没有 model3.json → missing-live2d-model,不复制', () => {
     const src = scratch()
     const user = scratch()
     mkdirSync(join(src, 'x'), { recursive: true })
     const r = stageImportPet(join(src, 'x'), { bundledPetsDir: scratch(), userPetsDir: user })
-    expect(r).toMatchObject({ ok: false, reason: 'no-manifest' })
+    expect(r).toMatchObject({ ok: false, reason: 'missing-live2d-model' })
+    expect(existsSync(join(user, '.staging'))).toBe(false)
   })
 
   it('pet.json 字段不合法 → invalid-manifest', () => {
@@ -321,6 +322,7 @@ describe('stageImportPet — 统一 staging 流程', () => {
     expect(r.ok).toBe(true)
     if (!r.ok || r.committed) throw new Error('expected committed:false')
     expect(r.manifest.render.possibleWatermark).toBeUndefined()
+    expect(existsSync(join(user, '.staging', r.stagingId, 'pet.json'))).toBe(true)
   })
 
   it('live2d 包:纹理超过硬限制(>8192px) → 拒绝导入,staging 清理干净', () => {
@@ -427,6 +429,127 @@ describe('stageImportPet — live2d 预览暂存(不立即提交)', () => {
     if (!r.ok || r.committed) throw new Error('expected committed:false')
     expect(r.warnings.some((w) => w.includes('未声明任何动作'))).toBe(true)
     expect(r.manifest.render.possibleWatermark).toBe(true)
+  })
+})
+
+describe('stageImportPet — Live2D 自动清单导入', () => {
+  it('没有 pet.json 且只有一个 model3.json 时自动生成清单并只写入 staging', () => {
+    const src = scratch(); const user = scratch()
+    const dir = join(src, 'raw')
+    mkdirSync(join(dir, 'model'), { recursive: true })
+    writeFileSync(join(dir, 'model', 'raw.model3.json'), JSON.stringify({ FileReferences: {} }), 'utf-8')
+
+    const r = stageImportPet(dir, { bundledPetsDir: scratch(), userPetsDir: user })
+
+    expect(r.ok).toBe(true)
+    if (!r.ok || r.committed) throw new Error('expected committed:false')
+    expect(r.manifest.render.model).toBe('model/raw.model3.json')
+    expect(r.warnings.some((warning) => warning.includes('已自动生成 pet.json'))).toBe(true)
+    const stagedManifest = JSON.parse(readFileSync(join(user, '.staging', r.stagingId, 'pet.json'), 'utf-8'))
+    expect(stagedManifest.render.transform.autoFitted).toBe(false)
+
+    const committed = commitStagedPet(r.stagingId, r.manifest.id, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(committed.ok).toBe(true)
+    expect(existsSync(join(dir, 'pet.json'))).toBe(false)
+    expect(existsSync(join(user, 'raw', 'pet.json'))).toBe(true)
+  })
+
+  it('补齐部分 Live2D 清单时保留 stateMap 并将完整清单写入 staging', () => {
+    const src = scratch(); const user = scratch()
+    const dir = join(src, 'partial')
+    mkdirSync(join(dir, 'model'), { recursive: true })
+    const stateMap = { idle: { motionGroup: 'Idle', selection: 'random' } }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify({
+      schemaVersion: 2,
+      id: 'partial',
+      displayName: 'Partial',
+      description: 'partial package',
+      render: { type: 'live2d', model: 'model/partial.model3.json', stateMap }
+    }), 'utf-8')
+    writeFileSync(join(dir, 'model', 'partial.model3.json'), JSON.stringify({ FileReferences: {} }), 'utf-8')
+    const sourceManifest = readFileSync(join(dir, 'pet.json'), 'utf-8')
+
+    const r = stageImportPet(dir, { bundledPetsDir: scratch(), userPetsDir: user })
+
+    expect(r.ok).toBe(true)
+    if (!r.ok || r.committed) throw new Error('expected committed:false')
+    expect(r.manifest.render.stateMap).toEqual(stateMap)
+    expect(r.warnings.some((warning) => warning.includes('已补齐'))).toBe(true)
+    const stagedManifest = JSON.parse(readFileSync(join(user, '.staging', r.stagingId, 'pet.json'), 'utf-8'))
+    expect(stagedManifest.render.viewport).toEqual({ width: 360, height: 480, resolutionCap: 1.5 })
+    expect(stagedManifest.render.stateMap).toEqual(stateMap)
+    expect(readFileSync(join(dir, 'pet.json'), 'utf-8')).toBe(sourceManifest)
+  })
+
+  it('没有清单且有多个 model3.json 时拒绝导入且不留下 staging', () => {
+    const src = scratch(); const user = scratch()
+    const dir = join(src, 'ambiguous')
+    mkdirSync(join(dir, 'model'), { recursive: true })
+    writeFileSync(join(dir, 'model', 'one.model3.json'), JSON.stringify({ FileReferences: {} }), 'utf-8')
+    writeFileSync(join(dir, 'model', 'two.model3.json'), JSON.stringify({ FileReferences: {} }), 'utf-8')
+
+    const r = stageImportPet(dir, { bundledPetsDir: scratch(), userPetsDir: user })
+
+    expect(r).toMatchObject({ ok: false, reason: 'ambiguous-live2d-model' })
+    expect(existsSync(join(user, '.staging'))).toBe(false)
+  })
+
+  it('自动生成时报告补丁后的表情和动作组数量，而完整清单不报告补齐', () => {
+    const src = scratch(); const user = scratch()
+    const generatedDir = join(src, 'generated')
+    mkdirSync(join(generatedDir, 'model'), { recursive: true })
+    writeFileSync(join(generatedDir, 'model', 'generated.model3.json'), JSON.stringify({
+      FileReferences: {
+        Expressions: [{ Name: 'happy', File: 'happy.exp3.json' }],
+        Motions: { Idle: [{ File: 'idle.motion3.json' }] }
+      }
+    }), 'utf-8')
+    writeFileSync(join(generatedDir, 'model', 'happy.exp3.json'), '{}', 'utf-8')
+    writeFileSync(join(generatedDir, 'model', 'idle.motion3.json'), '{}', 'utf-8')
+    const generated = stageImportPet(generatedDir, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(generated.ok).toBe(true)
+    if (!generated.ok || generated.committed) throw new Error('expected committed:false')
+    expect(generated.warnings.some((warning) => warning.includes('发现 1 个表情、1 个动作组'))).toBe(true)
+
+    const completeDir = makeLive2DPet(src, 'complete', 'Complete')
+    writeFileSync(join(completeDir, 'model', 'character.model3.json'), JSON.stringify({
+      FileReferences: { Expressions: [{ Name: 'happy', File: 'happy.exp3.json' }] }
+    }), 'utf-8')
+    writeFileSync(join(completeDir, 'model', 'happy.exp3.json'), '{}', 'utf-8')
+    const complete = stageImportPet(completeDir, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(complete.ok).toBe(true)
+    if (!complete.ok || complete.committed) throw new Error('expected committed:false')
+    expect(complete.warnings.some((warning) => warning.includes('已补齐'))).toBe(false)
+    expect(complete.manifest.render.possibleWatermark).toBeUndefined()
+    expect(existsSync(join(user, '.staging', complete.stagingId, 'pet.json'))).toBe(true)
+    const stagedCompleteManifest = JSON.parse(readFileSync(join(user, '.staging', complete.stagingId, 'pet.json'), 'utf-8'))
+    expect(stagedCompleteManifest.render.possibleWatermark).toBeUndefined()
+  })
+})
+
+describe('stageImportPet — 源目录入口安全', () => {
+  it('拒绝作为源目录传入的 junction，不留下 staging', () => {
+    const src = scratch(); const user = scratch()
+    const target = makeLive2DPet(src, 'target')
+    const junction = join(src, 'linked-source')
+    symlinkSync(target, junction, 'junction')
+
+    const r = stageImportPet(junction, { bundledPetsDir: scratch(), userPetsDir: user })
+
+    expect(r).toMatchObject({ ok: false, reason: 'symlink-rejected' })
+    expect(existsSync(join(user, '.staging'))).toBe(false)
+  })
+
+  it('不存在的源路径或普通文件返回受控失败，不留下 staging', () => {
+    const src = scratch(); const user = scratch()
+    const sourceFile = join(src, 'not-a-folder.txt')
+    writeFileSync(sourceFile, 'not a pet folder', 'utf-8')
+
+    for (const sourcePath of [join(src, 'missing'), sourceFile]) {
+      expect(stageImportPet(sourcePath, { bundledPetsDir: scratch(), userPetsDir: user }))
+        .toMatchObject({ ok: false, reason: 'no-manifest' })
+    }
+    expect(existsSync(join(user, '.staging'))).toBe(false)
   })
 })
 

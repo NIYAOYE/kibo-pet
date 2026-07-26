@@ -220,6 +220,7 @@ export interface PetSummary {
 }
 export type ImportReason =
   | 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists' | 'copy-failed'
+  | 'missing-live2d-model' | 'ambiguous-live2d-model'
   | 'path-traversal' | 'symlink-rejected' | 'forbidden-file-type'
   | 'dir-too-large' | 'too-many-files' | 'json-too-large'
   | 'texture-too-large' | 'too-many-textures' | 'missing-model-refs'

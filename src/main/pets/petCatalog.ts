@@ -1,9 +1,10 @@
-import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { parsePetManifest, parseLive2DManifest, isLive2DManifestRaw, type Live2DManifest } from '@shared/petPackage'
 import type { PetSummary, ImportResult, ImportReason } from '@shared/ipc'
 import { scanImportSource, isPathSafe } from './importSecurity'
+import { resolveAutoLive2DManifest } from './live2dAutoManifest'
 import { readTextureInfos, evaluateTextureBudget } from './live2dTextureBudget'
 import {
   listModelFilesRecursive,
@@ -67,6 +68,27 @@ export function listPets(dirs: { bundledPetsDir: string; userPetsDir: string }):
   return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en'))
 }
 
+/** 查找导入目录内的 Live2D model3.json，符号链接一律跳过。 */
+function findModel3JsonPaths(srcDir: string): string[] {
+  const modelPaths: string[] = []
+
+  function walk(dir: string): void {
+    for (const name of readdirSync(dir)) {
+      const fullPath = join(dir, name)
+      const stat = lstatSync(fullPath)
+      if (stat.isSymbolicLink()) continue
+      if (stat.isDirectory()) {
+        walk(fullPath)
+      } else if (stat.isFile() && name.toLowerCase().endsWith('.model3.json')) {
+        modelPaths.push(relative(srcDir, fullPath).replace(/\\/g, '/'))
+      }
+    }
+  }
+
+  walk(srcDir)
+  return modelPaths
+}
+
 /** sprite 包校验链(与改造前逐字节一致),复制到 staging 后打上 v2 标记再交给调用方原子提交。 */
 function importSpritePet(
   raw: unknown,
@@ -123,7 +145,8 @@ function importLive2DPet(
   raw: unknown,
   srcDir: string,
   stagingDir: string,
-  dirs: { bundledPetsDir: string; userPetsDir: string }
+  dirs: { bundledPetsDir: string; userPetsDir: string },
+  autoNotes: string[] = []
 ): { ok: true; manifest: Live2DManifest; warnings: string[] } | { ok: false; reason: ImportReason; message: string } {
   let manifest
   try {
@@ -226,6 +249,12 @@ function importLive2DPet(
   if (possibleWatermark) {
     warnings.push('该模型未声明任何动作/表情,可能需要额外处理才能正常显示角色')
   }
+  if (autoNotes.length > 0) {
+    warnings.push(...autoNotes)
+    const expressionCount = patchedModel3Json.FileReferences.Expressions?.length ?? 0
+    const motionGroupCount = Object.keys(patchedModel3Json.FileReferences.Motions ?? {}).length
+    warnings.push(`发现 ${expressionCount} 个表情、${motionGroupCount} 个动作组`)
+  }
   if (manifest.thumbnail) {
     if (!isPathSafe(srcDir, manifest.thumbnail)) {
       return { ok: false, reason: 'path-traversal', message: `thumbnail 路径不安全:${manifest.thumbnail}` }
@@ -240,10 +269,8 @@ function importLive2DPet(
     cpSync(srcDir, stagingDir, { recursive: true })
     const modelJsonStagingPath = join(stagingDir, manifest.render.model)
     writeFileSync(modelJsonStagingPath, JSON.stringify(patchedModel3Json, null, 2), 'utf-8')
-    if (possibleWatermark) {
-      finalManifest = { ...manifest, render: { ...manifest.render, possibleWatermark: true } }
-      writeFileSync(join(stagingDir, 'pet.json'), JSON.stringify(finalManifest, null, 2), 'utf-8')
-    }
+    if (possibleWatermark) finalManifest = { ...manifest, render: { ...manifest.render, possibleWatermark: true } }
+    writeFileSync(join(stagingDir, 'pet.json'), JSON.stringify(finalManifest, null, 2), 'utf-8')
   } catch (e) {
     rmSync(stagingDir, { recursive: true, force: true })
     return { ok: false, reason: 'copy-failed', message: `导入失败:${(e as Error).message}` }
@@ -257,6 +284,21 @@ export type StageImportResult =
   | { ok: true; committed: false; stagingId: string; manifest: Live2DManifest; warnings: string[] }
   | { ok: false; reason: ImportReason; message: string }
 
+function validateImportSourceRoot(srcDir: string): Extract<StageImportResult, { ok: false }> | null {
+  try {
+    const sourceStat = lstatSync(srcDir)
+    if (sourceStat.isSymbolicLink()) {
+      return { ok: false, reason: 'symlink-rejected', message: `拒绝符号链接/reparse point:${srcDir}` }
+    }
+    if (!sourceStat.isDirectory()) {
+      return { ok: false, reason: 'no-manifest', message: '所选路径不是可读取的宠物文件夹' }
+    }
+  } catch {
+    return { ok: false, reason: 'no-manifest', message: '所选路径不是可读取的宠物文件夹' }
+  }
+  return null
+}
+
 /**
  * 校验外部宠物文件夹并复制到 `.staging`。sprite 包不经过预览,校验通过后立即原子提交到
  * userData/pets/<id>(`committed:true`);live2d 包停在 staging,等待调用方(设置页预览面板)
@@ -267,25 +309,38 @@ export function stageImportPet(
   srcDir: string,
   dirs: { bundledPetsDir: string; userPetsDir: string }
 ): StageImportResult {
-  const manifestPath = join(srcDir, 'pet.json')
-  if (!existsSync(manifestPath)) {
-    return { ok: false, reason: 'no-manifest', message: '所选文件夹里没有 pet.json' }
-  }
-  let raw: unknown
-  try {
-    raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-  } catch (e) {
-    return { ok: false, reason: 'invalid-manifest', message: `pet.json 不是合法 JSON:${(e as Error).message}` }
-  }
+  const sourceRootError = validateImportSourceRoot(srcDir)
+  if (sourceRootError) return sourceRootError
 
   const violation = scanImportSource(srcDir)
   if (violation) return { ok: false, reason: violation.reason, message: violation.message }
 
+  const manifestPath = join(srcDir, 'pet.json')
+  let raw: unknown = undefined
+  if (existsSync(manifestPath)) {
+    try {
+      raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    } catch (e) {
+      return { ok: false, reason: 'invalid-manifest', message: `pet.json 不是合法 JSON:${(e as Error).message}` }
+    }
+  }
+
   const stagingId = randomBytes(8).toString('hex')
   const stagingDir = join(dirs.userPetsDir, STAGING_DIR_NAME, stagingId)
 
-  if (isLive2DManifestRaw(raw)) {
-    const result = importLive2DPet(raw, srcDir, stagingDir, dirs)
+  const auto = resolveAutoLive2DManifest(raw, {
+    folderName: basename(srcDir),
+    modelPaths: findModel3JsonPaths(srcDir),
+    occupiedIds: new Set(listPets(dirs).map((pet) => pet.id))
+  })
+  if (auto !== null) {
+    if (!auto.ok) return auto
+    const autoNotes = auto.mode === 'generated'
+      ? [`已自动生成 pet.json（模型：${auto.manifest.render.model}）`]
+      : auto.completedFields.length > 0
+        ? [`已补齐 pet.json：${auto.completedFields.join('、')}`]
+        : []
+    const result = importLive2DPet(auto.manifest, srcDir, stagingDir, dirs, autoNotes)
     if (!result.ok) {
       rmSync(stagingDir, { recursive: true, force: true })
       return result
