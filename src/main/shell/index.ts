@@ -339,11 +339,23 @@ export async function startShell(): Promise<void> {
 
   const AMBIENT_TTL_MS = 3500
   let ambientHideTimer: NodeJS.Timeout | null = null
+  let chatHideTimer: NodeJS.Timeout | null = null
   let lastLineText: string | null = null // 供 pickLine 避免连续复读
   let pendingAppFocusText: string | null = null // appFocusWatcher 已选好的台词,PET_SPEAK('app_focus') 特判读取
 
   function clearAmbientLine(): void {
     if (ambientHideTimer) { clearTimeout(ambientHideTimer); ambientHideTimer = null }
+  }
+  function clearChatHideTimer(): void {
+    if (chatHideTimer) { clearTimeout(chatHideTimer); chatHideTimer = null }
+  }
+  function scheduleChatHide(): void {
+    clearChatHideTimer()
+    chatHideTimer = setTimeout(() => {
+      chatHideTimer = null
+      bubbleHasContent = false
+      bubble.hide()
+    }, AMBIENT_TTL_MS)
   }
   function showAmbientLine(text: string): void {
     if (dialog.isOpen()) return // 对话框开着:气泡让位给聊天(planner 已抑制,这里再兜一道)
@@ -370,7 +382,7 @@ export async function startShell(): Promise<void> {
   function emitPetEvent(event: PetEvent): void {
     petWin.webContents.send(IPC.PET_EVENT, event)
     // 送出瞬间保证界面干净:清掉本轮气泡内容并隐藏,待首个流式/状态到达再显示
-    if (event === 'messageSent') { clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide() }
+    if (event === 'messageSent') { clearAmbientLine(); clearChatHideTimer(); bubbleHasContent = false; bubble.clear(); bubble.hide() }
   }
 
   const dialog = createDialogController({
@@ -597,16 +609,19 @@ export async function startShell(): Promise<void> {
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
     pushStream: (t) => {
+      clearChatHideTimer()
       dialog.window()?.webContents.send(IPC.CHAT_STREAM, t)
       bubbleHasContent = true; refreshBubble(); bubble.pushStream(t)
     },
     pushStatus: (t) => {
+      clearChatHideTimer()
       dialog.window()?.webContents.send(IPC.CHAT_STATUS, t)
       bubbleHasContent = true; refreshBubble(); bubble.pushStatus(t)
     },
     pushDone: () => {
       dialog.window()?.webContents.send(IPC.CHAT_DONE)
       bubble.pushDone()
+      scheduleChatHide()
     },
     pushError: (m) => {
       dialog.window()?.webContents.send(IPC.CHAT_ERROR, m)

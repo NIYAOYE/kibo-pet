@@ -401,6 +401,7 @@ export class Live2DPetRenderer implements PetRenderer {
       model.internalModel as PerformancePostBaselineEmitter,
       () => {
         if (this.model !== model || !this.manifest) return
+        const previousLayer = this.activePerformanceLayer
         this.activePerformanceLayer = applyActivePerformanceLayer(
           this.activePerformanceLayer,
           model.internalModel.coreModel as CubismCoreParameterApi,
@@ -408,6 +409,10 @@ export class Live2DPetRenderer implements PetRenderer {
           this.manifest.render.interaction.lipSyncParameter,
           performance.now()
         )
+        // expression() 无参是引擎公开的“重置全部表情参数”入口。参数覆写自然
+        // 淡出后,也必须在表演到期时清掉一次独立的 Expression 状态,否则最后一次
+        // LLM 表情会永久停留在模型上。
+        if (previousLayer?.instruction.expression && !this.activePerformanceLayer) void model.expression()
       }
     )
   }
