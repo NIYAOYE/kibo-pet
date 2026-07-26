@@ -72,7 +72,9 @@ Invalid requests return an explanatory tool error to the agent loop and cause no
 
 The renderer owns application of the performance instruction because it owns the Live2D model instance. It maintains one ephemeral layer with target parameter values, weights, start time, duration, and fade timings.
 
-On each render tick it computes a fade envelope and applies only the layer's parameters after baseline Live2D updates. When the envelope reaches zero, it removes the layer instead of writing defaults, allowing normal motion, Cubism physics, and model defaults to resume naturally.
+On each render tick it computes a fade envelope and applies only the layer's parameters after baseline Live2D updates. The first phase deliberately supports one target pose only: interpolate continuously during fade-in, hold the target parameters for the requested duration, then interpolate continuously out during fade-out. It is not a static frame switch, but it is also not a multi-step/keyframe choreography system. When the envelope reaches zero, it removes the layer instead of writing defaults, allowing normal motion, Cubism physics, and model defaults to resume naturally.
+
+Multi-keyframe performances (for example, lower head then raise it and tilt) are deferred until this single-pose pipeline has been verified on real models. A later extension may add bounded keyframe tracks and easing curves without changing the validation or capability-discovery boundary.
 
 Parameter ownership is explicit:
 
