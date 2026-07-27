@@ -5,6 +5,7 @@ import type { VoiceSynthesisOutcome } from './voiceProvider'
 export interface SpeechSequencer {
   getSettings: () => TtsSettings
   speak: (text: string, onDisplay: () => void) => Promise<void>
+  finishReply: () => Promise<void>
   stop: () => void
 }
 
@@ -34,13 +35,29 @@ export function createSpeechSequencer(opts: {
   onChunk: (c: PcmChunk) => void
   getSettings: () => TtsSettings
   stopUnderlying: () => void
+  /** The reply is sealed: every PCM chunk that will be forwarded has been forwarded. */
+  onProductionDone?: () => void
 }): SpeechSequencer {
   let nextSeq = 0
   let cursor = 0
   let inFlightCount = 0
   let generation = 0
+  let replyActive = false
+  let replyFinish: { generation: number; resolve: () => void; completed: boolean; promise: Promise<void> } | null = null
   const pending: QueueItem[] = []
   const items = new Map<number, QueueItem>()
+
+  function completeReplyIfReady(): void {
+    const finish = replyFinish
+    if (!finish || finish.completed || finish.generation !== generation) return
+    if (pending.length > 0 || inFlightCount > 0 || items.size > 0) return
+
+    finish.completed = true
+    replyFinish = null
+    replyActive = false
+    try { opts.onProductionDone?.() } catch { /* Completion reporting must not break speech cleanup. */ }
+    finish.resolve()
+  }
 
   function releaseDisplay(item: QueueItem): void {
     if (item.displayed) return
@@ -131,6 +148,7 @@ export function createSpeechSequencer(opts: {
       if (runGeneration !== generation) return
       inFlightCount--
       pump()
+      completeReplyIfReady()
     }
 
     try {
@@ -153,6 +171,9 @@ export function createSpeechSequencer(opts: {
   return {
     getSettings: opts.getSettings,
     speak(text: string, onDisplay: () => void): Promise<void> {
+      if (!replyActive) {
+        replyActive = true
+      }
       return new Promise<void>((resolve) => {
         const item: QueueItem = {
           seq: nextSeq++,
@@ -171,15 +192,30 @@ export function createSpeechSequencer(opts: {
         pump()
       })
     },
+    finishReply(): Promise<void> {
+      if (replyFinish?.generation === generation) return replyFinish.promise
+      if (!replyActive) return Promise.resolve()
+
+      let resolve: () => void = () => {}
+      const promise = new Promise<void>((done) => { resolve = done })
+      replyFinish = { generation, resolve, completed: false, promise }
+      completeReplyIfReady()
+      return promise
+    },
     stop(): void {
       // Invalidate callbacks before asking the provider to abort, because its
       // abort path can synchronously invoke a pending callback.
       generation++
+      replyActive = false
       pending.length = 0
       for (const item of items.values()) resolveWithoutDisplay(item)
       items.clear()
       cursor = nextSeq
       inFlightCount = 0
+      if (replyFinish) {
+        replyFinish.resolve()
+        replyFinish = null
+      }
       opts.stopUnderlying()
     }
   }

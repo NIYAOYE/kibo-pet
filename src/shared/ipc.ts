@@ -76,6 +76,7 @@ export const IPC = {
   VOICE_AUDIO_ERROR: 'voice:audio-error',
   VOICE_STOP: 'voice:stop',
   VOICE_PLAYBACK_STOP: 'voice:playback-stop',
+  VOICE_PLAYBACK_IDLE: 'voice:playback-idle',
   GENIE_GET_STATE: 'genie:get-state',
   GENIE_PICK_INSTALL_PATH: 'genie:pick-install-path',
   GENIE_START_INSTALL: 'genie:start-install',
@@ -308,6 +309,10 @@ export interface VoiceRuntimeState { installed: boolean; installPath: string; gs
 export interface VoiceInstallProgress { stage: string; message: string }
 export interface VoiceArchiveResult { ok: boolean; error?: string }
 export interface VoicePcmChunk { audioBase64: string; sampleRate: number }
+export interface VoicePlaybackChunk extends VoicePcmChunk {
+  /** Main-process monotonic identifier for this queued browser playback chunk. */
+  playbackEpoch: number
+}
 
 export interface VoiceApi {
   getState(): Promise<VoiceRuntimeState>
@@ -316,12 +321,15 @@ export interface VoiceApi {
   onInstallProgress(cb: (p: VoiceInstallProgress) => void): void
   importArchive(): Promise<VoiceArchiveResult>
   exportArchive(): Promise<VoiceArchiveResult>
-  onAudioChunk(cb: (c: VoicePcmChunk) => void): void
+  onAudioChunk(cb: (c: VoicePlaybackChunk) => void): void
+  /** Main→renderer: this reply's PCM production is sealed; the renderer has every chunk that will arrive, including after recoverable synthesis failures. */
   onAudioDone(cb: () => void): void
   onAudioError(cb: (message: string) => void): void
   /** main→renderer 推送:立即停止渲染层已在播放的语音(用户显式取消/发送新消息触发),
-   *  不携带任何 petBrain 状态含义——与 onAudioDone(正常播放完毕)、onAudioError(出错)语义不同 */
+   *  不携带任何 petBrain 状态含义——与 onAudioDone(PCM 生产已封口)、onAudioError(出错)语义不同 */
   onPlaybackStop(cb: () => void): void
+  /** Renderer→main: all queued PCM sources through this epoch ended normally. */
+  reportPlaybackIdle(playbackEpoch: number): void
   stop(): void
 }
 

@@ -3,7 +3,7 @@ import { computeEnvelope, LIP_SYNC_WINDOW_MS } from './lipSyncEnvelope'
 
 export interface PcmPlayer {
   /** 解码一段 base64 float32 PCM 并排队播放,与之前的块无缝衔接。 */
-  play(audioBase64: string, sampleRate: number): void
+  play(audioBase64: string, sampleRate: number, playbackEpoch: number): void
   /** 立即停止所有已排队/正在播放的音频。 */
   stop(): void
   /** 当前播放时刻(AudioContext.currentTime)对应的音量包络值,0~1；没有任何块覆盖
@@ -11,13 +11,19 @@ export interface PcmPlayer {
   getCurrentLevel(): number
 }
 
+export interface PcmPlayerOptions {
+  onPlaybackIdle?: (playbackEpoch: number) => void
+}
+
 interface ActiveChunk { startAt: number; durationS: number; envelope: number[] }
 
-export function createPcmPlayer(): PcmPlayer {
+export function createPcmPlayer({ onPlaybackIdle }: PcmPlayerOptions = {}): PcmPlayer {
   const ctx = new AudioContext()
   const scheduler = createPlaybackScheduler()
   let sources: AudioBufferSourceNode[] = []
   let activeChunks: ActiveChunk[] = []
+  let playbackGeneration = 0
+  let lastScheduledEpoch: number | undefined
 
   function decode(audioBase64: string, sampleRate: number): { buffer: AudioBuffer; floats: Float32Array } {
     const raw = atob(audioBase64)
@@ -30,10 +36,12 @@ export function createPcmPlayer(): PcmPlayer {
   }
 
   return {
-    play(audioBase64: string, sampleRate: number): void {
+    play(audioBase64: string, sampleRate: number, playbackEpoch: number): void {
       const { buffer, floats } = decode(audioBase64, sampleRate)
       const startAt = scheduler.scheduleNext(ctx.currentTime, buffer.duration)
       const src = ctx.createBufferSource()
+      const sourceGeneration = playbackGeneration
+      lastScheduledEpoch = playbackEpoch
       src.buffer = buffer
       src.connect(ctx.destination)
       src.start(startAt)
@@ -43,12 +51,17 @@ export function createPcmPlayer(): PcmPlayer {
       src.onended = () => {
         sources = sources.filter((s) => s !== src)
         activeChunks = activeChunks.filter((c) => c !== chunk)
+        if (sourceGeneration === playbackGeneration && sources.length === 0 && lastScheduledEpoch === playbackEpoch) {
+          onPlaybackIdle?.(playbackEpoch)
+        }
       }
     },
     stop(): void {
+      playbackGeneration += 1
       for (const s of sources) { try { s.stop() } catch { /* 已经播完的节点 stop() 会抛,忽略 */ } }
       sources = []
       activeChunks = []
+      scheduler.reset()
     },
     getCurrentLevel(): number {
       const now = ctx.currentTime

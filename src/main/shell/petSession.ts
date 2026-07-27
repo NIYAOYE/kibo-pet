@@ -42,6 +42,7 @@ export interface VoiceSessionDeps {
   spawnGenie: typeof import('../voice/realVoiceTransport').realSpawnGenieProcess
   postSse: typeof import('../voice/realVoiceTransport').realPostSse
   onAudioChunk: (c: VoicePcmChunk) => void
+  onAudioDone: () => void
   onAudioError: (m: string) => void
 }
 
@@ -171,12 +172,14 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     isReady: () => boolean
     getSettings: () => AppSettings['tts']
     speak: (text: string, onDisplay: () => void) => Promise<void>
+    finishReply: () => Promise<void>
     stop: () => void
   } {
     return {
       isReady: () => deps.loadSettings().tts.enabled && speechSequencerInstance !== null,
       getSettings: () => deps.loadSettings().tts,
       speak: (text: string, onDisplay: () => void) => speechSequencerInstance?.speak(text, onDisplay) ?? Promise.resolve(),
+      finishReply: () => speechSequencerInstance?.finishReply() ?? Promise.resolve(),
       stop: () => speechSequencerInstance?.stop()
     }
   }
@@ -313,7 +316,8 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
       speakOne: (text, onChunk) => provider.synthesize(text, onChunk),
       onChunk: (c) => deps.voiceDeps.onAudioChunk(c),
       getSettings: () => deps.loadSettings().tts,
-      stopUnderlying: () => provider.stop()
+      stopUnderlying: () => provider.stop(),
+      onProductionDone: () => deps.voiceDeps.onAudioDone()
     })
     if (!isCurrentVoiceStart(startEpoch)) {
       await discardStartingVoice(sidecar, provider, sequencer)

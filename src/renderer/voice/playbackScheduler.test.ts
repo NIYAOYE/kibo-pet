@@ -18,4 +18,13 @@ describe('createPlaybackScheduler', () => {
     s.scheduleNext(10, 1) // 占用 [10, 11)
     expect(s.scheduleNext(15, 2)).toBe(15) // now(15) 远超上次结束(11),从 now 重新排
   })
+
+  it('resets cancelled audio so the next chunk starts at now', () => {
+    const s = createPlaybackScheduler()
+    s.scheduleNext(10, 30)
+
+    s.reset()
+
+    expect(s.scheduleNext(12, 2)).toBe(12)
+  })
 })

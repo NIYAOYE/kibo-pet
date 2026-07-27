@@ -112,6 +112,7 @@ function makeDeps(): PetSessionDeps {
       spawnGenie: realSpawnGenieProcess,
       postSse: realPostSse,
       onAudioChunk: () => {},
+      onAudioDone: () => {},
       onAudioError: () => {}
     },
     translateDeps: {

@@ -83,6 +83,7 @@ import { fixedWindowBounds, isZeroMove, footAnchorPreservingBounds, windowSizeFo
 import { computeMouseFocusTick, DEFAULT_MOUSE_TRACK_RADIUS_PX } from '@shared/mouseFocus'
 import { createPendingPrepareRequests } from './pendingPrepareRequests'
 import { createLive2DCapabilityStore, parseLive2DCapabilitySnapshot } from './live2dCapabilityStore'
+import { createChatHideAfterVoiceGate } from './chatHideAfterVoice'
 import { randomUUID } from 'node:crypto'
 import type { Live2DPerformanceInstruction } from '@shared/live2dPerformance'
 
@@ -340,6 +341,8 @@ export async function startShell(): Promise<void> {
   const AMBIENT_TTL_MS = 3500
   let ambientHideTimer: NodeJS.Timeout | null = null
   let chatHideTimer: NodeJS.Timeout | null = null
+  let nextVoicePlaybackEpoch = 0
+  const chatHideAfterVoice = createChatHideAfterVoiceGate()
   let lastLineText: string | null = null // 供 pickLine 避免连续复读
   let pendingAppFocusText: string | null = null // appFocusWatcher 已选好的台词,PET_SPEAK('app_focus') 特判读取
 
@@ -348,6 +351,10 @@ export async function startShell(): Promise<void> {
   }
   function clearChatHideTimer(): void {
     if (chatHideTimer) { clearTimeout(chatHideTimer); chatHideTimer = null }
+  }
+  function resetChatHideAfterVoice(): void {
+    clearChatHideTimer()
+    chatHideAfterVoice.reset(nextVoicePlaybackEpoch)
   }
   function scheduleChatHide(): void {
     clearChatHideTimer()
@@ -382,7 +389,7 @@ export async function startShell(): Promise<void> {
   function emitPetEvent(event: PetEvent): void {
     petWin.webContents.send(IPC.PET_EVENT, event)
     // 送出瞬间保证界面干净:清掉本轮气泡内容并隐藏,待首个流式/状态到达再显示
-    if (event === 'messageSent') { clearAmbientLine(); clearChatHideTimer(); bubbleHasContent = false; bubble.clear(); bubble.hide() }
+    if (event === 'messageSent') { clearAmbientLine(); resetChatHideAfterVoice(); bubbleHasContent = false; bubble.clear(); bubble.hide() }
   }
 
   const dialog = createDialogController({
@@ -621,9 +628,10 @@ export async function startShell(): Promise<void> {
     pushDone: () => {
       dialog.window()?.webContents.send(IPC.CHAT_DONE)
       bubble.pushDone()
-      scheduleChatHide()
+      if (chatHideAfterVoice.noteReplyDone()) scheduleChatHide()
     },
     pushError: (m) => {
+      resetChatHideAfterVoice()
       dialog.window()?.webContents.send(IPC.CHAT_ERROR, m)
       bubbleHasContent = true; refreshBubble(); bubble.pushError(m)
     },
@@ -642,7 +650,16 @@ export async function startShell(): Promise<void> {
       spawnGsv: realSpawnProcess,
       spawnGenie: realSpawnGenieProcess,
       postSse: realPostSse,
-      onAudioChunk: (c) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
+      onAudioChunk: (chunk) => {
+        const playbackEpoch = ++nextVoicePlaybackEpoch
+        clearChatHideTimer()
+        chatHideAfterVoice.noteAudioChunk(playbackEpoch)
+        petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, { ...chunk, playbackEpoch })
+      },
+      onAudioDone: () => {
+        petWin.webContents.send(IPC.VOICE_AUDIO_DONE)
+        if (chatHideAfterVoice.noteAudioProductionDone()) scheduleChatHide()
+      },
       onAudioError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
     },
     translateDeps: { translateSidecar, isTranslateAvailable: () => translateAvailable },
@@ -773,7 +790,8 @@ export async function startShell(): Promise<void> {
         petId, displayName: loaded?.manifest.displayName ?? petId
       })
       // 清跨宠物残留气泡
-      clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide()
+      clearAmbientLine(); resetChatHideAfterVoice(); petWin.webContents.send(IPC.VOICE_PLAYBACK_STOP)
+      bubbleHasContent = false; bubble.clear(); bubble.hide()
       return true
     } finally {
       switchInFlight = false
@@ -987,11 +1005,19 @@ export async function startShell(): Promise<void> {
   ipcMain.on(IPC.CHAT_SEND, (_e, raw) => {
     const payload = validateChatSend(raw)
     if (!payload) return
+    resetChatHideAfterVoice()
     session.chat.handleSend(payload)
   })
   ipcMain.on(IPC.CANCEL_CHAT, () => {
+    resetChatHideAfterVoice()
     session.chat.cancel()
     petWin.webContents.send(IPC.VOICE_PLAYBACK_STOP)
+  })
+  ipcMain.on(IPC.VOICE_PLAYBACK_IDLE, (event, raw) => {
+    if (event.sender !== petWin.webContents) return
+    if (!Number.isSafeInteger(raw) || raw <= 0) return
+    if (raw > nextVoicePlaybackEpoch) return
+    if (chatHideAfterVoice.notePlaybackIdle(raw)) scheduleChatHide()
   })
   ipcMain.on(IPC.PET_SPEAK, (_e, raw) => {
     const category = validateReactionCategory(raw)
@@ -1379,7 +1405,11 @@ export async function startShell(): Promise<void> {
     })
   })
 
-  ipcMain.on(IPC.VOICE_STOP, () => session.stopSpeech())
+  ipcMain.on(IPC.VOICE_STOP, () => {
+    resetChatHideAfterVoice()
+    petWin.webContents.send(IPC.VOICE_PLAYBACK_STOP)
+    session.stopSpeech()
+  })
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
     const collapsed = validateBool(raw)
     if (collapsed === null) return

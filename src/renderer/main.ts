@@ -143,7 +143,7 @@ async function boot(): Promise<void> {
   }
   reportLive2DCapabilities()
 
-  const pcmPlayer = createPcmPlayer()
+  const pcmPlayer = createPcmPlayer({ onPlaybackIdle: (playbackEpoch) => window.voiceApi.reportPlaybackIdle(playbackEpoch) })
   window.petApi.onPetEvent((event) => {
     controller.send(event)
     // 新消息发送即打断正在朗读的语音(参照 opts.emitPetEvent('messageSent') 的既有约定)。
@@ -191,7 +191,7 @@ async function boot(): Promise<void> {
   })
   window.petApi.onMouseFocus((payload) => controller.setMouseFocus(payload.x, payload.y))
   window.petApi.onLive2DPerform((instruction) => controller.applyLive2DPerformance(instruction, performance.now()))
-  window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate))
+  window.voiceApi.onAudioChunk((c) => pcmPlayer.play(c.audioBase64, c.sampleRate, c.playbackEpoch))
   window.voiceApi.onAudioError((message) => console.warn('[voice]', message))
   window.voiceApi.onPlaybackStop(() => pcmPlayer.stop())
 

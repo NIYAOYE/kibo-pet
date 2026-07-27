@@ -262,6 +262,151 @@ describe('createSpeechSequencer', () => {
     expect(chunks).toEqual(['second-a', 'second-b', 'second-c'])
   })
 
+  it('signals normal reply production once only after every PCM chunk has been forwarded', async () => {
+    const chunks: string[] = []
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: (chunk) => chunks.push(chunk.audioBase64),
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('first', () => {})
+    const firstFinish = sequencer.finishReply()
+    const repeatedFinish = sequencer.finishReply()
+    controlled.emit(0, 'first-a')
+    controlled.emit(0, 'first-b')
+    expect(onProductionDone).not.toHaveBeenCalled()
+
+    controlled.complete(0)
+    await Promise.all([firstFinish, repeatedFinish])
+
+    expect(chunks).toEqual(['first-a', 'first-b'])
+    expect(onProductionDone).toHaveBeenCalledOnce()
+  })
+
+  it('seals a recoverably failed reply but not a stopped reply', async () => {
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: () => {},
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('failed', () => {})
+    const failedFinish = sequencer.finishReply()
+    controlled.complete(0, 'failed')
+    await failedFinish
+    expect(onProductionDone).toHaveBeenCalledOnce()
+
+    sequencer.speak('stopped', () => {})
+    const stoppedFinish = sequencer.finishReply()
+    sequencer.stop()
+    await stoppedFinish
+    expect(onProductionDone).toHaveBeenCalledOnce()
+  })
+
+  it('seals a reply after later recoverable synthesis failure once forwarded PCM is exhausted', async () => {
+    const chunks: string[] = []
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: (chunk) => chunks.push(chunk.audioBase64),
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('spoken segment', () => {})
+    sequencer.speak('failed segment', () => {})
+    const finish = sequencer.finishReply()
+    controlled.emit(0, 'spoken-pcm')
+    controlled.complete(0, 'spoken')
+    controlled.complete(1, 'failed')
+    await finish
+
+    expect(chunks).toEqual(['spoken-pcm'])
+    expect(onProductionDone).toHaveBeenCalledOnce()
+  })
+
+  it('finalizes two sequential normal replies independently in one generation', async () => {
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: () => {},
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('first reply', () => {})
+    const firstFinish = sequencer.finishReply()
+    controlled.emit(0)
+    controlled.complete(0)
+    await firstFinish
+
+    sequencer.speak('second reply', () => {})
+    const secondFinish = sequencer.finishReply()
+    controlled.emit(1)
+    controlled.complete(1)
+    await secondFinish
+
+    expect(onProductionDone).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows a normal reply to complete after an earlier reply failed', async () => {
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: () => {},
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('failed reply', () => {})
+    const failedFinish = sequencer.finishReply()
+    controlled.complete(0, 'failed')
+    await failedFinish
+    expect(onProductionDone).toHaveBeenCalledOnce()
+    onProductionDone.mockClear()
+
+    sequencer.speak('normal reply', () => {})
+    const normalFinish = sequencer.finishReply()
+    controlled.emit(1)
+    controlled.complete(1)
+    await normalFinish
+
+    expect(onProductionDone).toHaveBeenCalledOnce()
+  })
+
+  it('does not invent production completion when finishReply follows stop', async () => {
+    const onProductionDone = vi.fn()
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: () => {},
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {},
+      onProductionDone
+    })
+
+    sequencer.speak('interrupted', () => {})
+    sequencer.stop()
+    await sequencer.finishReply()
+
+    expect(onProductionDone).not.toHaveBeenCalled()
+  })
+
   it('invalidates an old flush when onDisplay stops and starts a new generation', async () => {
     const events: string[] = []
     const controlled = makeControllableSpeakOne()

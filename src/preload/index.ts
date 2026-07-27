@@ -5,7 +5,7 @@ import {
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
   type BubbleApi, type BubblePlace, type ContextSignalKind,
-  type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
+  type VoiceApi, type VoiceInstallProgress, type VoicePlaybackChunk,
   type GenieVoiceApi, type GenieInstallProgress,
   type TranslateVoiceApi, type TranslateInstallProgressMsg,
   type PetChatListItem, type PetSwitchedPayload, type Live2DTransformPatch,
@@ -192,7 +192,7 @@ const voiceApi = {
   },
   importArchive: () => ipcRenderer.invoke(IPC.VOICE_IMPORT_ARCHIVE),
   exportArchive: () => ipcRenderer.invoke(IPC.VOICE_EXPORT_ARCHIVE),
-  onAudioChunk: (cb: (c: VoicePcmChunk) => void) => {
+  onAudioChunk: (cb: (c: VoicePlaybackChunk) => void) => {
     ipcRenderer.removeAllListeners(IPC.VOICE_AUDIO_CHUNK)
     ipcRenderer.on(IPC.VOICE_AUDIO_CHUNK, (_e, c) => cb(c))
   },
@@ -207,6 +207,9 @@ const voiceApi = {
   onPlaybackStop: (cb: () => void) => {
     ipcRenderer.removeAllListeners(IPC.VOICE_PLAYBACK_STOP)
     ipcRenderer.on(IPC.VOICE_PLAYBACK_STOP, () => cb())
+  },
+  reportPlaybackIdle: (playbackEpoch: number): void => {
+    ipcRenderer.send(IPC.VOICE_PLAYBACK_IDLE, playbackEpoch)
   },
   stop: () => ipcRenderer.send(IPC.VOICE_STOP)
 } satisfies VoiceApi

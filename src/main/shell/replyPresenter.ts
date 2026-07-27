@@ -6,6 +6,7 @@ export interface VoiceReplyGate {
   isReady(): boolean
   getSettings(): TtsSettings
   speak(text: string, onDisplay: () => void): Promise<void>
+  finishReply?(): Promise<void>
 }
 
 export interface ReplyPresenter {
@@ -157,7 +158,9 @@ export function createReplyPresenter(opts: {
         }
       }
 
-      finishPromise = Promise.all(segments.map((segment) => segment.completion)).then(() => undefined)
+      finishPromise = Promise.all(segments.map((segment) => segment.completion)).then(async () => {
+        if (!cancelled && voiceReady) await voice?.finishReply?.()
+      })
       return finishPromise
     },
 
