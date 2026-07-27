@@ -1,7 +1,7 @@
-Kibo — Third-Party Notices
+Tamashii — Third-Party Notices
 ==========================
 
-This file records the third-party components used by Kibo's Live2D rendering
+This file records the third-party components used by Tamashii's Live2D rendering
 pipeline, their versions as pinned in this repository, and their licenses.
 See `docs/superpowers/specs/2026-07-20-live2d-renderer-design.md` §3 and §13
 for the product/licensing decisions this list supports.
@@ -72,7 +72,7 @@ Used for:     The official Cubism model runtime (MOC parsing, parameter
 
 **Public-distribution gate (design doc §3):** per Live2D's SDK license,
 shipping this file inside a publicly-distributed application (the
-"Expandable Application" scenario Kibo's product design falls under)
+"Expandable Application" scenario Tamashii's product design falls under)
 requires Live2D's written approval and a signed publisher agreement before
 a public release build may include it. This is Phase 8 of the Live2D
 rendering roadmap (design doc §16) and has not happened yet — do not build
@@ -86,7 +86,7 @@ and official reference links.
 4. Scope note
 -------------
 This list covers the Live2D rendering stack specifically (the subject of
-`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`). Kibo has
+`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`). Tamashii has
 other third-party runtime dependencies (Electron, its voice TTS backends,
 etc.) tracked via `package.json` / `pnpm-lock.yaml` and their own
 upstream licenses (all permissive — MIT/Apache/BSD-family — as of this

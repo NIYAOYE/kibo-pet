@@ -95,9 +95,9 @@ export interface PetSessionDeps {
   // 语音接线所需
   voiceDeps: VoiceSessionDeps
   translateDeps: TranslateSessionDeps
-  /** kibo-pet:// 协议的 token 注册表(main/pets/kiboPetProtocol.ts),startShell 建一次注入。
+  /** tamashii-pet:// 协议的 token 注册表(main/pets/tamashiiPetProtocol.ts),startShell 建一次注入。
    *  createPetSession 用它给每个会话铸造一个资源 token,dispose() 时撤销。 */
-  kiboPetRegistry: {
+  tamashiiPetRegistry: {
     registerToken(rootDir: string): string
     revokeToken(token: string): void
   }
@@ -132,7 +132,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     legacyMemoryDir: petId === deps.defaultPetId ? deps.legacyMemoryDir : undefined
   })
   const petDir = petHome
-  const resourceToken = deps.kiboPetRegistry.registerToken(petDir)
+  const resourceToken = deps.tamashiiPetRegistry.registerToken(petDir)
 
   const memory = createMemoryManager({ dir: memoryDir, getEmbedder: deps.getEmbedder })
 
@@ -399,7 +399,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
       try { chat.cancel() } catch (e) { console.warn('[petSession] chat.cancel', e) }
       try { appFocusWatcher.stop() } catch (e) { console.warn('[petSession] appFocus.stop', e) }
       try { await stopVoice() } catch (e) { console.warn('[petSession] stopVoice', e) }
-      try { deps.kiboPetRegistry.revokeToken(resourceToken) } catch (e) { console.warn('[petSession] revokeToken', e) }
+      try { deps.tamashiiPetRegistry.revokeToken(resourceToken) } catch (e) { console.warn('[petSession] revokeToken', e) }
     }
   }
 }

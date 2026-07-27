@@ -44,7 +44,7 @@ import {
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice, PetRenderSource } from '@shared/petPackage'
 import { loadPet, petsDir } from '../petLoader'
-import { createKiboPetProtocolRegistry, installKiboPetProtocolHandler } from '../pets/kiboPetProtocol'
+import { createTamashiiPetProtocolRegistry, installTamashiiPetProtocolHandler } from '../pets/tamashiiPetProtocol'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
@@ -102,7 +102,7 @@ let tray: Tray | null = null
  */
 /** COMMIT_STAGED_IMPORT/DISCARD_STAGED_IMPORT 的入参校验:两个字段都必须是字符串,manifestId
  *  额外要求非空(commitStagedPet 内部会再校验一次 isValidPetId,这里只挡明显不是字符串的输入,
- *  避免 undefined 一路传到 kiboPetRegistry.revokeToken() 出现难查的行为)。 */
+ *  避免 undefined 一路传到 tamashiiPetRegistry.revokeToken() 出现难查的行为)。 */
 function validateStagedImportArg(raw: unknown): { stagingId: string; manifestId: string } {
   const r = (raw ?? {}) as Record<string, unknown>
   return {
@@ -111,27 +111,27 @@ function validateStagedImportArg(raw: unknown): { stagingId: string; manifestId:
   }
 }
 
-/** stagingId → kiboPetRegistry 发的预览 token 的对应表。`registry.registerToken()` 自己生成
+/** stagingId → tamashiiPetRegistry 发的预览 token 的对应表。`registry.registerToken()` 自己生成
  *  一个独立随机 token 作为 map 的 key,与 16 位十六进制的 stagingId 是两个完全不相关的随机串——
  *  commit/discard 阶段只从渲染层收到 stagingId,必须靠这张表才能查出当年 toStageImportOutcome()
  *  真正注册的那个 token 来 revoke;直接把 stagingId 传给 revokeToken() 永远命中不到任何已注册
- *  的条目,会让预览 token 一直残留在 kiboPetRegistry 内部的 Map 里(见 kiboPetProtocol.ts)。
+ *  的条目,会让预览 token 一直残留在 tamashiiPetRegistry 内部的 Map 里(见 tamashiiPetProtocol.ts)。
  *  两处 IMPORT 注册点(onboarding / 正常流程)互斥,同一进程内只有一个会跑,模块级单例足够。 */
 const previewTokensByStagingId = new Map<string, string>()
 
-/** petCatalog.stageImportPet() 的结果不知道 kiboPetRegistry(main-only 的运行时状态,
+/** petCatalog.stageImportPet() 的结果不知道 tamashiiPetRegistry(main-only 的运行时状态,
  *  petCatalog.ts 是纯磁盘/校验逻辑,不该知道 token 这个概念),live2d 预览分支需要在这里
  *  补上 previewSource——给 staging 目录单开一个 token,与当前激活宠物的 token 完全独立,
  *  commit/discard 时会各自 revoke(通过 previewTokensByStagingId 查回真正的 token)。 */
 function toStageImportOutcome(
   result: StageImportResult,
   userPetsDir: string,
-  kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>
+  tamashiiPetRegistry: ReturnType<typeof createTamashiiPetProtocolRegistry>
 ): StageImportOutcome {
   if (!result.ok) return result
   if (result.committed) return result
   const stagingDir = join(userPetsDir, STAGING_DIR_NAME, result.stagingId)
-  const token = kiboPetRegistry.registerToken(stagingDir)
+  const token = tamashiiPetRegistry.registerToken(stagingDir)
   previewTokensByStagingId.set(result.stagingId, token)
   return {
     ok: true,
@@ -140,17 +140,17 @@ function toStageImportOutcome(
     manifestId: result.manifest.id,
     displayName: result.manifest.displayName,
     warnings: result.warnings,
-    previewSource: { type: 'live2d', manifest: result.manifest, resourceBaseUrl: `kibo-pet://${token}/` }
+    previewSource: { type: 'live2d', manifest: result.manifest, resourceBaseUrl: `tamashii-pet://${token}/` }
   }
 }
 
 /** COMMIT_STAGED_IMPORT/DISCARD_STAGED_IMPORT 共用:凭 stagingId 撤销 toStageImportOutcome()
  *  当时注册的预览 token。查不到(从未 stage 过 / 已经 revoke 过一次)就静默跳过,不抛错——
  *  两个 handler 都是"尽力清理",不应该因为 token 已经不存在就让 commit/discard 本身失败。 */
-function revokePreviewToken(stagingId: string, kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>): void {
+function revokePreviewToken(stagingId: string, tamashiiPetRegistry: ReturnType<typeof createTamashiiPetProtocolRegistry>): void {
   const token = previewTokensByStagingId.get(stagingId)
   if (!token) return
-  kiboPetRegistry.revokeToken(token)
+  tamashiiPetRegistry.revokeToken(token)
   previewTokensByStagingId.delete(stagingId)
 }
 
@@ -162,9 +162,9 @@ function startOnboarding(opts: {
   userData: string
   settingsFile: string
   petCatalogDirs: { bundledPetsDir: string; userPetsDir: string }
-  kiboPetRegistry: ReturnType<typeof createKiboPetProtocolRegistry>
+  tamashiiPetRegistry: ReturnType<typeof createTamashiiPetProtocolRegistry>
 }): void {
-  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, kiboPetRegistry } = opts
+  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, tamashiiPetRegistry } = opts
 
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
@@ -213,16 +213,16 @@ function startOnboarding(opts: {
   ipcMain.handle(IPC.STAGE_IMPORT_PET, async (): Promise<StageImportOutcome | null> => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
     if (r.canceled || r.filePaths.length === 0) return null
-    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, kiboPetRegistry)
+    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, tamashiiPetRegistry)
   })
   ipcMain.handle(IPC.COMMIT_STAGED_IMPORT, async (_e, raw): Promise<CommitStagedImportResult> => {
     const { stagingId, manifestId } = validateStagedImportArg(raw)
-    revokePreviewToken(stagingId, kiboPetRegistry)
+    revokePreviewToken(stagingId, tamashiiPetRegistry)
     return commitStagedPet(stagingId, manifestId, petCatalogDirs)
   })
   ipcMain.handle(IPC.DISCARD_STAGED_IMPORT, async (_e, raw): Promise<void> => {
     const { stagingId } = validateStagedImportArg(raw)
-    revokePreviewToken(stagingId, kiboPetRegistry)
+    revokePreviewToken(stagingId, tamashiiPetRegistry)
     discardStagedPet(stagingId, petCatalogDirs.userPetsDir)
   })
   ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
@@ -248,8 +248,8 @@ export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): V
 }
 
 export async function startShell(): Promise<void> {
-  const kiboPetRegistry = createKiboPetProtocolRegistry()
-  installKiboPetProtocolHandler(kiboPetRegistry)
+  const tamashiiPetRegistry = createTamashiiPetProtocolRegistry()
+  installTamashiiPetProtocolHandler(tamashiiPetRegistry)
   const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
   const appRoot = app.isPackaged ? process.resourcesPath : join(dirname, '../..')
   const preload = join(dirname, '../preload/index.js')
@@ -287,7 +287,7 @@ export async function startShell(): Promise<void> {
     legacyMemoryDir
   })
   if (resolved.mode === 'onboarding') {
-    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, kiboPetRegistry })
+    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs, tamashiiPetRegistry })
     return
   }
   // resolvePetHome 可能因 configuredPetId 无对应包而回退到 defaultPetId,故真正落地的宠物
@@ -666,7 +666,7 @@ export async function startShell(): Promise<void> {
       onAudioError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
     },
     translateDeps: { translateSidecar, isTranslateAvailable: () => translateAvailable },
-    kiboPetRegistry
+    tamashiiPetRegistry
   }
 
   session = createPetSession(effectivePetId, sessionDeps)
@@ -751,7 +751,7 @@ export async function startShell(): Promise<void> {
         return false
       }
       const source: PetRenderSource = rawSource.type === 'live2d'
-        ? { ...rawSource, resourceBaseUrl: `kibo-pet://${next.resourceToken}/` }
+        ? { ...rawSource, resourceBaseUrl: `tamashii-pet://${next.resourceToken}/` }
         : rawSource
 
       // 准备阶段:渲染层在旧模型仍显示时后台加载新模型,不动会话/settings/窗口
@@ -918,7 +918,7 @@ export async function startShell(): Promise<void> {
   ipcMain.handle(IPC.GET_PET, async () => {
     const source = await loadPet(session.petDir)
     if (source.type === 'live2d') {
-      return { source: { ...source, resourceBaseUrl: `kibo-pet://${session.resourceToken}/` }, capabilityEpoch: session.resourceToken }
+      return { source: { ...source, resourceBaseUrl: `tamashii-pet://${session.resourceToken}/` }, capabilityEpoch: session.resourceToken }
     }
     return { source, capabilityEpoch: session.resourceToken }
   })
@@ -1205,16 +1205,16 @@ export async function startShell(): Promise<void> {
   ipcMain.handle(IPC.STAGE_IMPORT_PET, async (): Promise<StageImportOutcome | null> => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
     if (r.canceled || r.filePaths.length === 0) return null
-    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, kiboPetRegistry)
+    return toStageImportOutcome(stageImportPet(r.filePaths[0], petCatalogDirs), petCatalogDirs.userPetsDir, tamashiiPetRegistry)
   })
   ipcMain.handle(IPC.COMMIT_STAGED_IMPORT, async (_e, raw): Promise<CommitStagedImportResult> => {
     const { stagingId, manifestId } = validateStagedImportArg(raw)
-    revokePreviewToken(stagingId, kiboPetRegistry)
+    revokePreviewToken(stagingId, tamashiiPetRegistry)
     return commitStagedPet(stagingId, manifestId, petCatalogDirs)
   })
   ipcMain.handle(IPC.DISCARD_STAGED_IMPORT, async (_e, raw): Promise<void> => {
     const { stagingId } = validateStagedImportArg(raw)
-    revokePreviewToken(stagingId, kiboPetRegistry)
+    revokePreviewToken(stagingId, tamashiiPetRegistry)
     discardStagedPet(stagingId, petCatalogDirs.userPetsDir)
   })
   ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })

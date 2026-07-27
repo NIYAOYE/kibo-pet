@@ -5,7 +5,7 @@
     <!-- worker-src blob: 是 pixi.js 的 ImageBitmap 解码能力探测/加载 worker 需要的(WorkerManager);
          connect-src data: 是同一个探测流程内部 fetch() 一张写死的 1x1 base64 占位图需要的,
          两者都在真机验证 Live2D 渲染时复现过、缺一个就会导致纹理加载链路崩溃。 -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: kibo-pet:; script-src 'self'; worker-src 'self' blob:; connect-src 'self' data: kibo-pet:; media-src 'self' kibo-pet:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: tamashii-pet:; script-src 'self'; worker-src 'self' blob:; connect-src 'self' data: tamashii-pet:; media-src 'self' tamashii-pet:" />
     <link rel="stylesheet" href="./pet.css" />
   </head>
   <body>

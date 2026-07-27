@@ -52,7 +52,7 @@ function makeFakeRenderer(): PetRenderer & {
 }
 
 const spriteSource: PetRenderSource = { type: 'sprite', manifest: {} as any, spritesheetDataUrl: 'data:x' }
-const live2dSource: PetRenderSource = { type: 'live2d', manifest: {} as any, resourceBaseUrl: 'kibo-pet://tok/' }
+const live2dSource: PetRenderSource = { type: 'live2d', manifest: {} as any, resourceBaseUrl: 'tamashii-pet://tok/' }
 
 describe('PetController 准备-提交热切换', () => {
   it('同类型(sprite→sprite):prepareReload 调用 renderer.prepareSwap,不销毁旧实例;commitReload 才调用 commitSwap', async () => {

@@ -119,7 +119,7 @@ function makeDeps(): PetSessionDeps {
       translateSidecar: { start: async () => {}, translate: async () => '', stop: () => {} },
       isTranslateAvailable: () => false
     },
-    kiboPetRegistry: {
+    tamashiiPetRegistry: {
       registerToken: () => 'fake-token',
       revokeToken: () => {}
     }
@@ -164,11 +164,11 @@ describe('createPetSession().dispose()', () => {
   })
 })
 
-describe('createPetSession() 的 kibo-pet:// token 生命周期', () => {
+describe('createPetSession() 的 tamashii-pet:// token 生命周期', () => {
   it('构造时铸造 token,dispose() 时撤销', async () => {
     const registerToken = vi.fn(() => 'minted-token-123')
     const revokeToken = vi.fn()
-    const deps = { ...makeDeps(), kiboPetRegistry: { registerToken, revokeToken } }
+    const deps = { ...makeDeps(), tamashiiPetRegistry: { registerToken, revokeToken } }
     const session = createPetSession('fake-pet-id', deps)
 
     expect(registerToken).toHaveBeenCalledTimes(1)

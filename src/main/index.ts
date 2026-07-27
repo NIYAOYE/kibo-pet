@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { startShell } from './shell'
 import { loadSettings, saveSettings } from './config/settings'
 import { decideGpuBoot } from '@shared/gpuBootDecision'
-import { KIBO_PET_SCHEME_PRIVILEGES } from './pets/kiboPetProtocol'
+import { TAMASHII_PET_SCHEME_PRIVILEGES } from './pets/tamashiiPetProtocol'
 
-protocol.registerSchemesAsPrivileged([KIBO_PET_SCHEME_PRIVILEGES])
+protocol.registerSchemesAsPrivileged([TAMASHII_PET_SCHEME_PRIVILEGES])
 
 const GPU_MARKER_FILE_NAME = 'gpu-accel-boot.marker'
 /** 原崩溃描述是"秒退",几乎瞬间发生;这个延迟给"确认这次启动没崩"留出安全边际。 */
@@ -23,7 +23,7 @@ function logDiag(tag: string, detail: unknown): void {
   const line = `[${new Date().toISOString()}] ${tag}: ${msg}\n`
   const targets: string[] = []
   try { targets.push(join(app.getPath('userData'), 'startup-crash.log')) } catch { /* userData 未就绪 */ }
-  try { targets.push(join(tmpdir(), 'kibo-startup.log')) } catch { /* ignore */ }
+  try { targets.push(join(tmpdir(), 'tamashii-startup.log')) } catch { /* ignore */ }
   for (const p of targets) {
     try { writeFileSync(p, line, { flag: 'a' }) } catch { /* 写不了也不能崩 */ }
   }
@@ -96,7 +96,7 @@ app.whenReady()
   .catch((e) => {
     logDiag('startShell threw', e)
     try {
-      dialog.showErrorBox('Kibo 启动失败', String(e instanceof Error ? (e.stack ?? e.message) : e))
+      dialog.showErrorBox('Tamashii 启动失败', String(e instanceof Error ? (e.stack ?? e.message) : e))
     } catch {
       /* dialog 不可用也不能再崩 */
     }

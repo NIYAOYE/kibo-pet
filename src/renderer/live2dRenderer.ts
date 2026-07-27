@@ -112,7 +112,7 @@ export class Live2DPetRenderer implements PetRenderer {
     // needsAutoFit 分支),这个挂钩只在需要人工核对细节或覆盖自动计算结果(比如某个疑难
     // 模型自动算出来的比例仍不满意)时才用得上,不是主流程的一部分。
     let lastFit: { scale: number; offsetX: number; offsetY: number } | null = null
-    ;(window as unknown as { __kiboLive2D?: unknown }).__kiboLive2D = {
+    ;(window as unknown as { __tamashiiLive2D?: unknown }).__tamashiiLive2D = {
       app,
       model,
       canvas: this.canvas,
@@ -171,7 +171,7 @@ export class Live2DPetRenderer implements PetRenderer {
    *  (留 marginPx 边距)的 scale,连同"脚底贴着画布底部"的 offsetX/offsetY 一起现场应用并
    *  返回——只覆盖这三个字段,不碰 anchorX/anchorY 等宠物包作者自定的锚点语义。不写共享的
    *  this.baseScale(由调用方决定是否/写到哪个字段,见 setupModel() 的注释)。两个调用方:
-   *  setupModel() 的自动对齐,以及 window.__kiboLive2D 调试挂钩的人工核对/覆盖。 */
+   *  setupModel() 的自动对齐,以及 window.__tamashiiLive2D 调试挂钩的人工核对/覆盖。 */
   private autoFit(
     model: Live2DModel,
     viewport: { width: number; height: number },

@@ -6,7 +6,7 @@ export function createTray(
 ): Tray {
   const icon = nativeImage.createFromPath(iconPath)
   const tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
-  tray.setToolTip('Kibo')
+  tray.setToolTip('Tamashii')
   tray.setContextMenu(Menu.buildFromTemplate([
     { type: 'separator' },
     { label: '待办清单', click: () => handlers.onTodos() },

@@ -197,7 +197,7 @@ export interface PetApi {
   onMouseFocus(cb: (payload: { x: number; y: number }) => void): void
   /** 把 scale/offsetX/offsetY/autoFitted 写回当前宠物的 pet.json(只覆盖这四个字段,
    *  anchorX/anchorY/bubbleAnchorX/bubbleAnchorY 不变)。两个调用方:Live2DPetRenderer.load()
-   *  首次加载时的自动对齐,以及 window.__kiboLive2D 调试挂钩的人工核对/覆盖。
+   *  首次加载时的自动对齐,以及 window.__tamashiiLive2D 调试挂钩的人工核对/覆盖。
    *  只有当前宠物是 live2d 包时才会成功。 */
   updateLive2DTransform(patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }>
 }

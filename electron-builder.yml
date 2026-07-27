@@ -1,5 +1,5 @@
-appId: com.kibo.pet
-productName: Kibo
+appId: com.tamashii.pet
+productName: Tamashii
 directories:
   buildResources: build
   output: dist

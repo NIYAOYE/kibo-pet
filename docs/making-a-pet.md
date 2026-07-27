@@ -111,7 +111,7 @@ pets/<pet-id>/          # 或任意路径,导入时选中这个文件夹
 
 ### 4. 自动测出合适的缩放/位置
 
-导入后第一次启动 `pnpm preview` 加载这个宠物时，渲染器会自动测量模型真实尺寸，算出能让它完整居中显示（默认留 8px 边距）、"脚底贴底部"的 scale/位置，现场应用后立即写回 `%APPDATA%\kibo-pet\pets\<id>\pet.json`（打上 `render.transform.autoFitted: true`）。以后每次启动都直接读这份写好的数值，不会重复计算——**通常不需要任何手动操作**。
+导入后第一次启动 `pnpm preview` 加载这个宠物时，渲染器会自动测量模型真实尺寸，算出能让它完整居中显示（默认留 8px 边距）、"脚底贴底部"的 scale/位置，现场应用后立即写回 `%APPDATA%\tamashii-pet\pets\<id>\pet.json`（打上 `render.transform.autoFitted: true`）。以后每次启动都直接读这份写好的数值，不会重复计算——**通常不需要任何手动操作**。
 
 如果对自动算出来的效果不满意，想自己动手核对或覆盖，见第 7 步"高级：手动核对/覆盖对齐结果"。
 
@@ -120,7 +120,7 @@ pets/<pet-id>/          # 或任意路径,导入时选中这个文件夹
 购买或下载的模型，实际可用的动作组/表情名字不一定是 `Idle`/`idle` 这种"看起来应该对"的名字，尤其是游离资源自动找回后统一叫 `Recovered`。导入后在 Console 里查一下真实值，再回填到 `stateMap`：
 
 ```js
-const { model } = window.__kiboLive2D
+const { model } = window.__tamashiiLive2D
 console.log('动作组:', model.internalModel.motionManager.definitions)
 console.log('表情:', model.internalModel.motionManager.expressionManager?.definitions)
 ```
@@ -148,13 +148,13 @@ model.expression('某个表情名').then(ok => console.log('结果:', ok))
 正常情况下第 4 步的自动对齐就够用了。如果遇到疑难模型（比如自动算出来的比例仍不满意），可以打开 DevTools Console（鼠标点在宠物窗口区域上按 **Ctrl+Shift+I** 或 F12）手动核对/覆盖：
 
 ```js
-window.__kiboLive2D.autoFit()   // 重新测量并现场应用,想要不同留白可以传参数,比如 autoFit(20)
-window.__kiboLive2D.saveFit()   // 把上一步算出来的数值直接写回当前宠物的 pet.json(自动标记 autoFitted:true)
+window.__tamashiiLive2D.autoFit()   // 重新测量并现场应用,想要不同留白可以传参数,比如 autoFit(20)
+window.__tamashiiLive2D.saveFit()   // 把上一步算出来的数值直接写回当前宠物的 pet.json(自动标记 autoFitted:true)
 ```
 
-这一步会自动找到当前宠物**实际在用**的那份 `pet.json`（导入后应用读的是复制到 `%APPDATA%\kibo-pet\pets\<id>\pet.json` 的那一份，不是原始素材文件夹里的），只覆盖 `scale`/`offsetX`/`offsetY`/`autoFitted` 四个字段，`anchorX`/`anchorY`/`bubbleAnchorX`/`bubbleAnchorY` 这些锚点语义不会被动。写回后如果想让原始素材文件夹也保持同步（方便以后重新导入），把 `pets/<pet-id>/pet.json` 里的这几个字段手动抄一份过去即可。
+这一步会自动找到当前宠物**实际在用**的那份 `pet.json`（导入后应用读的是复制到 `%APPDATA%\tamashii-pet\pets\<id>\pet.json` 的那一份，不是原始素材文件夹里的），只覆盖 `scale`/`offsetX`/`offsetY`/`autoFitted` 四个字段，`anchorX`/`anchorY`/`bubbleAnchorX`/`bubbleAnchorY` 这些锚点语义不会被动。写回后如果想让原始素材文件夹也保持同步（方便以后重新导入），把 `pets/<pet-id>/pet.json` 里的这几个字段手动抄一份过去即可。
 
-如果想自己动手核对细节而不是完全依赖自动计算，也可以直接读写 `window.__kiboLive2D.model`/`.app`（比如 `model.width`、`model.scale.set(...)`、`model.position.y = ...`），`autoFit()`/`saveFit()` 内部做的就是这些事，没有什么额外魔法。
+如果想自己动手核对细节而不是完全依赖自动计算，也可以直接读写 `window.__tamashiiLive2D.model`/`.app`（比如 `model.width`、`model.scale.set(...)`、`model.position.y = ...`），`autoFit()`/`saveFit()` 内部做的就是这些事，没有什么额外魔法。
 
 ## 第二步：写人设（`persona.md`）
 

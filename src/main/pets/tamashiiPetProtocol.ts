@@ -4,17 +4,17 @@ import { existsSync, lstatSync } from 'node:fs'
 import { extname, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const KIBO_PET_SCHEME = 'kibo-pet'
+export const TAMASHII_PET_SCHEME = 'tamashii-pet'
 
 /** 喂给 Electron `protocol.registerSchemesAsPrivileged`;必须在 app.ready 之前调用
  *  (Phase 4 接线时的职责,本文件不调用)。不开 bypassCSP/Service Worker/扩展权限。
- *  `corsEnabled` 必须是 true——渲染层(file:// 源)通过 XHR/fetch 从 kibo-pet:// 这个
+ *  `corsEnabled` 必须是 true——渲染层(file:// 源)通过 XHR/fetch 从 tamashii-pet:// 这个
  *  不同源加载模型 JSON/贴图,Chromium 的 CORS 校验只看 scheme 是否声明 corsEnabled,
  *  与这个 handler 自己的响应内容无关;声明成 false(Phase 2 建基础设施时的默认值,当时还
  *  没有真正的跨源消费方,没触发这条)会导致所有跨源 XHR/fetch 请求在到达 handler 之前就被
  *  浏览器直接拦掉,真机验证 Phase 4 时才暴露。 */
-export const KIBO_PET_SCHEME_PRIVILEGES = {
-  scheme: KIBO_PET_SCHEME,
+export const TAMASHII_PET_SCHEME_PRIVILEGES = {
+  scheme: TAMASHII_PET_SCHEME,
   privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false }
 }
 
@@ -28,7 +28,7 @@ const ALLOWED_EXTENSIONS: Record<string, string> = {
 
 export type ProtocolResolveResult = { filePath: string; mimeType: string } | { error: 403 | 404 }
 
-export function createKiboPetProtocolRegistry(): {
+export function createTamashiiPetProtocolRegistry(): {
   registerToken(rootDir: string): string
   revokeToken(token: string): void
   resolveRequest(url: string): ProtocolResolveResult
@@ -53,7 +53,7 @@ export function createKiboPetProtocolRegistry(): {
       const authority = match[2]
       const pathAndQuery = match[3]
 
-      if (scheme !== KIBO_PET_SCHEME) return { error: 404 }
+      if (scheme !== TAMASHII_PET_SCHEME) return { error: 404 }
       const root = tokens.get(authority)
       if (!root) return { error: 404 }
 
@@ -89,10 +89,10 @@ export function createKiboPetProtocolRegistry(): {
  * 是给 Phase 4 现成用的基础设施。真正接线(含 app.ready 前的 registerSchemesAsPrivileged)
  * 留给 Phase 4。
  */
-export function installKiboPetProtocolHandler(
-  registry: ReturnType<typeof createKiboPetProtocolRegistry>
+export function installTamashiiPetProtocolHandler(
+  registry: ReturnType<typeof createTamashiiPetProtocolRegistry>
 ): void {
-  protocol.handle(KIBO_PET_SCHEME, async (request) => {
+  protocol.handle(TAMASHII_PET_SCHEME, async (request) => {
     const result = registry.resolveRequest(request.url)
     if ('error' in result) return new Response(null, { status: result.error })
     return net.fetch(pathToFileURL(result.filePath).toString())

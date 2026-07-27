@@ -114,7 +114,7 @@ describe('windowSizeForSource', () => {
           stateMap: {}
         }
       },
-      resourceBaseUrl: 'kibo-pet://tok/'
+      resourceBaseUrl: 'tamashii-pet://tok/'
     }
     expect(windowSizeForSource(source)).toEqual({ width: 800, height: 480 })
   })

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐾 Kibo
+# 🐾 Tamashii
 
 **桌面宠物 · 自带 Agent 内核**
 
@@ -23,7 +23,7 @@
 
 ## 这是什么
 
-Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可以拖着满屏跑。但它不只是一个动图播放器 —— 它内置了一个自研的 Agent 内核（受 OpenClaw 启发），接了真实的 LLM，能对话、能调用工具、能分层记忆，还能开口说话。皮肤既可以是传统逐帧精灵图，也可以换成 Live2D Cubism 模型（会跟着鼠标转头、说话对口型）。
+Tamashii 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可以拖着满屏跑。但它不只是一个动图播放器 —— 它内置了一个自研的 Agent 内核（受 OpenClaw 启发），接了真实的 LLM，能对话、能调用工具、能分层记忆，还能开口说话。皮肤既可以是传统逐帧精灵图，也可以换成 Live2D Cubism 模型（会跟着鼠标转头、说话对口型）。
 
 ## 核心特性
 
@@ -39,9 +39,9 @@ Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可
 
 ## 安装（打包版）
 
-前往 [Releases](https://github.com/NIYAOYE/kibo-pet/releases) 下载最新的 `Kibo Setup <版本>.exe`，双击走安装向导。**不需要装 Node、不需要命令行**。
+前往 [Releases](https://github.com/NIYAOYE/kibo-pet/releases) 下载最新的 `Tamashii Setup <版本>.exe`，双击走安装向导。**不需要装 Node、不需要命令行**。
 
-默认**每用户安装、免管理员**（装到 `%LOCALAPPDATA%\Programs\Kibo`，可在向导里改目录），并创建桌面 / 开始菜单快捷方式。
+默认**每用户安装、免管理员**（装到 `%LOCALAPPDATA%\Programs\Tamashii`，可在向导里改目录），并创建桌面 / 开始菜单快捷方式。
 
 > ⚠️ **未签名提示**：安装包未做代码签名，首次运行 Windows SmartScreen 可能拦截 →「更多信息」→「仍要运行」。
 
@@ -57,7 +57,7 @@ pnpm dev                         # 开发模式（HMR）
 pnpm build                       # 类型检查 + 构建三个 bundle
 pnpm preview                     # 跑打包后的产物（比 dev 更接近真实环境）
 pnpm test                        # 单元测试（Vitest）
-pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup <版本>.exe
+pnpm dist                        # 打包 Windows 安装包 → dist/Tamashii Setup <版本>.exe
 ```
 
 ### Live2D Cubism Core 运行时
@@ -100,7 +100,7 @@ rm -rf node_modules && pnpm install
 <sub>Live2D 渲染模式实拍：宠物以 Live2D Cubism 模型的形式出现在透明置顶窗口里，会跟着鼠标转头、说话对口型，和上方对话框演示图是同一只宠物（角色形象与出处见上方免责声明）。这是真机截图，不是效果图。</sub>
 </div>
 
-一只宠物 = 一个**自包含文件夹**，首次启动后落在用户目录 `%APPDATA%\Kibo\pets\<宠物id>\`，内含：
+一只宠物 = 一个**自包含文件夹**，首次启动后落在用户目录 `%APPDATA%\Tamashii\pets\<宠物id>\`，内含：
 
 | 文件 | 作用 |
 |---|---|
@@ -129,7 +129,7 @@ rm -rf node_modules && pnpm install
 
 **API Key**：经 Windows 凭据存储（safeStorage / DPAPI）加密，与本机本用户绑定、不可移植，换机器需重新填。
 
-卸载应用**不会删除** `%APPDATA%\Kibo` 下的记忆与配置。
+卸载应用**不会删除** `%APPDATA%\Tamashii` 下的记忆与配置。
 
 ## 技术栈
 

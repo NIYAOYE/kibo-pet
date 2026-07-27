@@ -13,7 +13,7 @@ export function createSettingsWindow(opts: {
     const w = new BrowserWindow({
       width: 560,
       height: 520,
-      title: 'Kibo 设置',
+      title: 'Tamashii 设置',
       frame: false,
       transparent: true,
       resizable: false,
