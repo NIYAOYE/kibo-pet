@@ -39,7 +39,7 @@ Tamashii 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶�
 
 ## 安装（打包版）
 
-前往 [Releases](https://github.com/NIYAOYE/kibo-pet/releases) 下载最新的 `Tamashii Setup <版本>.exe`，双击走安装向导。**不需要装 Node、不需要命令行**。
+前往 [Releases](https://github.com/NIYAOYE/Tamashii/releases) 下载最新的 `Tamashii Setup <版本>.exe`，双击走安装向导。**不需要装 Node、不需要命令行**。
 
 默认**每用户安装、免管理员**（装到 `%LOCALAPPDATA%\Programs\Tamashii`，可在向导里改目录），并创建桌面 / 开始菜单快捷方式。
 
