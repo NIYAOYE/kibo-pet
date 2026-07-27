@@ -8,14 +8,14 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6.svg)](#安装打包版)
-[![Electron](https://img.shields.io/badge/Electron-31-47848F.svg)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-43-47848F.svg)](https://www.electronjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org/)
 
 [下载安装](#安装打包版) · [核心特性](#核心特性) · [开发](#开发) · [宠物包](#宠物包可移植可编辑可换) · [做自己的宠物](docs/making-a-pet.md)
 
-<img src="docs/images/dialog-demo.png" width="280" alt="对话框展示：桌宠聊天界面" />
+<img src="docs/images/dialog-demo.png" width="280" alt="对话框展示：桌宠聊天界面，左栏宠物列表 + 右栏对话" />
 
-<sub>演示图中的宠物角色形象与对话内容基于游戏《蔚蓝档案》（Blue Archive）中的角色"天童爱丽丝"二次创作，均为非官方同人内容，仅作为本项目功能展示，与游戏原厂商 Nexon Games / Yostar 无任何关联，不代表官方立场。若权利方对此有异议，请提交 issue 或联系仓库作者，会第一时间处理。</sub>
+<sub>演示图中的宠物角色形象与对话内容基于《超时空辉夜姬！》中的角色"月见八千代"二次创作，为非官方同人内容，仅作为本项目功能展示，与该角色原作品版权方无任何关联，不代表官方立场。若权利方对此有异议，请提交 issue 或联系仓库作者，会第一时间处理。</sub>
 
 </div>
 
@@ -23,7 +23,7 @@
 
 ## 这是什么
 
-Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可以拖着满屏跑。但它不只是一个动图播放器 —— 它内置了一个自研的 Agent 内核（受 OpenClaw 启发），接了真实的 LLM，能对话、能调用工具、能分层记忆，还能开口说话。
+Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可以拖着满屏跑。但它不只是一个动图播放器 —— 它内置了一个自研的 Agent 内核（受 OpenClaw 启发），接了真实的 LLM，能对话、能调用工具、能分层记忆，还能开口说话。皮肤既可以是传统逐帧精灵图，也可以换成 Live2D Cubism 模型（会跟着鼠标转头、说话对口型）。
 
 ## 核心特性
 
@@ -35,6 +35,7 @@ Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可
 - 🖱️ **能替你动手** —— 截屏、点击、打字、操作浏览器网页（默认关闭，开启前强确认 + 执行时悬浮提示 + 你一抓鼠标立刻中断）
 - 🖼️ **看得懂图片** —— 选图 / 拖拽 / 粘贴 / 框选截屏，丢给支持视觉的模型识图，图片不落盘
 - 🎨 **换皮无痛** —— 一只宠物 = 一个自包含文件夹，拷走即备份，改配置即换宠物
+- 🎬 **精灵图 / Live2D 双渲染模式** —— 除传统逐帧精灵图外，也支持 Live2D Cubism 模型作为宠物皮肤：鼠标追踪转头、说话对口型，宠物间热切换不闪烁；模型文件需自行准备并遵守 Live2D 授权（不随本仓库分发）
 
 ## 安装（打包版）
 
@@ -94,25 +95,25 @@ rm -rf node_modules && pnpm install
 ## 宠物包：可移植、可编辑、可换
 
 <div align="center">
-<img src="docs/images/juwang-greet.png" width="180" alt="橘望 —— 非官方同人二创宠物皮肤示例" />
+<img src="docs/images/live2d-demo.png" width="180" alt="Live2D 渲染模式实拍：透明置顶窗口里的 Live2D 模型宠物" />
 
-<sub>另一款宠物皮肤示例（角色"橘望"，与页面开头展示图为不同角色），同样基于《蔚蓝档案》非官方同人二创，与游戏原厂商无关联，权利方有异议可联系处理。</sub>
+<sub>Live2D 渲染模式实拍：宠物以 Live2D Cubism 模型的形式出现在透明置顶窗口里，会跟着鼠标转头、说话对口型，和上方对话框演示图是同一只宠物（角色形象与出处见上方免责声明）。这是真机截图，不是效果图。</sub>
 </div>
 
 一只宠物 = 一个**自包含文件夹**，首次启动后落在用户目录 `%APPDATA%\Kibo\pets\<宠物id>\`，内含：
 
 | 文件 | 作用 |
 |---|---|
-| `pet.json` | 元数据 + 动画清单（改 `displayName` 即改宠物显示名） |
-| `spritesheet.webp` | 美术素材 |
+| `pet.json` | 元数据 + 渲染配置（`render.type` 决定走精灵图还是 Live2D；改 `displayName` 即改宠物显示名） |
+| `spritesheet.webp` | 精灵图包的美术素材（Live2D 包换成模型文件夹） |
 | `persona.md` | **人设**，可直接编辑调教宠物，重启生效 |
 | `lines.json` | 台词库 |
 | `voice/` | 语音音色配置 |
 | `memory/` | **这只宠物的长期记忆**（见下） |
 
-整个 `pets\<id>\` 文件夹可直接拷走（U 盘 / 网盘）备份，或迁移到另一台机器 —— 性格 + 记忆一起走。设置窗内可直接**选择 / 导入**新的宠物包。
+宠物包有两种渲染类型：**精灵图**（逐帧动图，`spritesheet.webp`）和 **Live2D**（Cubism 模型，需自备已获授权的模型文件，运行时依赖需单独 `pnpm live2d:setup` 获取，见下方「开发」一节）。设置窗内可直接**选择 / 导入**新的宠物包，两种类型混用不冲突。整个 `pets\<id>\` 文件夹可直接拷走（U 盘 / 网盘）备份，或迁移到另一台机器 —— 性格 + 记忆一起走。
 
-想自己做一只？完整流程（美术生成 / 人设 / 台词 / GPT-SoVITS 语音克隆）见 [docs/making-a-pet.md](docs/making-a-pet.md)。
+想自己做一只？完整流程（精灵图美术生成 / Live2D 模型接入 / 人设 / 台词 / GPT-SoVITS 语音克隆）见 [docs/making-a-pet.md](docs/making-a-pet.md)。
 
 ## 记忆与隐私
 
@@ -132,7 +133,7 @@ rm -rf node_modules && pnpm install
 
 ## 技术栈
 
-Electron · TypeScript（strict）· electron-vite · Vitest · electron-builder，主进程/渲染进程通过 `contextBridge` 暴露的最小 IPC 通信，`contextIsolation` + `sandbox` + 无 `nodeIntegration` 的安全基线。
+Electron · TypeScript（strict）· electron-vite · Vitest · electron-builder，主进程/渲染进程通过 `contextBridge` 暴露的最小 IPC 通信，`contextIsolation` + `sandbox` + 无 `nodeIntegration` 的安全基线。Live2D 渲染模式另加 PixiJS + Live2D Cubism SDK for Web（运行时不随仓库分发，见上文）。
 
 更多设计细节见 [PROGRESS.md](PROGRESS.md)。
 
