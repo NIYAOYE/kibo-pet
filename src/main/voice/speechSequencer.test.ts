@@ -50,13 +50,15 @@ function makeControllableSpeakOne() {
 function createSequencer(
   speakOne: (text: string, onChunk: (chunk: PcmChunk) => void) => Promise<VoiceSynthesisOutcome>,
   onChunk: (chunk: PcmChunk) => void = () => {},
-  stopUnderlying: () => void = () => {}
+  stopUnderlying: () => void = () => {},
+  maxConcurrent = 2
 ) {
   return createSpeechSequencer({
     speakOne,
     onChunk,
     getSettings: () => DEFAULT_TTS_SETTINGS,
-    stopUnderlying
+    stopUnderlying,
+    maxConcurrent
   })
 }
 
@@ -188,7 +190,30 @@ describe('createSpeechSequencer', () => {
     ])
   })
 
-  it('synthesizes at most two segments concurrently', async () => {
+  it('defaults to synthesizing one segment at a time (backends serialize inference)', async () => {
+    const controlled = makeControllableSpeakOne()
+    const sequencer = createSpeechSequencer({
+      speakOne: controlled.speakOne,
+      onChunk: () => {},
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      stopUnderlying: () => {}
+    })
+
+    sequencer.speak('first', () => {})
+    sequencer.speak('second', () => {})
+    sequencer.speak('third', () => {})
+    expect(controlled.calls).toEqual(['first'])
+
+    controlled.complete(0, 'skipped')
+    await flushMicrotasks()
+    expect(controlled.calls).toEqual(['first', 'second'])
+
+    controlled.complete(1, 'skipped')
+    await flushMicrotasks()
+    expect(controlled.calls).toEqual(['first', 'second', 'third'])
+  })
+
+  it('respects a configured maxConcurrent above the default', async () => {
     const controlled = makeControllableSpeakOne()
     const sequencer = createSequencer(controlled.speakOne)
 
@@ -321,7 +346,8 @@ describe('createSpeechSequencer', () => {
       onChunk: (chunk) => chunks.push(chunk.audioBase64),
       getSettings: () => DEFAULT_TTS_SETTINGS,
       stopUnderlying: () => {},
-      onProductionDone
+      onProductionDone,
+      maxConcurrent: 2
     })
 
     sequencer.speak('spoken segment', () => {})

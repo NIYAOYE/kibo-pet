@@ -89,7 +89,7 @@ describe('createVoiceProvider', () => {
     expect(outcome).toBe('spoken')
   })
 
-  it('翻译失败 → onError 收到消息,不调用 sidecar.speak', async () => {
+  it('翻译失败 → onError 收到消息,但仍按原文朗读(不整句丢弃),segments 标注真实源语言', async () => {
     const translate = vi.fn(async () => { throw new Error('翻译服务不可用') })
     const sidecar = fakeSidecar()
     const errors: string[] = []
@@ -99,9 +99,35 @@ describe('createVoiceProvider', () => {
       onError: (m) => errors.push(m)
     })
     const outcome = await synthesize(vp, '你好', () => {})
-    expect(sidecar.speak).not.toHaveBeenCalled()
+    expect(sidecar.speak).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '你好', segments: [{ lang: 'zh', text: '你好' }] }),
+      expect.any(Function), expect.any(Object)
+    )
     expect(errors[0]).toContain('翻译服务不可用')
-    expect(outcome).toBe('failed')
+    expect(outcome).toBe('spoken')
+  })
+
+  it('混合语言句子里只有一个片段翻译失败 → 只有该片段退回原文,其余已翻译片段和整句音频都不丢', async () => {
+    const translate = vi.fn(async (text: string) => {
+      if (text === ' 框架很好用') throw new Error('翻译服务不可用')
+      return `[${text}]`
+    })
+    const sidecar = fakeSidecar()
+    const errors: string[] = []
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate },
+      getSettings: () => ({ ...DEFAULT_TTS_SETTINGS, targetLanguage: 'ja' }),
+      onError: (m) => errors.push(m)
+    })
+    const outcome = await synthesize(vp, '我觉得 React 框架很好用', () => {})
+    const req = (sidecar.speak as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(req.segments).toEqual([
+      { lang: 'ja', text: '[我觉得 ]' },
+      { lang: 'en', text: 'React' },
+      { lang: 'zh', text: ' 框架很好用' }
+    ])
+    expect(errors[0]).toContain('翻译服务不可用')
+    expect(outcome).toBe('spoken')
   })
 
   it('sidecar.speak 失败 → onError 收到消息', async () => {

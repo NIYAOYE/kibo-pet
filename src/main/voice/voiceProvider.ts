@@ -30,14 +30,31 @@ export function createVoiceProvider(opts: {
 
     try {
       let toSpeak = speakable
+      // Populated only when translation actually ran, so each segment's `lang`
+      // reflects what really happened to it (translated vs. fell back to the
+      // original script) instead of re-guessing from the merged text below.
+      let translatedSegments: Array<{ lang: 'en' | 'zh' | 'ja'; text: string }> | null = null
+
       if (settings.targetLanguage !== 'auto' && needsTranslation(speakable, settings.targetLanguage)) {
+        const targetLanguage = settings.targetLanguage
         try {
           const scriptSegments = splitByScript(speakable)
-          const targetLanguage = settings.targetLanguage
-          const translated = await Promise.all(scriptSegments.map((s) =>
-            s.lang === 'en' ? s.text : opts.translator.translate(s.text, targetLanguage, ctrl.signal)
-          ))
-          toSpeak = translated.join('')
+          const resolved = await Promise.all(scriptSegments.map(async (s) => {
+            if (s.lang === 'en') return { lang: 'en' as const, text: s.text }
+            try {
+              const translated = await opts.translator.translate(s.text, targetLanguage, ctrl.signal)
+              return { lang: targetLanguage, text: translated }
+            } catch (e) {
+              if (ctrl.signal.aborted) throw e
+              // 只丢这一小段的翻译,不丢整句的朗读:该片段改为按原文的真实语种朗读
+              // (不能标成 targetLanguage——原文还是源语言,标错语言会导致 TTS 引擎处理
+              // 不了文字、大面积丢字漏句,见下方 segments 的同类注释)。
+              opts.onError(`部分内容翻译失败,该片段改为原文朗读:${String((e as Error)?.message ?? e)}`)
+              return { lang: detectSourceLanguage(s.text), text: s.text }
+            }
+          }))
+          toSpeak = resolved.map((s) => s.text).join('')
+          translatedSegments = resolved
         } catch (e) {
           if (ctrl.signal.aborted) return 'skipped'
           opts.onError(`翻译失败,朗读已跳过本段:${String((e as Error)?.message ?? e)}`)
@@ -55,7 +72,7 @@ export function createVoiceProvider(opts: {
           // 决定 TTS 引擎用哪种语言的发音去读这段文字(见 gsv_server.py/genie_server.py),标错
           // 语言会导致英文发音引擎处理不了中/日文字符,真机验证出来的现象是大面积丢字漏句。
           // 用 detectSourceLanguage 现场猜一下这段文字实际是什么语言。
-          segments: splitByScript(toSpeak).map((s) => ({
+          segments: translatedSegments ?? splitByScript(toSpeak).map((s) => ({
             lang: s.lang === 'en' ? 'en' : (settings.targetLanguage === 'auto' ? detectSourceLanguage(s.text) : settings.targetLanguage),
             text: s.text
           })),

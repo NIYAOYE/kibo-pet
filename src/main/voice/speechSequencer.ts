@@ -9,8 +9,20 @@ export interface SpeechSequencer {
   stop: () => void
 }
 
-/** The current sentence plus one prefetched sentence may synthesize at once. */
-const MAX_CONCURRENT = 2
+/**
+ * Both current TTS backends (gsv_server.py, genie_server.py) serialize
+ * inference behind a single process-wide lock, so a prefetched second request
+ * cannot actually make progress while the first is running — it just sits
+ * blocked on that lock. Its "first audio" timeout clock in voiceSidecar.ts
+ * starts at request-issue time, not at actual-processing start, so
+ * prefetching under a serialized backend causes the prefetched sentence to
+ * time out and drop its audio before it ever gets a chance to run (observed
+ * as dropped sentences — text shown, no audio — in longer replies). Default
+ * to synthesizing one sentence at a time; kept configurable so the
+ * order-preserving queue below can still be exercised against a backend that
+ * genuinely supports concurrent inference.
+ */
+const DEFAULT_MAX_CONCURRENT = 1
 
 interface QueueItem {
   seq: number
@@ -37,7 +49,10 @@ export function createSpeechSequencer(opts: {
   stopUnderlying: () => void
   /** The reply is sealed: every PCM chunk that will be forwarded has been forwarded. */
   onProductionDone?: () => void
+  /** Test-only override; production relies on DEFAULT_MAX_CONCURRENT. */
+  maxConcurrent?: number
 }): SpeechSequencer {
+  const maxConcurrent = opts.maxConcurrent ?? DEFAULT_MAX_CONCURRENT
   let nextSeq = 0
   let cursor = 0
   let inFlightCount = 0
@@ -163,7 +178,7 @@ export function createSpeechSequencer(opts: {
   }
 
   function pump(): void {
-    while (inFlightCount < MAX_CONCURRENT && pending.length > 0) {
+    while (inFlightCount < maxConcurrent && pending.length > 0) {
       startSynthesis(pending.shift()!)
     }
   }
