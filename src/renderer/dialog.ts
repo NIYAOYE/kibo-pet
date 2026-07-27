@@ -66,15 +66,43 @@ async function addFiles(files: Iterable<File>): Promise<void> {
   if (out.length) addPending(out)
 }
 
+/** 已渲染进 #history 的历史消息里,pet 一侧的小头像(buildRow 画的 .mini-avatar)是在
+ *  render() 那一刻用当时的 avatarDataUrl 直接画进 DOM 的静态背景图,不会跟着 avatarDataUrl
+ *  之后的变化自动刷新。main 侧切换宠物时 CHAT_UPDATE(历史消息)比 PET_SWITCHED 先到——
+ *  也就是 render() 总是先于 loadAvatar() 把 avatarDataUrl 更新成新宠物的头像执行一轮,
+ *  用旧头像画完了历史消息。所以 loadAvatar() 每次真正定下 avatarDataUrl 后,都要回头把
+ *  已经画出来的 .mini-avatar 就地刷新一遍,否则历史气泡的头像会一直停在切换前那只宠物上
+ *  (真机验收发现:两只宠物都设置过自定义头像后互相串了)。 */
+function refreshHistoryAvatars(): void {
+  const bg = avatarDataUrl ? `url(${avatarDataUrl})` : ''
+  document.querySelectorAll<HTMLElement>('#history .mini-avatar').forEach((el) => {
+    el.style.backgroundImage = bg
+  })
+}
+
 /** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;sprite 包缺 idle 动画、或宠物是
  *  live2d 类型(没有 spritesheet 可裁)时,退回主进程 listPetsForChat() 已经算好的当前活跃
- *  宠物头像(live2d 走 manifest.thumbnail,见 petAvatar.ts)——两条路径都必须显式赋值
- *  avatarEl.style.backgroundImage(哪怕是清空),不能提前 return,否则切换宠物后头像会
- *  停留在切换前那只宠物的画面上(真机验收发现的真实 bug,而不是设计如此)。 */
+ *  宠物头像(live2d 走 manifest.thumbnail,见 petAvatar.ts)——三条路径(自定义头像/sprite
+ *  裁剪/主进程退回)都必须显式赋值 avatarEl.style.backgroundImage(哪怕是清空)且不提前
+ *  return(用 handled 标记走到底),否则切换宠物后头像会停留在切换前那只宠物的画面上
+ *  (真机验收发现的真实 bug,而不是设计如此)。末尾统一调 refreshHistoryAvatars()。 */
 async function loadAvatar(): Promise<void> {
   const pet = (await window.petApi.getPet()).source
   petNameEl.textContent = pet.manifest.displayName
-  if (pet.type === 'sprite' && pet.manifest.animations.idle) {
+  // 自定义头像(用户点头像导入的)优先于两种包类型各自的默认头像来源——只有主进程的
+  // petAvatarCache 知道怎么裁 manifest.customAvatar,sprite 分支的本地裁剪逻辑不认它,
+  // 所以这里必须先去 listPetsForChat() 问一遍,命中就直接用、不再往下走默认分支。
+  let handled = false
+  if (pet.manifest.customAvatar) {
+    const items = await window.chatApi.listPetsForChat().catch(() => [])
+    const active = items.find((it) => it.active)
+    if (active?.avatarDataUrl) {
+      avatarDataUrl = active.avatarDataUrl
+      avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
+      handled = true
+    }
+  }
+  if (!handled && pet.type === 'sprite' && pet.manifest.animations.idle) {
     const idle = pet.manifest.animations.idle
     const rect = frameRect(pet.manifest.sheet, idle.row, 0)
     const img = new Image()
@@ -87,11 +115,14 @@ async function loadAvatar(): Promise<void> {
     ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h)
     avatarDataUrl = canvas.toDataURL()
     avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
-    return
+    handled = true
   }
-  const items = await window.chatApi.listPetsForChat().catch(() => [])
-  avatarDataUrl = items.find((it) => it.active)?.avatarDataUrl ?? ''
-  avatarEl.style.backgroundImage = avatarDataUrl ? `url(${avatarDataUrl})` : ''
+  if (!handled) {
+    const items = await window.chatApi.listPetsForChat().catch(() => [])
+    avatarDataUrl = items.find((it) => it.active)?.avatarDataUrl ?? ''
+    avatarEl.style.backgroundImage = avatarDataUrl ? `url(${avatarDataUrl})` : ''
+  }
+  refreshHistoryAvatars()
 }
 
 /** 左栏一行:头像(裁不出则退回 CSS 色块占位)+ 名字 + 末条预览;当前活跃宠物高亮且不可点。 */
@@ -212,6 +243,19 @@ function render(messages: ChatMessage[]): void {
   clearStatus()
   document.getElementById('streaming-row')?.remove()
   history.innerHTML = ''
+  if (messages.length === 0) {
+    const empty = document.createElement('div')
+    empty.id = 'empty-state'
+    const paw = document.createElement('div')
+    paw.className = 'es-paw'
+    paw.textContent = '🐾'
+    const text = document.createElement('div')
+    text.className = 'es-text'
+    text.textContent = '还没有聊天记录,跟TA说点什么吧'
+    empty.append(paw, text)
+    history.appendChild(empty)
+    return
+  }
   for (const group of groupMessages(messages)) {
     const groupEl = document.createElement('div')
     groupEl.className = 'group'
@@ -280,6 +324,23 @@ input.addEventListener('input', () => {
   input.style.height = `${input.scrollHeight}px`
   reportCollapsedHeight()
 })
+avatarEl.title = '点击更换头像'
+let avatarImporting = false
+avatarEl.addEventListener('click', () => { void importAvatar() })
+async function importAvatar(): Promise<void> {
+  if (avatarImporting) return
+  avatarImporting = true
+  try {
+    const ok = await window.chatApi.importCustomAvatar()
+    if (ok) {
+      await loadAvatar()
+      void refreshPetList()
+    }
+  } finally {
+    avatarImporting = false
+  }
+}
+
 pickBtn.addEventListener('click', async () => {
   const atts = await window.mediaApi.pickImage()
   if (atts.length) addPending(atts)

@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" />
+    <link rel="stylesheet" href="./theme.css" />
+    <style>
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+                   font-family: system-ui, sans-serif; font-size: 13px; user-select: none; }
+      #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column;
+               align-items: center; gap: 12px; padding: 16px;
+               border-radius: var(--radius-window); overflow: hidden;
+               background: var(--app-bg); box-shadow: var(--shadow-float); }
+      #title { align-self: flex-start; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+      #stage { position: relative; border-radius: 12px; overflow: hidden; background: #000;
+               box-shadow: 0 2px 10px rgba(120, 90, 200, 0.25); flex-shrink: 0; }
+      #stage canvas { display: block; }
+      /* 选框:box-shadow 铺满全窗当遮罩(和 regionOverlay 同一手法),裁在 #stage 圆角内 */
+      #sel { position: absolute; border: 2px solid #fff; border-radius: 4px; cursor: move;
+             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); }
+      #sel .handle { position: absolute; right: -8px; bottom: -8px; width: 14px; height: 14px;
+                     border-radius: 50%; background: #fff; border: 2px solid var(--accent);
+                     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); cursor: nwse-resize; }
+      #hint { font-size: 11px; color: var(--text-secondary); text-align: center; }
+      #btns { display: flex; gap: 10px; margin-top: auto; align-self: flex-end; }
+      button { border: none; border-radius: var(--radius-pill); padding: 7px 16px;
+               cursor: pointer; font-size: 12.5px; }
+      #cancelBtn { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary); }
+      #okBtn { background: var(--accent); color: #fff; font-weight: 600; }
+      #cancelBtn:hover { background: var(--accent-soft); }
+      #okBtn:hover { background: var(--accent-strong); }
+    </style>
+  </head>
+  <body>
+    <div id="panel">
+      <div id="title">调整头像显示区域</div>
+      <div id="stage">
+        <canvas id="canvas"></canvas>
+        <div id="sel"><div class="handle"></div></div>
+      </div>
+      <div id="hint">拖动方框移动 · 拖右下角圆点缩放 · 方框内的区域将作为头像</div>
+      <div id="btns">
+        <button id="cancelBtn" type="button">取消</button>
+        <button id="okBtn" type="button">确认</button>
+      </div>
+    </div>
+    <script type="module" src="./avatarCropper.ts"></script>
+  </body>
+</html>

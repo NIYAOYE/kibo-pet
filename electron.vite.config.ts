@@ -22,7 +22,8 @@ export default defineConfig({
           settings: resolve('src/renderer/settings.html'),
           overlay: resolve('src/renderer/regionOverlay.html'),
           todoPanel: resolve('src/renderer/todoPanel.html'),
-          bubble: resolve('src/renderer/bubble.html')
+          bubble: resolve('src/renderer/bubble.html'),
+          avatarCropper: resolve('src/renderer/avatarCropper.html')
         }
       }
     },

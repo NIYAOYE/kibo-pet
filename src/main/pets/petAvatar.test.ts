@@ -87,6 +87,57 @@ describe('createPetAvatarCache — live2d thumbnail branch', () => {
   })
 })
 
+describe('createPetAvatarCache — customAvatar 优先分支', () => {
+  it('customAvatar 存在且有效时优先于 sprite idle 首帧,返回非空 data URL', () => {
+    const dir = scratch()
+    writeFileSync(join(dir, 'sheet.webp'), fakePngBytes())
+    writeFileSync(join(dir, 'avatar-custom.png'), fakePngBytes())
+    const manifest = {
+      id: 'c1', displayName: 'C1', description: 'd', spritesheetPath: 'sheet.webp',
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } },
+      customAvatar: 'avatar-custom.png'
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const cache = createPetAvatarCache()
+    expect(cache.avatarOf(dir, 'c1')).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('customAvatar 存在且有效时优先于 live2d thumbnail,返回非空 data URL', () => {
+    const dir = scratch()
+    mkdirSync(join(dir, 'model'), { recursive: true })
+    writeFileSync(join(dir, 'thumbnail.png'), fakePngBytes())
+    writeFileSync(join(dir, 'avatar-custom.png'), fakePngBytes())
+    const manifest = {
+      schemaVersion: 2, id: 'c2', displayName: 'C2', description: 'd', thumbnail: 'thumbnail.png',
+      customAvatar: 'avatar-custom.png',
+      render: { type: 'live2d', model: 'model/c2.model3.json', viewport: { width: 1, height: 1, resolutionCap: 1 },
+        transform: { scale: 1, offsetX: 0, offsetY: 0, anchorX: 0, anchorY: 0, bubbleAnchorX: 0, bubbleAnchorY: 0 },
+        interaction: { mirrorOnWalk: false, mouseTracking: false, lipSyncParameter: 'p' }, stateMap: {} }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const cache = createPetAvatarCache()
+    expect(cache.avatarOf(dir, 'c2')).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('customAvatar 路径穿越出 petDir → 返回空字符串,不读取外部文件(即便穿越目标真实存在)', () => {
+    const dir = scratch()
+    const outsideDir = scratch()
+    const outsideFile = join(outsideDir, 'secret.png')
+    writeFileSync(outsideFile, fakePngBytes())
+    const traversalRelPath = relative(dir, outsideFile)
+    const manifest = {
+      id: 'c3', displayName: 'C3', description: 'd', spritesheetPath: 'sheet.webp',
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } },
+      customAvatar: traversalRelPath
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const cache = createPetAvatarCache()
+    expect(cache.avatarOf(dir, 'c3')).toBe('')
+  })
+})
+
 describe('createPetAvatarCache — sprite spritesheet 分支', () => {
   it('spritesheetPath 路径穿越出 petDir → 返回空字符串,不读取外部文件(即便穿越目标真实存在)', () => {
     const dir = scratch()

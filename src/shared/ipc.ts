@@ -43,6 +43,10 @@ export const IPC = {
   OVERLAY_INIT: 'overlay:init',
   OVERLAY_SUBMIT: 'overlay:submit',
   OVERLAY_CANCEL: 'overlay:cancel',
+  PET_IMPORT_AVATAR: 'pet:import-avatar',
+  AVATAR_CROP_INIT: 'avatar-crop:init',
+  AVATAR_CROP_SUBMIT: 'avatar-crop:submit',
+  AVATAR_CROP_CANCEL: 'avatar-crop:cancel',
   LIST_PETS: 'pets:list',
   STAGE_IMPORT_PET: 'pets:stage-import',
   COMMIT_STAGED_IMPORT: 'pets:commit-staged-import',
@@ -130,6 +134,15 @@ export interface OverlayApi {
   cancel(): void
 }
 
+export interface AvatarCropInit { imageDataUrl: string }
+/** 头像裁剪弹窗专用:与 OverlayApi 结构相似但语义不同(提交的是最终裁好的图,不是矩形),
+ *  故不复用 OverlayApi/OVERLAY_* 通道,避免混淆。 */
+export interface AvatarCropApi {
+  onInit(cb: (d: AvatarCropInit) => void): void
+  submit(croppedDataUrl: string): void
+  cancel(): void
+}
+
 export interface Live2DTransformPatch {
   scale: number
   offsetX: number
@@ -208,6 +221,9 @@ export interface ChatApi {
   switchPet(id: string): Promise<boolean>
   /** 切换完成后主进程通知,渲染层据此刷新右栏头部 + 左栏高亮 */
   onSwitched(cb: (p: PetSwitchedPayload) => void): void
+  /** 点头像触发:弹原生文件选择器 → 裁剪弹窗 → 写入当前宠物的自定义头像。
+   *  返回是否成功导入(用户取消/失败均为 false,调用方不必细分原因)。 */
+  importCustomAvatar(): Promise<boolean>
 }
 
 export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean; activePetVoice: PetVoice | undefined }
@@ -361,7 +377,7 @@ declare global {
   interface Window {
     petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi
     todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi; genieVoiceApi: GenieVoiceApi
-    translateVoiceApi: TranslateVoiceApi
+    translateVoiceApi: TranslateVoiceApi; avatarCropApi: AvatarCropApi
   }
 }
 

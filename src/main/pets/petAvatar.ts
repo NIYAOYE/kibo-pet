@@ -13,6 +13,8 @@ export function resolvePetDir(petId: string, dirs: { bundledPetsDir: string; use
 }
 
 /** 从宠物包裁小圆头像的 data URL,按源文件 mtime 缓存。
+ *  自定义头像(manifest.customAvatar,用户在对话框头像上点出来导入的)优先于两种包类型
+ *  各自的默认头像来源。
  *  sprite 包:裁 spritesheet 的 idle 首帧。
  *  live2d 包:读 manifest.thumbnail 静态图(若提供);无该字段则没有头像可裁。
  *  webp/图片解码失败、缺 idle 动画、缺 thumbnail 字段 → 返回 ''(渲染层退回色块占位)。 */
@@ -23,6 +25,23 @@ export function createPetAvatarCache(): { avatarOf: (petDir: string, petId: stri
       try {
         const manifestPath = join(petDir, 'pet.json')
         const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+        const customAvatar = typeof raw?.customAvatar === 'string' ? raw.customAvatar : undefined
+        if (customAvatar) {
+          // 同一份 isPathSafe 防御纵深:customAvatar 是我们自己写入 pet.json 的,但读取时
+          // 仍按外部输入对待(万一 pet.json 被手工改过),和 thumbnail/spritesheetPath 一致。
+          if (!isPathSafe(petDir, customAvatar)) {
+            throw new Error(`customAvatar 路径不安全:${customAvatar}`)
+          }
+          const avatarPath = join(petDir, customAvatar)
+          const mtimeMs = statSync(avatarPath).mtimeMs
+          const hit = cache.get(petId)
+          if (hit && hit.mtimeMs === mtimeMs) return hit.url
+          const img = nativeImage.createFromPath(avatarPath)
+          if (img.isEmpty()) { cache.set(petId, { mtimeMs, url: '' }); return '' }
+          const url = img.resize({ width: AVATAR_PX, height: AVATAR_PX, quality: 'good' }).toDataURL()
+          cache.set(petId, { mtimeMs, url })
+          return url
+        }
         if (isLive2DManifestRaw(raw)) {
           const manifest = parseLive2DManifest(raw)
           if (!manifest.thumbnail) return ''

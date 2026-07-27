@@ -70,6 +70,7 @@ import { loadTranscript } from '../memory/transcriptStore'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
+import { openAvatarCropper } from '../media/avatarCropOverlay'
 import { DEFAULT_SETTINGS, type TtsBackend } from '@shared/llm'
 import type { ChatSendAttachment } from '@shared/ipc'
 import type { TodoItem } from '@shared/todo'
@@ -258,6 +259,8 @@ export async function startShell(): Promise<void> {
   const bubbleHtml = join(dirname, '../renderer/bubble.html')
   const overlayHtml = join(dirname, '../renderer/regionOverlay.html')
   const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
+  const avatarCropperHtml = join(dirname, '../renderer/avatarCropper.html')
+  const avatarCropperUrl = rendererUrl ? `${rendererUrl}/avatarCropper.html` : undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
   const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
@@ -1068,6 +1071,45 @@ export async function startShell(): Promise<void> {
     const [w, h] = petWin.getSize()
     const display = screen.getDisplayMatching({ x, y, width: w, height: h })
     return captureRegion({ preload, overlayHtml, overlayUrl, display })
+  })
+
+  // 点对话框头像触发:原生文件选择器 → 裁剪弹窗 → 写入当前宠物的自定义头像。
+  // 只对"当前激活宠物"生效——ensurePetHome() 保证激活宠物在 userData 下必有可写副本,
+  // 左栏未激活的宠物不一定有(可能仍指向内置只读包),故头像导入入口只挂在头部大头像上。
+  ipcMain.handle(IPC.PET_IMPORT_AVATAR, async (): Promise<boolean> => {
+    const r = await electronDialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }]
+    })
+    if (r.canceled || r.filePaths.length === 0) return false
+    const filePath = r.filePaths[0]
+    let prepped: { mimeType: string; dataBase64: string }
+    try {
+      prepped = prepareImage({ mimeType: mimeFromPath(filePath), dataBase64: readFileSync(filePath).toString('base64') }, 900)
+    } catch (e) {
+      console.warn('[avatar] 读取/预处理头像原图失败', filePath, e)
+      return false
+    }
+    const cropped = await openAvatarCropper({
+      preload,
+      cropperHtml: avatarCropperHtml,
+      cropperUrl: avatarCropperUrl,
+      imageDataUrl: `data:${prepped.mimeType};base64,${prepped.dataBase64}`
+    })
+    if (!cropped) return false
+    const match = /^data:image\/png;base64,(.+)$/.exec(cropped)
+    if (!match) return false
+    try {
+      writeFileSync(join(session.petDir, 'avatar-custom.png'), Buffer.from(match[1], 'base64'))
+      const petJsonPath = join(session.petDir, 'pet.json')
+      const raw = JSON.parse(readFileSync(petJsonPath, 'utf-8'))
+      raw.customAvatar = 'avatar-custom.png'
+      writeFileSync(petJsonPath, JSON.stringify(raw, null, 2), 'utf-8')
+    } catch (e) {
+      console.warn('[avatar] 写入自定义头像失败', e)
+      return false
+    }
+    return true
   })
 
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())

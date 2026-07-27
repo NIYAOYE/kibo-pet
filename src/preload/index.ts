@@ -4,6 +4,7 @@ import {
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
+  type AvatarCropApi, type AvatarCropInit,
   type BubbleApi, type BubblePlace, type ContextSignalKind,
   type VoiceApi, type VoiceInstallProgress, type VoicePlaybackChunk,
   type GenieVoiceApi, type GenieInstallProgress,
@@ -98,7 +99,8 @@ const chatApi: ChatApi = {
   onSwitched: (cb: (p: PetSwitchedPayload) => void): void => {
     ipcRenderer.removeAllListeners(IPC.PET_SWITCHED)
     ipcRenderer.on(IPC.PET_SWITCHED, (_e, p: PetSwitchedPayload) => cb(p))
-  }
+  },
+  importCustomAvatar: (): Promise<boolean> => ipcRenderer.invoke(IPC.PET_IMPORT_AVATAR)
 }
 
 const settingsApi: SettingsApi = {
@@ -132,6 +134,15 @@ const overlayApi: OverlayApi = {
   },
   submit: (rect: OverlayRect): void => ipcRenderer.send(IPC.OVERLAY_SUBMIT, rect),
   cancel: (): void => ipcRenderer.send(IPC.OVERLAY_CANCEL)
+}
+
+const avatarCropApi: AvatarCropApi = {
+  onInit: (cb: (d: AvatarCropInit) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.AVATAR_CROP_INIT)
+    ipcRenderer.on(IPC.AVATAR_CROP_INIT, (_e, d: AvatarCropInit) => cb(d))
+  },
+  submit: (croppedDataUrl: string): void => ipcRenderer.send(IPC.AVATAR_CROP_SUBMIT, croppedDataUrl),
+  cancel: (): void => ipcRenderer.send(IPC.AVATAR_CROP_CANCEL)
 }
 
 const todoApi: TodoApi = {
@@ -245,3 +256,4 @@ contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)
 contextBridge.exposeInMainWorld('voiceApi', voiceApi)
 contextBridge.exposeInMainWorld('genieVoiceApi', genieVoiceApi)
 contextBridge.exposeInMainWorld('translateVoiceApi', translateVoiceApi)
+contextBridge.exposeInMainWorld('avatarCropApi', avatarCropApi)

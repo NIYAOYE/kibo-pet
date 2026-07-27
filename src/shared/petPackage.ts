@@ -11,6 +11,8 @@ export interface PetManifest {
   id: string; displayName: string; description: string; spritesheetPath: string
   sheet: PetSheet; animations: Record<string, PetAnimation>
   voice?: PetVoice
+  /** 用户自定义头像(相对 petDir 的文件名),存在时优先于 sprite idle 首帧/live2d thumbnail。 */
+  customAvatar?: string
 }
 export interface FrameRect { x: number; y: number; w: number; h: number }
 
@@ -68,6 +70,9 @@ export function parsePetManifest(raw: unknown): PetManifest {
     assert(typeof a.loop === 'boolean', `animation ${key}.loop must be a boolean`)
   }
   assertVoiceIfPresent(m)
+  if (m.customAvatar !== undefined) {
+    assert(typeof m.customAvatar === 'string' && m.customAvatar.length > 0, 'manifest.customAvatar must be a non-empty string when present')
+  }
   return m as PetManifest
 }
 
@@ -107,6 +112,8 @@ export interface Live2DManifest {
   thumbnail?: string
   render: Live2DRender
   voice?: PetVoice
+  /** 用户自定义头像(相对 petDir 的文件名),存在时优先于 thumbnail。 */
+  customAvatar?: string
 }
 
 /** 便宜的判别式检查,不做完整校验;用来决定该走哪个解析器。 */
@@ -169,6 +176,9 @@ export function parseLive2DManifest(raw: unknown): Live2DManifest {
   }
 
   assertVoiceIfPresent(m)
+  if (m.customAvatar !== undefined) {
+    assert(typeof m.customAvatar === 'string' && m.customAvatar.length > 0, 'manifest.customAvatar must be a non-empty string when present')
+  }
   return m as Live2DManifest
 }
 
