@@ -6,6 +6,9 @@ export interface PetHomeResult {
   petHome: string
   /** 该宠物的长期记忆目录:petHome/memory */
   memoryDir: string
+  /** 文件操作工具的沙箱工作目录:petHome/workspace。不在这里创建——只有
+   *  fileTools 首次真正写入时才 mkdir,存在与否不该影响宠物首启/迁移流程。 */
+  workspaceDir: string
 }
 
 export interface PetHomeOptions {
@@ -26,6 +29,7 @@ export function ensurePetHome(opts: PetHomeOptions): PetHomeResult {
   const petsRoot = join(opts.userDataDir, 'pets')
   const petHome = join(petsRoot, opts.activePetId)
   const memoryDir = join(petHome, 'memory')
+  const workspaceDir = join(petHome, 'workspace')
 
   if (!existsSync(petHome)) {
     const src = join(opts.bundledPetsDir, opts.activePetId)
@@ -41,5 +45,5 @@ export function ensurePetHome(opts: PetHomeOptions): PetHomeResult {
     renameSync(opts.legacyMemoryDir, memoryDir)
   }
 
-  return { petHome, memoryDir }
+  return { petHome, memoryDir, workspaceDir }
 }

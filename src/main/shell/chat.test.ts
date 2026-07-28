@@ -18,6 +18,7 @@ const settings: AppSettings = {
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
   firecrawl: { enabled: false },
+  fileTools: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
   appFocusLlmOpener: { enabled: false },
@@ -66,6 +67,7 @@ function makeStore(
   const finished = new Promise<void>((r) => { done = r })
   const store = createChatStore({
     petDir: join(dir, 'no-pet'), // persona 缺失退化为空,无碍
+    workspaceDir: join(dir, 'workspace'),
     skills: { list: () => [], body: () => null },
     memory,
     todoStore: {
@@ -340,6 +342,25 @@ describe('desktopControl 工具挂载与轮数上限', () => {
     expect(seen[0].maxOutputTokens).toBe(1024)
   })
 
+  it('fileTools 开启时 maxOutputTokens 提升,避免 write_file 内容被截断', async () => {
+    settings.fileTools = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBeGreaterThan(1024)
+    settings.fileTools = { enabled: false } // 复位
+  })
+
+  it('fileTools 关闭时 maxOutputTokens 保持默认 1024', async () => {
+    settings.fileTools = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].maxOutputTokens).toBe(1024)
+  })
+
   it('browserControl 关闭时不挂载,即便注入了 buildBrowserTools', async () => {
     settings.browserControl = { enabled: false, mode: 'isolated' }
     const seen: StreamChatRequest[] = []
@@ -449,6 +470,7 @@ describe('语音接线', () => {
     const finished = new Promise<void>((r) => { done = r })
     const store = createChatStore({
       petDir: join(dir, 'no-pet'),
+      workspaceDir: join(dir, 'workspace'),
       skills: { list: () => [], body: () => null },
       memory,
       todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
@@ -487,6 +509,7 @@ describe('语音接线', () => {
     const provider = createFakeProvider({ script: [[{ type: 'text', text: '第一句。第二句!' }, { type: 'text', text: '第三句剩余' }, { type: 'done' }]] })
     const store = createChatStore({
       petDir: join(dir, 'no-pet'),
+      workspaceDir: join(dir, 'workspace'),
       skills: { list: () => [], body: () => null },
       memory,
       todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
@@ -525,6 +548,7 @@ describe('语音接线', () => {
     const provider = createFakeProvider({ script: [[{ type: 'text', text: '第一句。第二句!' }, { type: 'text', text: '第三句剩余' }, { type: 'done' }]] })
     const store = createChatStore({
       petDir: join(dir, 'no-pet'),
+      workspaceDir: join(dir, 'workspace'),
       skills: { list: () => [], body: () => null },
       memory,
       todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
@@ -560,6 +584,7 @@ describe('语音接线', () => {
     const stopped: boolean[] = []
     const store = createChatStore({
       petDir: join(dir, 'no-pet'),
+      workspaceDir: join(dir, 'workspace'),
       skills: { list: () => [], body: () => null },
       memory,
       todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
@@ -914,5 +939,27 @@ describe('Live2D performance tool mounting', () => {
     await finished
 
     expect(seen[0].tools?.map((tool) => tool.name)).not.toContain('live2d_perform')
+  })
+})
+
+describe('fileTools 工具挂载', () => {
+  it('fileTools 关闭时不挂载 write_file', async () => {
+    settings.fileTools = { enabled: false }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    expect(seen[0].tools?.map((t) => t.name) ?? []).not.toContain('write_file')
+  })
+
+  it('fileTools 开启时挂载全部 5 个文件工具', async () => {
+    settings.fileTools = { enabled: true }
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
+    store.handleSend({ text: 'hi' })
+    await finished
+    const names = seen[0].tools?.map((t) => t.name) ?? []
+    expect(names).toEqual(expect.arrayContaining(['list_dir', 'read_file', 'write_file', 'edit_file', 'delete_file']))
+    settings.fileTools = { enabled: false } // 复位,避免影响其它用例
   })
 })

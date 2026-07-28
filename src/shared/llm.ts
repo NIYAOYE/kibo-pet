@@ -37,6 +37,8 @@ export interface MemorySettings { embedding: EmbeddingSettings | null }
 
 export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
+export interface FileToolsSettings { enabled: boolean }
+
 export interface DesktopControlSettings { enabled: boolean }
 
 export interface AppFocusLlmOpenerSettings { enabled: boolean }
@@ -113,11 +115,11 @@ export const DEFAULT_TTS_TRANSLATE_SETTINGS: TtsTranslateSettings = {
   runtimeInstallPath: ''
 }
 
-export const SETTINGS_SCHEMA_VERSION = 16
+export const SETTINGS_SCHEMA_VERSION = 17
 
 export interface Live2DSettings { mouseTrackingEnabled: boolean }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; ttsTranslate: TtsTranslateSettings; live2d: Live2DSettings }
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; firecrawl: FirecrawlSettings; fileTools: FileToolsSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; appFocusLlmOpener: AppFocusLlmOpenerSettings; gpuAcceleration: GpuAccelerationSettings; tts: TtsSettings; ttsGenie: GenieTtsSettings; ttsTranslate: TtsTranslateSettings; live2d: Live2DSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -126,6 +128,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
   firecrawl: { enabled: false },
+  fileTools: { enabled: false },
   desktopControl: { enabled: false },
   browserControl: { enabled: false, mode: 'isolated' },
   appFocusLlmOpener: { enabled: false },

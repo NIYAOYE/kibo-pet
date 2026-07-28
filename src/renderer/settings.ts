@@ -15,6 +15,7 @@ const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
 const firecrawlEnabled = $<HTMLInputElement>('firecrawlEnabled')
+const fileToolsEnabled = $<HTMLInputElement>('fileToolsEnabled')
 const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
 const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
 const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
@@ -556,6 +557,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
+      fileTools: { enabled: fileToolsEnabled.checked },
       desktopControl: { enabled: desktopControlEnabled.checked },
       browserControl: {
         enabled: browserControlEnabled.checked,
@@ -609,6 +611,7 @@ void (async () => {
   if (snap.settings.firecrawl.baseURL) firecrawlBaseURL.value = snap.settings.firecrawl.baseURL
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
+  fileToolsEnabled.checked = snap.settings.fileTools.enabled
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   gpuAccelerationExperimental.checked = snap.settings.gpuAcceleration.experimental
   live2dMouseTrackingEnabled.checked = snap.settings.live2d.mouseTrackingEnabled

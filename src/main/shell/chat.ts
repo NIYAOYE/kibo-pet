@@ -16,6 +16,7 @@ import { createTavilyBackend } from '../tools/searchBackends/tavily'
 import { createReadClipboardTool, createWriteClipboardTool } from '../tools/clipboardTools'
 import { createTodoTools } from '../tools/todoTools'
 import { createWeatherTool, createOpenMeteoClient } from '../tools/weather'
+import { createFileTools } from '../tools/fileTools'
 import { createFirecrawlClient } from '../tools/firecrawl/firecrawlClient'
 import { createReadUrlTool } from '../tools/firecrawl/readUrl'
 import { createExtractFromUrlTool } from '../tools/firecrawl/extractFromUrl'
@@ -42,6 +43,7 @@ export interface ChatStore {
 
 export function createChatStore(opts: {
   petDir: string
+  workspaceDir: string
   skills: SkillIndex
   memory: MemoryManager
   todoStore: TodoStore
@@ -164,6 +166,9 @@ export function createChatStore(opts: {
         ...createTodoTools({ store: opts.todoStore, now: () => Date.now() }),
         createWeatherTool(createOpenMeteoClient())
       ]
+      if (settings.fileTools.enabled) {
+        tools.push(...createFileTools({ workspaceDir: opts.workspaceDir }))
+      }
       if (settings.firecrawl.enabled && opts.getFirecrawlKey()) {
         const fc = createFirecrawlClient({ getKey: opts.getFirecrawlKey, baseURL: settings.firecrawl.baseURL })
         tools.push(createReadUrlTool(fc), createExtractFromUrlTool(fc))
@@ -206,7 +211,8 @@ export function createChatStore(opts: {
           // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
           const lastUser = messages[messages.length - 1]
           if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images
-          const needsBiggerBudget = settings.desktopControl.enabled || settings.browserControl.enabled
+          const needsBiggerBudget =
+            settings.desktopControl.enabled || settings.browserControl.enabled || settings.fileTools.enabled
           // 浏览器任务比桌面点击任务更容易多耗轮次(每次页面跳转/被弹窗挡住都要多试几次才能
           // 绕开),真机验收撞过 20 轮上限——20 轮改成两档:仅 desktopControl 时维持 20(未观察到
           // 问题,不动它),browserControl 开启时给 40(即便同时也开了 desktopControl)。

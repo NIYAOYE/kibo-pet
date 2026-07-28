@@ -71,4 +71,13 @@ describe('ensurePetHome', () => {
     expect(() => ensurePetHome({ userDataDir, bundledPetsDir: join(bundledRoot, 'pets'), activePetId: 'ghost' }))
       .toThrow(/not found/i)
   })
+
+  it('workspaceDir 是 petHome/workspace,且不会被提前创建', () => {
+    const userDataDir = scratch()
+    const bundledRoot = scratch()
+    const bundledPetsDir = makeBundledPet(bundledRoot, 'luluka')
+    const { petHome, workspaceDir } = ensurePetHome({ userDataDir, bundledPetsDir, activePetId: 'luluka' })
+    expect(workspaceDir).toBe(join(petHome, 'workspace'))
+    expect(existsSync(workspaceDir)).toBe(false)
+  })
 })

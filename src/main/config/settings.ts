@@ -42,6 +42,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     enabled: fc.enabled === true,
     baseURL: typeof fc.baseURL === 'string' && fc.baseURL.trim().length > 0 ? fc.baseURL.trim() : undefined
   }
+  const ft = (r.fileTools ?? {}) as Record<string, unknown>
+  const fileTools = { enabled: ft.enabled === true }
   const dc = (r.desktopControl ?? {}) as Record<string, unknown>
   const desktopControl = { enabled: dc.enabled === true }
   const bc = (r.browserControl ?? {}) as Record<string, unknown>
@@ -92,6 +94,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     search: { backend },
     memory: { embedding },
     firecrawl,
+    fileTools,
     desktopControl,
     browserControl,
     appFocusLlmOpener,

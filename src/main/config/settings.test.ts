@@ -23,7 +23,7 @@ describe('settings', () => {
 
   it('round-trips save then load', () => {
     const file = join(tmp(), 'settings.json')
-    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, firecrawl: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, gpuAcceleration: { experimental: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie, ttsTranslate: DEFAULT_SETTINGS.ttsTranslate, live2d: { mouseTrackingEnabled: true } }
+    const s = { schemaVersion: SETTINGS_SCHEMA_VERSION, activePetId: 'luluka', provider: { kind: 'openai-compat' as const, baseURL: 'http://x/v1', model: 'gpt-4o-mini' }, search: { backend: 'duckduckgo' as const }, memory: { embedding: null }, firecrawl: { enabled: false }, fileTools: { enabled: false }, desktopControl: { enabled: false }, browserControl: { enabled: false, mode: 'isolated' as const }, appFocusLlmOpener: { enabled: false }, gpuAcceleration: { experimental: false }, tts: DEFAULT_SETTINGS.tts, ttsGenie: DEFAULT_SETTINGS.ttsGenie, ttsTranslate: DEFAULT_SETTINGS.ttsTranslate, live2d: { mouseTrackingEnabled: true } }
     saveSettings(file, s)
     expect(loadSettings(file)).toEqual(s)
   })
@@ -61,9 +61,9 @@ describe('activePetId', () => {
     const f = tmpSettingsFile({ activePetId: '../../evil' })
     expect(loadSettings(f).activePetId).toBe('luluka')
   })
-  it('归一化后 schemaVersion 升为 16', () => {
+  it('归一化后 schemaVersion 升为 17', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(16)
+    expect(loadSettings(f).schemaVersion).toBe(17)
   })
 })
 
@@ -89,9 +89,9 @@ describe('browserControl', () => {
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '   ' } })).browserControl.chromePath).toBeUndefined()
     expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: 123 } })).browserControl.chromePath).toBeUndefined()
   })
-  it('归一化后 schemaVersion 升为 16', () => {
+  it('归一化后 schemaVersion 升为 17', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(16)
+    expect(loadSettings(f).schemaVersion).toBe(17)
   })
 })
 
@@ -138,9 +138,9 @@ describe('ttsGenie', () => {
     const f = tmpSettingsFile({ ttsGenie: { runtimeInstallPath: 123 } })
     expect(loadSettings(f).ttsGenie).toEqual({ runtimeInstallPath: '' })
   })
-  it('归一化后 schemaVersion 升为 16', () => {
+  it('归一化后 schemaVersion 升为 17', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
-    expect(loadSettings(f).schemaVersion).toBe(16)
+    expect(loadSettings(f).schemaVersion).toBe(17)
   })
 })
 

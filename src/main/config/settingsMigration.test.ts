@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(16)
+    expect(s.schemaVersion).toBe(17)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(16)
+    expect(s.schemaVersion).toBe(17)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(16)
+    expect(s.schemaVersion).toBe(17)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')
@@ -116,7 +116,7 @@ describe('MVP-12 firecrawl 迁移', () => {
       search: { backend: 'duckduckgo' },
       memory: { embedding: null }
     })
-    expect(out.schemaVersion).toBe(16)
+    expect(out.schemaVersion).toBe(17)
     expect(out.firecrawl).toEqual({ enabled: false, baseURL: undefined })
   })
 
@@ -143,7 +143,7 @@ describe('desktopControl 迁移', () => {
       memory: { embedding: null },
       firecrawl: { enabled: false }
     })
-    expect(out.schemaVersion).toBe(16)
+    expect(out.schemaVersion).toBe(17)
     expect(out.desktopControl).toEqual({ enabled: false })
   })
 
@@ -155,6 +155,31 @@ describe('desktopControl 迁移', () => {
   it('enabled 非布尔退化为 false', () => {
     const out = normalizeSettings({ desktopControl: { enabled: 'yes' } })
     expect(out.desktopControl.enabled).toBe(false)
+  })
+})
+
+describe('fileTools 迁移', () => {
+  it('缺失 fileTools 时补默认 { enabled:false } 且 schemaVersion 升到 17', () => {
+    const out = normalizeSettings({
+      schemaVersion: 6,
+      activePetId: 'luluka',
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: null },
+      firecrawl: { enabled: false }
+    })
+    expect(out.schemaVersion).toBe(17)
+    expect(out.fileTools).toEqual({ enabled: false })
+  })
+
+  it('保留已存的 enabled:true', () => {
+    const out = normalizeSettings({ fileTools: { enabled: true } })
+    expect(out.fileTools.enabled).toBe(true)
+  })
+
+  it('enabled 非布尔退化为 false', () => {
+    const out = normalizeSettings({ fileTools: { enabled: 'yes' } })
+    expect(out.fileTools.enabled).toBe(false)
   })
 })
 
@@ -170,7 +195,7 @@ describe('tts 迁移', () => {
       desktopControl: { enabled: false },
       browserControl: { enabled: false, mode: 'isolated' }
     })
-    expect(out.schemaVersion).toBe(16)
+    expect(out.schemaVersion).toBe(17)
     expect(out.tts).toEqual({
       enabled: false, backend: 'gsv-tts-lite', runtimeInstallPath: '', device: 'auto', useFlashAttn: false,
       targetLanguage: 'auto', playbackTrigger: 'batch', synthesisChunking: 'sentence', textSplit: 'smart',
@@ -220,7 +245,7 @@ describe('tts 迁移', () => {
         speed: 1, noiseScale: 0.5, temperature: 1, topK: 15, topP: 1, repetitionPenalty: 1.35
       }
     })
-    expect(out.schemaVersion).toBe(16)
+    expect(out.schemaVersion).toBe(17)
     expect(out.tts.textSplit).toBe('smart')
     expect(out.tts.targetLanguage).toBe('ja') // 已有配置不受影响
   })

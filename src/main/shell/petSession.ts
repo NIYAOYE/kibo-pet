@@ -124,7 +124,7 @@ export interface PetSession {
 }
 
 export function createPetSession(petId: string, deps: PetSessionDeps): PetSession {
-  const { petHome, memoryDir } = ensurePetHome({
+  const { petHome, memoryDir, workspaceDir } = ensurePetHome({
     userDataDir: deps.userData,
     bundledPetsDir: deps.bundledPetsDir,
     activePetId: petId,
@@ -344,6 +344,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
 
   const chat = createChatStore({
     petDir,
+    workspaceDir,
     skills: deps.skills,
     memory,
     todoStore: deps.todoStore,

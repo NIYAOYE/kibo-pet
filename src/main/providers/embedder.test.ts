@@ -60,6 +60,7 @@ describe('resolveEmbeddingKey', () => {
     search: { backend: 'duckduckgo' },
     memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null },
     firecrawl: { enabled: false },
+    fileTools: { enabled: false },
     desktopControl: { enabled: false },
     browserControl: { enabled: false, mode: 'isolated' },
     appFocusLlmOpener: { enabled: false },
