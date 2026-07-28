@@ -114,6 +114,7 @@ const settingsApi: SettingsApi = {
   confirmBrowserControl: (): Promise<boolean> => ipcRenderer.invoke(IPC.CONFIRM_BROWSER_CONTROL),
   confirmCdpMode: (): Promise<boolean> => ipcRenderer.invoke(IPC.CONFIRM_CDP_MODE),
   openMemoryDir: (): void => ipcRenderer.send(IPC.OPEN_MEMORY_DIR),
+  openWorkspaceDir: (): void => ipcRenderer.send(IPC.OPEN_WORKSPACE_DIR),
   testConnection: (provider: ProviderSettings, key: string) => ipcRenderer.invoke(IPC.TEST_CONNECTION, { provider, key }),
   listPets: () => ipcRenderer.invoke(IPC.LIST_PETS),
   stageImportPet: () => ipcRenderer.invoke(IPC.STAGE_IMPORT_PET),

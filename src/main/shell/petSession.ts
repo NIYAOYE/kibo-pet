@@ -111,6 +111,7 @@ export interface PetSession {
   petId: string
   petDir: string
   memoryDir: string
+  workspaceDir: string
   resourceToken: string
   memory: MemoryManager
   chat: ChatStore
@@ -389,6 +390,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     petId,
     petDir,
     memoryDir,
+    workspaceDir,
     resourceToken,
     memory,
     chat,

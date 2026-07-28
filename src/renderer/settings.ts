@@ -417,6 +417,7 @@ browserControlMode.addEventListener('change', () => {
   })()
 })
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
+$<HTMLButtonElement>('openWorkspaceDir').addEventListener('click', () => window.settingsApi.openWorkspaceDir())
 
 async function refreshPets(selectId: string): Promise<void> {
   const pets = await window.settingsApi.listPets()

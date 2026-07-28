@@ -38,6 +38,7 @@ export const IPC = {
   CONFIRM_BROWSER_CONTROL: 'settings:confirm-browser-control',
   CONFIRM_CDP_MODE: 'settings:confirm-cdp-mode',
   OPEN_MEMORY_DIR: 'settings:open-memory-dir',
+  OPEN_WORKSPACE_DIR: 'settings:open-workspace-dir',
   MEDIA_PICK_IMAGE: 'media:pick-image',
   MEDIA_CAPTURE_REGION: 'media:capture-region',
   OVERLAY_INIT: 'overlay:init',
@@ -286,6 +287,7 @@ export interface SettingsApi {
   confirmBrowserControl(): Promise<boolean>
   confirmCdpMode(): Promise<boolean>
   openMemoryDir(): void
+  openWorkspaceDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
   listPets(): Promise<PetSummary[]>
   /** 弹文件夹选择器 → 校验 → 复制到 .staging。sprite 包在这一步内部就直接提交完了

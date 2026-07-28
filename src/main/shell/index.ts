@@ -1196,6 +1196,10 @@ export async function startShell(): Promise<void> {
     mkdirSync(session.memoryDir, { recursive: true })
     void electronShell.openPath(session.memoryDir)
   })
+  ipcMain.on(IPC.OPEN_WORKSPACE_DIR, () => {
+    mkdirSync(session.workspaceDir, { recursive: true })
+    void electronShell.openPath(session.workspaceDir)
+  })
   ipcMain.handle(IPC.TEST_CONNECTION, async (_e, raw): Promise<TestResult> => {
     const arg = validateTestConnectionArg(raw)
     if (!arg) return { ok: false, error: 'invalid request' }
