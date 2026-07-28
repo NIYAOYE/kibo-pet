@@ -8,6 +8,9 @@
 
 ## 现有
 - [web-summary/](web-summary/) — MVP 内置 skill,验证机制跑通(联网搜索 + LLM 总结)。
+- [workspace-file-organizer/](workspace-file-organizer/) — 读写工作目录文件,给出整理建议。
+- [todo-triage/](todo-triage/) — 一次性记多件待办,合理拆分和批量清理。
+- [daily-life-advisor/](daily-life-advisor/) — 结合天气数据给出穿衣出行等生活决策建议。
 
 ## 交互
 - ← [src/main/skills](../src/main/skills/):被扫描/解析/注册。
